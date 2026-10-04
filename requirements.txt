@@ -1,0 +1,11 @@
+streamlit
+plotly
+pandas
+httpx
+PyJWT[crypto]
+cryptography
+keyring
+yfinance
+pytr
+mt-940
+openpyxl

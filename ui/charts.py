@@ -1,0 +1,315 @@
+from typing import Any
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+from ui.theme import AMBER, COLOR_PALETTE, EMERALD, ROSE, SKY, SLATE, TEAL, VIOLET
+
+
+def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    if df.empty:
+        return fig
+
+    # Group by date and asset_class
+    pivoted = df.pivot_table(index="date", columns="asset_class", values="value_eur", aggfunc="sum").fillna(0)
+
+    dates = pivoted.index.tolist()
+    cash = pivoted.get("cash", pd.Series(0, index=dates)).tolist()
+    investments = pivoted.get("investment", pd.Series(0, index=dates)).tolist()
+    liabilities = pivoted.get("liability", pd.Series(0, index=dates)).tolist()
+
+    net_worth = [c + i - abs(l) for c, i, l in zip(cash, investments, liabilities)]
+
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=cash,
+            mode="lines",
+            name="Cash",
+            stackgroup="positive",
+            line=dict(width=0.5, color=TEAL),
+            fillcolor="rgba(45, 212, 191, 0.4)",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=investments,
+            mode="lines",
+            name="Investments",
+            stackgroup="positive",
+            line=dict(width=0.5, color=SKY),
+            fillcolor="rgba(56, 189, 248, 0.4)",
+        )
+    )
+    if any(l > 0 for l in liabilities):
+        fig.add_trace(
+            go.Scatter(
+                x=dates,
+                y=[-abs(l) for l in liabilities],
+                mode="lines",
+                name="Liabilities",
+                line=dict(width=1, color=ROSE, dash="dash"),
+                fillcolor="rgba(251, 113, 133, 0.2)",
+            )
+        )
+
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=net_worth,
+            mode="lines+markers",
+            name="Net Worth",
+            line=dict(width=3, color="#F8FAFC"),
+            marker=dict(size=5),
+        )
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
+
+
+def build_spending_sunburst(df: pd.DataFrame) -> go.Figure:
+    if df.empty:
+        return go.Figure()
+
+    fig = px.sunburst(
+        df,
+        path=["parent_category", "category", "merchant"],
+        values="amount_eur",
+        color="parent_category",
+        color_discrete_sequence=COLOR_PALETTE,
+    )
+    fig.update_layout(margin=dict(l=0, r=0, t=10, b=10))
+    return fig
+
+
+def build_spending_donut(df: pd.DataFrame, group_col: str = "category") -> go.Figure:
+    if df.empty:
+        return go.Figure()
+
+    grouped = df.groupby(group_col)["amount_eur"].sum().reset_index()
+    fig = px.pie(
+        grouped,
+        names=group_col,
+        values="amount_eur",
+        hole=0.55,
+        color_discrete_sequence=COLOR_PALETTE,
+    )
+    fig.update_traces(textposition="inside", textinfo="percent+label")
+    fig.update_layout(margin=dict(l=0, r=0, t=10, b=10), showlegend=False)
+    return fig
+
+
+def build_cashflow_sankey(
+    income_nodes: list[tuple[str, float]],
+    fixed_nodes: list[tuple[str, float]],
+    discretionary_nodes: list[tuple[str, float]],
+    savings_nodes: list[tuple[str, float]],
+) -> go.Figure:
+    nodes = ["Income Pool", "Fixed Expenses", "Discretionary", "Savings & Investments"]
+    labels = list(nodes)
+    node_map = {n: i for i, n in enumerate(labels)}
+
+    sources: list[int] = []
+    targets: list[int] = []
+    values: list[float] = []
+    colors: list[str] = []
+
+    # Income -> Income Pool
+    for name, amt in income_nodes:
+        if amt <= 0:
+            continue
+        if name not in node_map:
+            node_map[name] = len(labels)
+            labels.append(name)
+        sources.append(node_map[name])
+        targets.append(node_map["Income Pool"])
+        values.append(amt)
+        colors.append("rgba(52, 211, 153, 0.4)")
+
+    # Income Pool -> Main Buckets
+    sum_fixed = sum(a for _, a in fixed_nodes)
+    sum_disc = sum(a for _, a in discretionary_nodes)
+    sum_sav = sum(a for _, a in savings_nodes)
+
+    if sum_fixed > 0:
+        sources.append(node_map["Income Pool"])
+        targets.append(node_map["Fixed Expenses"])
+        values.append(sum_fixed)
+        colors.append("rgba(251, 113, 133, 0.4)")
+
+    if sum_disc > 0:
+        sources.append(node_map["Income Pool"])
+        targets.append(node_map["Discretionary"])
+        values.append(sum_disc)
+        colors.append("rgba(251, 191, 36, 0.4)")
+
+    if sum_sav > 0:
+        sources.append(node_map["Income Pool"])
+        targets.append(node_map["Savings & Investments"])
+        values.append(sum_sav)
+        colors.append("rgba(45, 212, 191, 0.4)")
+
+    # Fixed items
+    for name, amt in fixed_nodes:
+        if amt <= 0:
+            continue
+        if name not in node_map:
+            node_map[name] = len(labels)
+            labels.append(name)
+        sources.append(node_map["Fixed Expenses"])
+        targets.append(node_map[name])
+        values.append(amt)
+        colors.append("rgba(251, 113, 133, 0.25)")
+
+    # Discretionary items
+    for name, amt in discretionary_nodes:
+        if amt <= 0:
+            continue
+        if name not in node_map:
+            node_map[name] = len(labels)
+            labels.append(name)
+        sources.append(node_map["Discretionary"])
+        targets.append(node_map[name])
+        values.append(amt)
+        colors.append("rgba(251, 191, 36, 0.25)")
+
+    # Savings items
+    for name, amt in savings_nodes:
+        if amt <= 0:
+            continue
+        if name not in node_map:
+            node_map[name] = len(labels)
+            labels.append(name)
+        sources.append(node_map["Savings & Investments"])
+        targets.append(node_map[name])
+        values.append(amt)
+        colors.append("rgba(45, 212, 191, 0.25)")
+
+    fig = go.Figure(
+        go.Sankey(
+            node=dict(
+                pad=18,
+                thickness=18,
+                line=dict(color="rgba(148, 163, 184, 0.2)", width=1),
+                label=labels,
+                color="#1E293B",
+            ),
+            link=dict(source=sources, target=targets, value=values, color=colors),
+        )
+    )
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10))
+    return fig
+
+
+def build_monthly_cashflow_bar(df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    if df.empty:
+        return fig
+
+    months = df["month"].tolist()
+    fig.add_trace(go.Bar(x=months, y=df["income_eur"], name="Income", marker_color=EMERALD))
+    fig.add_trace(go.Bar(x=months, y=df["fixed_eur"], name="Fixed Expenses", marker_color=ROSE))
+    fig.add_trace(go.Bar(x=months, y=df["discretionary_eur"], name="Discretionary", marker_color=AMBER))
+    fig.add_trace(go.Bar(x=months, y=df["savings_eur"], name="Savings", marker_color=TEAL))
+
+    fig.update_layout(
+        barmode="group",
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
+
+
+def build_drift_bar_chart(drift_data: list[dict[str, Any]], drift_band_pct: float = 5.0) -> go.Figure:
+    fig = go.Figure()
+    if not drift_data:
+        return fig
+
+    buckets = [d["bucket"] for d in drift_data]
+    diffs = [d["drift_pp"] for d in drift_data]
+    colors = [ROSE if d["alert"] else TEAL for d in drift_data]
+
+    fig.add_trace(go.Bar(x=buckets, y=diffs, marker_color=colors, text=[f"{diff:+.1f} pp" for diff in diffs], textposition="auto"))
+
+    # Shaded band
+    fig.add_hrect(
+        y0=-drift_band_pct,
+        y1=drift_band_pct,
+        line_width=0,
+        fillcolor="rgba(45, 212, 191, 0.08)",
+        annotation_text="Tolerance Band",
+        annotation_position="top right",
+    )
+
+    fig.update_layout(
+        yaxis_title="Deviation (pp)",
+        margin=dict(l=0, r=0, t=20, b=0),
+    )
+    return fig
+
+
+def build_mortgage_amortization_chart(schedule_df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    if schedule_df.empty:
+        return fig
+
+    dates = schedule_df["due_date"].tolist()
+    balance = (schedule_df["balance_minor"] / 100.0).tolist()
+    cum_principal = (schedule_df["principal_minor"].cumsum() / 100.0).tolist()
+
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=balance,
+            mode="lines",
+            name="Remaining Balance",
+            line=dict(color=ROSE, width=2.5),
+            fill="tozeroy",
+            fillcolor="rgba(251, 113, 133, 0.15)",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=cum_principal,
+            mode="lines",
+            name="Cumulative Principal Paid",
+            line=dict(color=EMERALD, width=2.5),
+        )
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
+
+
+def build_mortgage_interest_principal_bar(schedule_df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    if schedule_df.empty:
+        return fig
+
+    dates = schedule_df["due_date"].tolist()
+    interest = (schedule_df["interest_minor"] / 100.0).tolist()
+    principal = (schedule_df["principal_minor"] / 100.0).tolist()
+
+    fig.add_trace(go.Bar(x=dates, y=principal, name="Principal", marker_color=EMERALD))
+    fig.add_trace(go.Bar(x=dates, y=interest, name="Interest", marker_color=AMBER))
+
+    fig.update_layout(
+        barmode="stack",
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
