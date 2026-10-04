@@ -120,15 +120,60 @@ class EnableBankingService:
                 raise RuntimeError(f"Failed to fetch accounts: {resp.text}")
 
             data = resp.json()
+            if not isinstance(data, dict):
+                return []
+
             accounts_data = data.get("accounts", [])
             aspsp = data.get("aspsp", {})
-            institution = aspsp.get("name", "Bank")
+            if isinstance(aspsp, dict):
+                institution = aspsp.get("name", "Bank") or "Bank"
+            elif isinstance(aspsp, str):
+                institution = aspsp or "Bank"
+            else:
+                institution = "Bank"
 
             result: list[RawAccount] = []
+            if not isinstance(accounts_data, list):
+                accounts_data = [accounts_data] if accounts_data else []
+
             for acc in accounts_data:
-                uid = acc.get("uid") or acc.get("account_id", {}).get("iban")
-                iban = acc.get("account_id", {}).get("iban")
-                currency = acc.get("currency", "EUR")
+                if isinstance(acc, str):
+                    uid = acc
+                    acc_obj: dict[str, Any] = {}
+                    try:
+                        acc_resp = client.get(f"{BASE_URL}/accounts/{uid}", headers=self._headers())
+                        if acc_resp.status_code == 200 and isinstance(acc_resp.json(), dict):
+                            acc_obj = acc_resp.json()
+                    except Exception:
+                        pass
+                elif isinstance(acc, dict):
+                    acc_obj = acc
+                    uid = acc_obj.get("uid")
+                else:
+                    continue
+
+                acc_id = acc_obj.get("account_id") or acc_obj.get("accountId")
+                iban = acc_obj.get("iban")
+
+                if isinstance(acc_id, dict):
+                    if not uid: uid = acc_id.get("iban")
+                    if not iban: iban = acc_id.get("iban")
+                elif isinstance(acc_id, str):
+                    if not uid: uid = acc_id
+                    if not iban and acc_id.isalnum() and len(acc_id) > 10: iban = acc_id
+
+                if not uid:
+                    uid = iban or str(uuid.uuid4())
+
+                if not iban:
+                    idents = acc_obj.get("identifications")
+                    if isinstance(idents, list):
+                        for ident in idents:
+                            if isinstance(ident, dict) and ident.get("schemeName") == "IBAN":
+                                iban = ident.get("identification")
+                                break
+
+                currency = acc_obj.get("currency")
 
                 # Fetch balances
                 bal_minor = None
@@ -136,19 +181,27 @@ class EnableBankingService:
                     b_resp = client.get(f"{BASE_URL}/accounts/{uid}/balances", headers=self._headers())
                     if b_resp.status_code == 200:
                         b_data = b_resp.json()
-                        for b in b_data.get("balances", []):
-                            amt = b.get("balance_amount", {}).get("amount")
-                            if amt is not None:
-                                bal_minor = to_minor(amt)
-                                break
+                        balances = b_data.get("balances", []) if isinstance(b_data, dict) else (b_data if isinstance(b_data, list) else [])
+                        for b in balances:
+                            if isinstance(b, dict):
+                                b_amt = b.get("balance_amount") or b.get("amount")
+                                amt = b_amt.get("amount") if isinstance(b_amt, dict) else b_amt
+                                if isinstance(b_amt, dict) and b_amt.get("currency") and not currency:
+                                    currency = b_amt.get("currency")
+                                if amt is not None:
+                                    bal_minor = to_minor(amt)
+                                    break
                 except Exception:
                     pass
+
+                currency = currency or "EUR"
+                acc_label = iban[-4:] if iban else currency
 
                 result.append(
                     RawAccount(
                         external_id=str(uid),
                         institution=institution,
-                        name=f"{institution} ({iban[-4:] if iban else 'Account'})",
+                        name=f"{institution} ({acc_label})",
                         currency=currency,
                         asset_class="cash",
                         iban=iban,
@@ -157,8 +210,11 @@ class EnableBankingService:
                 )
             return result
 
-    def fetch_transactions(self, since: date) -> list[RawTransaction]:
+    def fetch_transactions(self, since: date, account_uid: str | None = None) -> list[RawTransaction]:
         accounts = self.fetch_accounts()
+        if account_uid:
+            accounts = [a for a in accounts if a.external_id == account_uid]
+
         raw_txs: list[RawTransaction] = []
 
         with httpx.Client(timeout=30.0) as client:
@@ -173,13 +229,26 @@ class EnableBankingService:
                         break
 
                     data = resp.json()
-                    for entry in data.get("transactions", []):
-                        amt_info = entry.get("transaction_amount", {})
-                        amt_val = amt_info.get("amount", "0")
-                        curr = amt_info.get("currency", acc.currency)
+                    tx_entries = []
+                    if isinstance(data, dict):
+                        tx_entries = data.get("transactions", [])
+                    elif isinstance(data, list):
+                        tx_entries = data
+
+                    for entry in tx_entries:
+                        if not isinstance(entry, dict):
+                            continue
+                        amt_info = entry.get("transaction_amount") or entry.get("amount")
+                        if isinstance(amt_info, dict):
+                            amt_val = amt_info.get("amount", "0")
+                            curr = amt_info.get("currency", acc.currency)
+                        else:
+                            amt_val = str(amt_info) if amt_info is not None else "0"
+                            curr = acc.currency
+                        
                         amt_minor = to_minor(amt_val)
 
-                        indicator = entry.get("credit_debit_indicator", "CRDT").upper()
+                        indicator = str(entry.get("credit_debit_indicator", "CRDT")).upper()
                         if indicator == "DBIT" and amt_minor > 0:
                             amt_minor = -amt_minor
                         elif indicator == "CRDT" and amt_minor < 0:
@@ -188,13 +257,22 @@ class EnableBankingService:
                         b_date_str = entry.get("booking_date") or entry.get("value_date")
                         if not b_date_str:
                             continue
-                        booking_date = datetime.strptime(b_date_str[:10], "%Y-%m-%d").date()
+                        booking_date = datetime.strptime(str(b_date_str)[:10], "%Y-%m-%d").date()
 
-                        desc_list = entry.get("remittance_information", [])
-                        desc = " ".join(desc_list) if desc_list else entry.get("entry_reference", "Transaction")
+                        desc_info = entry.get("remittance_information")
+                        if isinstance(desc_info, list):
+                            desc = " ".join(str(d) for d in desc_info)
+                        elif isinstance(desc_info, str):
+                            desc = desc_info
+                        else:
+                            desc = entry.get("entry_reference", "Transaction") or "Transaction"
 
-                        cdtr = entry.get("creditor", {}).get("name")
-                        dbtr = entry.get("debtor", {}).get("name")
+                        cdtr_info = entry.get("creditor")
+                        cdtr = cdtr_info.get("name") if isinstance(cdtr_info, dict) else (cdtr_info if isinstance(cdtr_info, str) else None)
+                        
+                        dbtr_info = entry.get("debtor")
+                        dbtr = dbtr_info.get("name") if isinstance(dbtr_info, dict) else (dbtr_info if isinstance(dbtr_info, str) else None)
+                        
                         cp_name = cdtr if indicator == "DBIT" else dbtr
 
                         raw_txs.append(
@@ -210,7 +288,7 @@ class EnableBankingService:
                             )
                         )
 
-                    continuation_key = data.get("continuation_key")
+                    continuation_key = data.get("continuation_key") if isinstance(data, dict) else None
                     if continuation_key:
                         params["continuation_key"] = continuation_key
                     else:

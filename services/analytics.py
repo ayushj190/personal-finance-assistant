@@ -47,6 +47,9 @@ def detect_recurring_charges(
     for tx in transactions:
         if tx.get("is_internal_transfer"):
             continue
+        # Subscriptions and recurring bills are outflows (negative in v_transactions)
+        if tx.get("amount_eur", 0.0) >= 0 or tx.get("category_kind") == "income":
+            continue
         amt = abs(tx.get("amount_eur", 0.0))
         if amt < 0.5:  # ignore micro test charges
             continue

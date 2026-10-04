@@ -17,15 +17,17 @@ def render():
     conn = database.connect(DB_PATH)
     where_sql, params = build_where_clause(filters, table_alias="t")
 
+    where_prefix = f"{where_sql} AND " if where_sql else "WHERE "
     query = f"""
     SELECT t.booking_date, t.merchant_normalized AS merchant,
-           c.name AS category, COALESCE(p.name, c.name) AS parent_category,
-           c.kind AS category_kind,
+           COALESCE(c.name, 'Uncategorized') AS category,
+           COALESCE(p.name, c.name, 'Uncategorized') AS parent_category,
+           COALESCE(c.kind, 'discretionary') AS category_kind,
            -t.amount_eur_minor / 100.0 AS amount_eur
     FROM transactions t
-    JOIN categories c ON c.id = t.category_id
+    LEFT JOIN categories c ON c.id = t.category_id
     LEFT JOIN categories p ON p.id = c.parent_id
-    {where_sql} AND t.amount_eur_minor < 0 AND c.kind IN ('fixed', 'discretionary')
+    {where_prefix} t.amount_eur_minor < 0 AND (c.kind IS NULL OR c.kind IN ('fixed', 'discretionary'))
     """
     df = pd.read_sql_query(query, conn, params=params)
 

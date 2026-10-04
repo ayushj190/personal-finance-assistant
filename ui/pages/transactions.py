@@ -35,7 +35,7 @@ def render():
     query = f"""
     SELECT t.id, t.booking_date, a.name AS account,
            t.amount_eur_minor / 100.0 AS amount_eur,
-           t.merchant_normalized AS merchant,
+           COALESCE(NULLIF(t.merchant_normalized, ''), t.description_raw) AS merchant,
            c.name AS category,
            t.is_internal_transfer
     FROM transactions t

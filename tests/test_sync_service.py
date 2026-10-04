@@ -16,7 +16,8 @@ class TestSyncService(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def test_sync_all_smoke(self):
+    @unittest.mock.patch("services.secrets_vault.get", return_value=None)
+    def test_sync_all_smoke(self, mock_vault_get):
         # With no connectors configured, sync_all should complete gracefully
         res = sync_all(self.conn)
         self.assertIn("connectors", res)

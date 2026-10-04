@@ -40,10 +40,36 @@ def render_sidebar_filters() -> dict[str, Any]:
         start_date = None
 
     conn = database.connect(DB_PATH)
-    accounts = conn.execute("SELECT id, name, institution, asset_class FROM accounts ORDER BY institution, name").fetchall()
+    accounts = conn.execute("SELECT id, name, institution, asset_class, currency FROM accounts ORDER BY institution, name").fetchall()
+    
+    # Calculate balances for each account and filter
+    valid_accounts = []
+    for a in accounts:
+        # Get latest balance from snapshots or transactions
+        row = conn.execute(
+            "SELECT balance_eur_minor FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
+            (a["id"],),
+        ).fetchone()
+        
+        if row:
+            bal_eur = row["balance_eur_minor"] / 100.0
+        else:
+            tx_sum = conn.execute(
+                "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
+                (a["id"],),
+            ).fetchone()
+            bal_eur = (tx_sum["total"] or 0) / 100.0
+
+        # Keep if balance is non-zero, or if it's an eToro account
+        if bal_eur != 0 or "etoro" in a["institution"].lower():
+            # Create a dict that can be modified, since fetchall() returns row objects
+            a_dict = dict(a)
+            a_dict["balance"] = bal_eur
+            valid_accounts.append(a_dict)
+
     conn.close()
 
-    acc_options = {a["id"]: f"{a['institution']} - {a['name']}" for a in accounts}
+    acc_options = {a["id"]: f"{a['institution']} - {a['name']} (€{a['balance']:,.2f})" for a in valid_accounts}
     selected_account_ids = st.sidebar.multiselect(
         "Accounts",
         options=list(acc_options.keys()),

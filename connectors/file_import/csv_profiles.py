@@ -4,21 +4,34 @@ from decimal import Decimal, ROUND_HALF_UP
 import io
 from typing import Iterator
 
-from connectors.base import RawTransaction
+from connectors.base import RawHolding, RawTransaction
 
 
-def to_minor(val: Decimal | float | str) -> int:
+def to_minor(val: Decimal | float | str | None) -> int:
+    if val is None:
+        return 0
     if isinstance(val, (int, float)):
         d = Decimal(str(val))
     elif isinstance(val, str):
-        cleaned = val.replace(" ", "").replace(",", ".").strip()
+        cleaned = val.replace(" ", "").strip()
+        if not cleaned:
+            return 0
+        if "." in cleaned and "," in cleaned:
+            if cleaned.rfind(",") > cleaned.rfind("."):
+                # European: 1.000,00 -> 1000.00
+                cleaned = cleaned.replace(".", "").replace(",", ".")
+            else:
+                # US: 1,000.00 -> 1000.00
+                cleaned = cleaned.replace(",", "")
+        elif "," in cleaned:
+            cleaned = cleaned.replace(",", ".")
         d = Decimal(cleaned)
     else:
         d = val
     return int((d * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def parse_etoro_money(text: str, default_account_id: str = "etoro_money_eur") -> list[RawTransaction]:
+def parse_etoro_money(text: str, default_account_id: str = "etoro_cash_eur") -> list[RawTransaction]:
     txs: list[RawTransaction] = []
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
@@ -203,3 +216,122 @@ def parse_trade_republic_csv(text: str, default_account_id: str = "tr_cash") -> 
             )
         )
     return txs
+
+
+def _extract_sections(text: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    current_sec = "default"
+    known_headers = {"closed positions", "open positions", "account activity", "dividends", "financial summary"}
+
+    for line in text.splitlines():
+        trimmed = line.strip().strip('"').strip("'").strip()
+        lower = trimmed.lower()
+        
+        matched_header = None
+        for kh in known_headers:
+            if lower.startswith(kh):
+                matched_header = kh
+                break
+                
+        if matched_header:
+            current_sec = matched_header
+            sections[current_sec] = []
+            continue
+            
+        sections.setdefault(current_sec, []).append(line)
+    return sections
+
+
+def parse_etoro_statement_transactions(text: str, default_account_id: str = "etoro_cash") -> list[RawTransaction]:
+    sections = _extract_sections(text)
+    act_lines = sections.get("account activity") or sections.get("default") or []
+    act_lines = [l for l in act_lines if l.strip(', \t\r\n')]
+    if not act_lines:
+        return []
+
+    sample = "\n".join(act_lines[:5])
+    delim = ";" if sample.count(";") > sample.count(",") else ","
+    reader = csv.DictReader(act_lines, delimiter=delim)
+    txs: list[RawTransaction] = []
+
+    for row in reader:
+        date_str = row.get("Date") or row.get("Date and Time")
+        if not date_str:
+            continue
+        ts = None
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                ts = datetime.strptime(date_str.strip()[:19], fmt)
+                break
+            except ValueError:
+                pass
+        if not ts:
+            continue
+
+        amt_str = row.get("Amount") or row.get("Realized Equity Change") or "0"
+        amt_minor = to_minor(amt_str)
+        t_type = row.get("Type", "").strip()
+        details = row.get("Details", "").strip()
+        desc = f"{t_type} - {details}".strip(" -") or "eToro Activity"
+
+        txs.append(
+            RawTransaction(
+                account_external_id=default_account_id,
+                booking_date=ts.date(),
+                amount_minor=amt_minor,
+                currency="USD",
+                description=desc,
+                value_date=ts.date(),
+            )
+        )
+    return txs
+
+
+def parse_etoro_statement_holdings(text: str, default_account_id: str = "etoro_trading_usd") -> list[RawHolding]:
+    sections = _extract_sections(text)
+    open_lines = sections.get("open positions") or []
+    open_lines = [l for l in open_lines if l.strip(', \t\r\n')]
+    if not open_lines:
+        return []
+
+    sample = "\n".join(open_lines[:5])
+    delim = ";" if sample.count(";") > sample.count(",") else ","
+    reader = csv.DictReader(open_lines, delimiter=delim)
+    holdings: list[RawHolding] = []
+
+    for row in reader:
+        action = row.get("Action", "").strip()
+        units_str = row.get("Units", "0").strip()
+        amt_str = row.get("Amount", "0").strip()
+        isin = row.get("ISIN", "").strip() or None
+        if not action or not units_str:
+            continue
+
+        try:
+            qty = float(units_str.replace(",", "."))
+        except ValueError:
+            continue
+
+        if qty <= 0:
+            continue
+
+        cost_cents = to_minor(amt_str)
+        ticker = action
+        if ticker.lower().startswith("buy "):
+            ticker = ticker[4:].strip()
+        elif ticker.lower().startswith("sell "):
+            ticker = ticker[5:].strip()
+
+        holdings.append(
+            RawHolding(
+                account_external_id=default_account_id,
+                ticker=ticker,
+                isin=isin,
+                name=ticker,
+                asset_type="stock",
+                quantity=qty,
+                cost_basis_minor=cost_cents,
+                currency="USD",
+            )
+        )
+    return holdings

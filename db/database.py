@@ -52,9 +52,7 @@ def upsert_account(conn: sqlite3.Connection, acc: dict[str, Any]) -> int:
         "is_active": acc.get("is_active", 1),
     }
     with conn:
-        cur = conn.execute(query, params)
-        if cur.lastrowid:
-            return cur.lastrowid
+        conn.execute(query, params)
         row = conn.execute(
             "SELECT id FROM accounts WHERE provider = ? AND external_id = ?",
             (params["provider"], params["external_id"]),

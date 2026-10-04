@@ -216,9 +216,9 @@ LEFT JOIN (
 
 CREATE VIEW IF NOT EXISTS v_monthly_cashflow AS
 SELECT strftime('%Y-%m', t.booking_date) AS month,
-       SUM(CASE WHEN c.kind = 'income' THEN t.amount_eur_minor ELSE 0 END) / 100.0 AS income_eur,
+       SUM(CASE WHEN COALESCE(c.kind, CASE WHEN t.amount_eur_minor > 0 THEN 'income' ELSE 'discretionary' END) = 'income' THEN t.amount_eur_minor ELSE 0 END) / 100.0 AS income_eur,
        SUM(CASE WHEN c.kind = 'fixed' THEN -t.amount_eur_minor ELSE 0 END) / 100.0 AS fixed_eur,
-       SUM(CASE WHEN c.kind = 'discretionary' THEN -t.amount_eur_minor ELSE 0 END) / 100.0 AS discretionary_eur,
+       SUM(CASE WHEN COALESCE(c.kind, CASE WHEN t.amount_eur_minor < 0 THEN 'discretionary' ELSE '' END) = 'discretionary' THEN -t.amount_eur_minor ELSE 0 END) / 100.0 AS discretionary_eur,
        SUM(CASE WHEN c.kind = 'savings' THEN -t.amount_eur_minor ELSE 0 END) / 100.0 AS savings_eur
 FROM transactions t
 LEFT JOIN categories c ON c.id = t.category_id

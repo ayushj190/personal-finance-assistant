@@ -17,10 +17,12 @@ def render():
 
     # 1. Sankey Data
     query = f"""
-    SELECT c.kind, c.name AS category, COALESCE(p.name, c.name) AS parent_category,
+    SELECT COALESCE(c.kind, CASE WHEN t.amount_eur_minor > 0 THEN 'income' ELSE 'discretionary' END) AS kind,
+           COALESCE(c.name, CASE WHEN t.amount_eur_minor > 0 THEN 'Other Income' ELSE 'Uncategorized' END) AS category,
+           COALESCE(p.name, c.name, 'Uncategorized') AS parent_category,
            t.amount_eur_minor / 100.0 AS amount_eur
     FROM transactions t
-    JOIN categories c ON c.id = t.category_id
+    LEFT JOIN categories c ON c.id = t.category_id
     LEFT JOIN categories p ON p.id = c.parent_id
     {where_sql}
     """

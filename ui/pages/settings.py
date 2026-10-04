@@ -2,6 +2,7 @@ from datetime import date, datetime
 import sqlite3
 from textwrap import dedent
 import httpx
+import pandas as pd
 import streamlit as st
 
 from config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
@@ -208,12 +209,10 @@ def render():
         st.divider()
 
         # eToro Section
-        section_header("eToro Integration", "Portfolio holdings sync and eToro Money instructions")
+        section_header("eToro Bank & Investment Integration", "Direct API sync for cash balance, transactions, and portfolio holdings")
         st.info(
-            "💡 **eToro Money (Visa debit card / EUR spending account):**\n\n"
-            "eToro does not expose card spending in its public API. The easiest and recommended way is exporting your statement:\n\n"
-            "In your eToro Money app: **Settings → Account Details → Account Statements → Export TSV**.\n\n"
-            "Then drop the TSV file into the **Import** tab — all spending is automatically categorized!"
+            "💡 **eToro Money & Trading API Sync:**\n\n"
+            "Your eToro EUR cash balance, cash transactions, and USD trading portfolio are synced automatically via the official eToro API when configured."
         )
 
         with st.expander("eToro Trading Portfolio API Setup (Optional)"):
@@ -238,8 +237,103 @@ def render():
 
         # Trade Republic Section
         section_header("Trade Republic Integration", "Securities portfolio and cash sync")
-        st.markdown("Trade Republic transactions can be imported via official CSV in the **Import** tab, or connected directly via pytr below:")
-        with st.expander("Trade Republic Login (pytr)"):
+        st.markdown(
+            "Trade Republic statements can be uploaded directly below (**PDF Kontoauszug / Depotauszug or CSV**). "
+            "You can also upload via the **Import** tab or connect pytr:"
+        )
+
+        with st.expander("📤 Upload Trade Republic Statement (PDF / CSV)", expanded=True):
+            tr_file = st.file_uploader(
+                "Upload Trade Republic Account Statement (PDF, CSV)",
+                type=["pdf", "csv", "tsv"],
+                key="tr_settings_file_uploader",
+            )
+            if tr_file:
+                raw_bytes = tr_file.read()
+                from connectors.file_import.detect import FileFormat, detect_format, parse_statement, parse_statement_holdings, parse_statement_balance
+                from connectors.market_data_service import update_quotes
+                from services.sync_service import process_and_save_transactions
+
+
+                tr_cash = conn.execute("SELECT id FROM accounts WHERE institution = 'Trade Republic' AND asset_class = 'cash' LIMIT 1").fetchone()
+                tr_inv = conn.execute("SELECT id FROM accounts WHERE institution = 'Trade Republic' AND asset_class = 'investment' LIMIT 1").fetchone()
+                tr_cash_id = tr_cash["id"] if tr_cash else 7
+                tr_inv_id = tr_inv["id"] if tr_inv else 8
+
+                fmt, txs = parse_statement(raw_bytes, default_account_id=str(tr_cash_id))
+                holdings = parse_statement_holdings(raw_bytes, default_account_id=str(tr_inv_id))
+                raw_balance = parse_statement_balance(raw_bytes)
+
+                st.markdown(f"**Detected Format:** `{fmt.value}`")
+                if txs:
+                    st.caption(f"Found {len(txs)} transactions:")
+                    preview_data = [
+                        {
+                            "Date": tx.booking_date.isoformat(),
+                            "Amount": f"{tx.currency} {tx.amount_minor / 100.0:,.2f}",
+                            "Description": tx.description,
+                        }
+                        for tx in txs[:5]
+                    ]
+                    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
+
+                if holdings:
+                    st.caption(f"Found {len(holdings)} investment holdings:")
+                    h_preview = [
+                        {
+                            "Ticker / ISIN": h.ticker,
+                            "Units": h.quantity,
+                            "Cost Basis": f"{h.currency} {h.cost_basis_minor / 100.0:,.2f}",
+                        }
+                        for h in holdings[:5]
+                    ]
+                    st.dataframe(pd.DataFrame(h_preview), use_container_width=True, hide_index=True)
+
+                if st.button("Import Trade Republic Statement Now", type="primary", key="tr_settings_import_btn"):
+                    msg_parts = []
+                    if txs:
+                        ins, skp = process_and_save_transactions(
+                            conn, account_id=tr_cash_id, raw_txs=txs, source="csv", enable_llm_categorization=False
+                        )
+                        msg_parts.append(f"{ins} transactions inserted ({skp} skipped)")
+
+                    if raw_balance is not None:
+                        database.upsert_snapshots(conn, [{
+                            "account_id": tr_cash_id,
+                            "snapshot_date": __import__('pandas').Timestamp.now().date().isoformat(),
+                            "balance_minor": raw_balance,
+                            "balance_eur_minor": raw_balance
+                        }])
+                        msg_parts.append(f"Balance updated to {raw_balance / 100.0:,.2f}")
+
+                    if holdings:
+                        prepared_h = [
+                            {
+                                "account_id": tr_inv_id,
+                                "ticker": h.ticker,
+                                "isin": h.isin,
+                                "name": h.name,
+                                "asset_type": h.asset_type,
+                                "region": h.region,
+                                "sector": h.sector,
+                                "quantity": h.quantity,
+                                "cost_basis_minor": h.cost_basis_minor,
+                                "currency": h.currency,
+                                "updated_at": pd.Timestamp.now().isoformat(),
+                            }
+                            for h in holdings
+                        ]
+                        database.upsert_holdings(conn, prepared_h)
+                        msg_parts.append(f"{len(holdings)} holdings saved")
+                        try:
+                            update_quotes([h.ticker for h in holdings if h.ticker], db_conn=conn)
+                        except Exception:
+                            pass
+
+                    st.success(f"Trade Republic import complete! {', '.join(msg_parts)}.")
+                    st.rerun()
+
+        with st.expander("Trade Republic Login (pytr) - Optional"):
             tr_phone = st.text_input("Phone Number (+31...)", value=secrets_vault.get("tr_phone") or "")
             tr_pin = st.text_input("PIN (4 digits)", value=secrets_vault.get("tr_pin") or "", type="password")
             if st.button("Save Trade Republic Login"):

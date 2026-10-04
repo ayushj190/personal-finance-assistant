@@ -27,6 +27,10 @@ class TestAnalytics(unittest.TestCase):
             {"booking_date": "2026-02-10", "merchant": "Netflix", "amount_eur": -15.99, "is_internal_transfer": 0},
             {"booking_date": "2026-03-10", "merchant": "Netflix", "amount_eur": -15.99, "is_internal_transfer": 0},
             {"booking_date": "2026-03-05", "merchant": "One-off Store", "amount_eur": -45.00, "is_internal_transfer": 0},
+            # Monthly salary (inflow: positive amount) must NOT be detected as a recurring bill
+            {"booking_date": "2026-01-25", "merchant": "Employer Salary", "amount_eur": 4500.00, "is_internal_transfer": 0},
+            {"booking_date": "2026-02-25", "merchant": "Employer Salary", "amount_eur": 4500.00, "is_internal_transfer": 0},
+            {"booking_date": "2026-03-25", "merchant": "Employer Salary", "amount_eur": 4500.00, "is_internal_transfer": 0},
         ]
         recurring = detect_recurring_charges(synthetic_txs)
         self.assertEqual(len(recurring), 1)

@@ -9,3 +9,5 @@ yfinance
 pytr
 mt-940
 openpyxl
+pypdf
+

@@ -34,7 +34,7 @@ def process_and_save_transactions(
 
     for tx in raw_txs:
         date_str = tx.booking_date.isoformat()
-        norm_merchant = clean_merchant(tx.description)
+        norm_merchant = clean_merchant(tx.counterparty_name or tx.description)
         is_transfer = detect_internal_transfer(
             description=tx.description,
             counterparty_name=tx.counterparty_name,
@@ -191,7 +191,8 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                     else:
                         since_dt = date.today() - timedelta(days=90)
 
-                    txs = eb_inst.fetch_transactions(since=since_dt)
+                    txs = eb_inst.fetch_transactions(since=since_dt, account_uid=acc.external_id)
+                    txs = [t for t in txs if t.account_external_id == acc.external_id]
                     ins, _ = process_and_save_transactions(
                         conn, account_id=acc_id, raw_txs=txs, source="api", enable_llm_categorization=enable_llm
                     )
@@ -226,6 +227,8 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
         try:
             accs = etoro.fetch_accounts()
             holdings = etoro.fetch_holdings()
+            tot_inserted = 0
+
             for acc in accs:
                 acc_id = database.upsert_account(
                     conn,
@@ -252,6 +255,23 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                         ],
                     )
 
+                # Fetch & save cash/balance transactions
+                max_dt_row = conn.execute(
+                    "SELECT MAX(booking_date) AS m FROM transactions WHERE account_id = ?", (acc_id,)
+                ).fetchone()
+                if max_dt_row and max_dt_row["m"]:
+                    since_dt = datetime.strptime(max_dt_row["m"][:10], "%Y-%m-%d").date() - timedelta(days=7)
+                else:
+                    since_dt = date.today() - timedelta(days=90)
+
+                txs = etoro.fetch_transactions(since=since_dt)
+                acc_txs = [tx for tx in txs if tx.account_external_id == acc.external_id]
+                if acc_txs:
+                    ins, _ = process_and_save_transactions(
+                        conn, account_id=acc_id, raw_txs=acc_txs, source="api", enable_llm_categorization=enable_llm
+                    )
+                    tot_inserted += ins
+
             if holdings:
                 db_holdings = []
                 acc_row = database.get_account_by_provider_ext_id(conn, "etoro", "etoro_trading_usd")
@@ -277,10 +297,11 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
 
             with conn:
                 conn.execute(
-                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('etoro', ?, datetime('now'), 'ok', 0, ?)",
-                    (started, f"Synced {len(holdings)} holdings"),
+                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('etoro', ?, datetime('now'), 'ok', ?, ?)",
+                    (started, tot_inserted, f"Synced {len(holdings)} holdings, {tot_inserted} txs"),
                 )
-            results["connectors"]["etoro"] = {"status": "ok", "holdings": len(holdings)}
+            results["connectors"]["etoro"] = {"status": "ok", "holdings": len(holdings), "inserted": tot_inserted}
+            results["total_inserted"] += tot_inserted
         except NeedsReauth as e:
             with conn:
                 conn.execute(

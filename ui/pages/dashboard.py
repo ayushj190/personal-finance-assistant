@@ -71,9 +71,20 @@ def render():
     liquid_cash = sum(
         bal for acc in accounts if acc["asset_class"] == "cash" and (bal := acc_balances.get(acc["id"], 0.0))
     )
-    invested = sum(
-        bal for acc in accounts if acc["asset_class"] == "investment" and (bal := acc_balances.get(acc["id"], 0.0))
+    # Calculate invested balance: use live holdings values (v_holdings), fallback to snapshots for accounts without holdings
+    holdings_acc_rows = conn.execute("SELECT DISTINCT account_id FROM holdings").fetchall()
+    holdings_acc_ids = {r["account_id"] for r in holdings_acc_rows}
+    invested_row = conn.execute(
+        "SELECT SUM(CASE WHEN value_eur > 0 THEN value_eur ELSE cost_basis END) as total FROM v_holdings"
+    ).fetchone()
+    invested_holdings = float(invested_row["total"] or 0.0) if invested_row else 0.0
+    invested_other = sum(
+        bal for acc in accounts
+        if acc["asset_class"] == "investment"
+        and acc["id"] not in holdings_acc_ids
+        and (bal := acc_balances.get(acc["id"], 0.0))
     )
+    invested = invested_holdings + invested_other
     net_worth = liquid_cash + invested - mortgage_balance
 
     # 2. Monthly cashflow for savings rate and burn rate
