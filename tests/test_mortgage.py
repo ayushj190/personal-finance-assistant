@@ -58,6 +58,38 @@ class TestMortgage(unittest.TestCase):
         post_extra_p = schedule[15]["payment_minor"]
         self.assertLess(post_extra_p, initial_p)
 
+    def test_sync_liability_schedule_and_db_flow(self):
+        import sqlite3
+        from db import database
+        from services.mortgage import sync_liability_schedule
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        with conn:
+            with open(database.SCHEMA_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+            with open(database.SEED_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+            cur = conn.execute(
+                """
+                INSERT INTO liabilities (name, lender, loan_type, original_principal_minor, start_date, term_months)
+                VALUES ('Test Loan', 'ABN AMRO', 'annuity', 30000000, '2024-01-01', 360)
+                """
+            )
+            lib_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO liability_rate_periods (liability_id, from_date, annual_rate, fixed_until) VALUES (?, '2024-01-01', 0.036, '2034-01-01')",
+                (lib_id,),
+            )
+
+        sync_liability_schedule(conn, lib_id)
+        sched_rows = conn.execute("SELECT * FROM liability_schedule WHERE liability_id = ? ORDER BY month_idx ASC", (lib_id,)).fetchall()
+        self.assertEqual(len(sched_rows), 360)
+        self.assertGreater(sched_rows[0]["payment_minor"], 0)
+        self.assertEqual(sched_rows[-1]["balance_minor"], 0)
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
