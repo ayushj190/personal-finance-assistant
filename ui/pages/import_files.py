@@ -18,8 +18,8 @@ def render():
     def auto_resolve_accounts(conn, fmt: FileFormat) -> tuple[int, int]:
         # Maps format to (Institution, Cash_Ext_ID, Inv_Ext_ID)
         mapping = {
-            FileFormat.TRADE_REPUBLIC_PDF: ("Trade Republic", "tr_cash_eur", "tr_portfolio_eur"),
-            FileFormat.TRADE_REPUBLIC_CSV: ("Trade Republic", "tr_cash_eur", "tr_portfolio_eur"),
+            FileFormat.TRADE_REPUBLIC_PDF: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
+            FileFormat.TRADE_REPUBLIC_CSV: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
             FileFormat.ETORO_STATEMENT_CSV: ("eToro", "etoro_cash_eur", "etoro_trading_usd"),
             FileFormat.ETORO_MONEY_TSV: ("eToro Bank", "etoro_cash_eur", "etoro_cash_eur"),
             FileFormat.REVOLUT_CSV: ("Revolut", "revolut_eur", "revolut_eur"),
@@ -35,7 +35,8 @@ def render():
         else:
             cash_id = database.upsert_account(conn, {
                 "provider": "manual", "institution": inst, "external_id": cash_ext,
-                "name": f"{inst} Cash", "currency": "EUR", "asset_class": "cash"
+                "name": f"{inst} Cash", "currency": "EUR", "asset_class": "cash",
+                "apy": 3.0 if inst == "Trade Republic" else None,
             })
             
         # Resolve Investment Account
@@ -63,11 +64,26 @@ def render():
             raw_holdings = parse_statement_holdings(raw_bytes)
             raw_balance = parse_statement_balance(raw_bytes)
 
+            if fmt in (FileFormat.TRADE_REPUBLIC_PDF, FileFormat.TRADE_REPUBLIC_CSV):
+                raw_holdings = []
+
             st.markdown(f"**File:** `{file.name}` | **Detected Format:** `{fmt.value}`")
 
-            if not raw_txs and not raw_holdings:
-                st.error("No valid transactions or holdings found in this file.")
+            if not raw_txs and not raw_holdings and raw_balance is None:
+                st.error("No valid transactions, holdings, or account balance found in this file.")
                 continue
+
+            final_balance_to_save = raw_balance
+            if raw_balance is not None:
+                st.info(f"💰 **Detected Account Balance (Eindsaldo):** €{raw_balance / 100.0:,.2f}")
+                adj_bal = st.number_input(
+                    "Confirm or adjust account balance (€)",
+                    value=float(raw_balance / 100.0),
+                    step=50.0,
+                    format="%.2f",
+                    key=f"bal_input_{file.name}",
+                )
+                final_balance_to_save = int(round(adj_bal * 100))
 
             if raw_txs:
                 st.caption(f"Found {len(raw_txs)} transactions:")
@@ -95,10 +111,15 @@ def render():
                 ]
                 st.dataframe(pd.DataFrame(h_preview), use_container_width=True, hide_index=True)
 
-            btn_label = f"Import {len(raw_txs)} transactions"
-            if raw_holdings:
-                btn_label += f" & {len(raw_holdings)} holdings"
-            btn_label += f" from {file.name}"
+            if not raw_txs and not raw_holdings and final_balance_to_save is not None:
+                btn_label = f"Update balance to €{final_balance_to_save / 100.0:,.2f} from {file.name}"
+            else:
+                btn_label = f"Import {len(raw_txs)} transactions"
+                if raw_holdings:
+                    btn_label += f" & {len(raw_holdings)} holdings"
+                if final_balance_to_save is not None:
+                    btn_label += f" & set balance to €{final_balance_to_save / 100.0:,.2f}"
+                btn_label += f" from {file.name}"
 
             if st.button(btn_label, key=file.name):
                 cash_acc_id, inv_acc_id = auto_resolve_accounts(conn, fmt)
@@ -118,14 +139,14 @@ def render():
                         )
                     msg_parts.append(f"{inserted} new transactions inserted ({skipped} duplicates skipped)")
 
-                if raw_balance is not None:
+                if final_balance_to_save is not None:
                     database.upsert_snapshots(conn, [{
                         "account_id": cash_acc_id,
-                        "snapshot_date": __import__('pandas').Timestamp.now().date().isoformat(),
-                        "balance_minor": raw_balance,
-                        "balance_eur_minor": raw_balance
+                        "snapshot_date": pd.Timestamp.now().date().isoformat(),
+                        "balance_minor": final_balance_to_save,
+                        "balance_eur_minor": final_balance_to_save
                     }])
-                    msg_parts.append(f"Account balance updated to {raw_balance / 100.0:,.2f}")
+                    msg_parts.append(f"Account balance updated to €{final_balance_to_save / 100.0:,.2f}")
 
                 if raw_holdings:
 

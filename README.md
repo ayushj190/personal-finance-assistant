@@ -41,15 +41,15 @@ Streamlit will launch locally at `http://localhost:8501` with telemetry disabled
 
 ## 🛠️ Features & Pages
 
-- **📊 Dashboard:** Real-time KPI ribbon (Net Worth, Liquid Cash, Invested, Savings Rate, Runway), net worth stacked area chart, category donut, and detected upcoming bills.
-- **🛒 Spending:** Multi-level Sunburst and Donut breakdown (Parent Category → Category → Merchant), top merchants table, and subscription leak detector.
-- **🌊 Cash Flow:** Interactive Sankey diagram tracing inflows to fixed expenses (with mortgage interest/principal split), discretionary spending, and savings.
-- **📈 Investments:** Holdings table, portfolio allocation tracker with 5/25 tolerance drift alerts, and 3 rebalancing calculators (*No-sell injection*, *Monthly water-filling*, *Full rebalance*).
+- **🔒 Global Privacy Mode:** Global sidebar toggle (`🔒 Privacy Mode`) masking all financial numbers with currency symbols and `****` across KPI cards, account grids, data tables, and metrics.
+- **📊 Dashboard:** 4-KPI ribbon (Net Worth, Liquid Cash, Investments, Runway buffer), interactive Accounts & Balances grid with connection status badges and inline balance adjustment popovers, net worth trend chart, 30-day category spending donut, and upcoming recurring bills.
+- **🛒 Spending:** Month-by-month spending trends bar chart, monthly breakdown table, dedicated monthly scope selector (*All Months* or specific month), 4-metric expense overview (Total, Fixed, Discretionary, Uncategorized), hierarchical Sunburst & Donut visualizers, top merchants ranking, and subscription leak detector.
+- **📈 Investments:** Direct holdings table, eToro Copied Traders & CopyPortfolios tracker (with dual USD/EUR metrics, return percentages, and expandable underlying positions breakdown), portfolio allocation tracker with 5/25 tolerance drift alerts, and 3 rebalancing calculators (*No-sell injection*, *Monthly water-filling*, *Full rebalance*).
 - **🏠 Mortgage:** Complete 30-year amortization schedule (Annuity, Linear, Interest-Only), interest vs principal breakdown, and penalty-free extra repayment simulator (*Boetevrij aflossen*).
 - **📝 Transactions:** Editable data table with instant category learning: manual recategorization immediately creates a user rule and re-applies it across past transactions.
-- **📥 Import:** Dropzone supporting ABN AMRO (.TAB), Revolut (CSV), eToro Money (TSV), Trade Republic (CSV), MT940 (.sta/.940), and CAMT.053 XML.
-- **🧠 AI Analyst:** Natural language financial queries with visual charts, query tables, and collapsible SQL inspection.
-- **⚙️ Settings:** Secure credential management for PSD2 Enable Banking, eToro, Trade Republic, mortgage parts, allocation presets, and one-click database backups.
+- **📥 Import:** Dropzone supporting ABN AMRO (.TAB), Revolut (CSV), eToro Money (TSV), Trade Republic (account statements & trade confirmation PDFs / CSV), MT940 (.sta/.940), and CAMT.053 XML.
+- **🧠 AI Analyst & Merchant Intelligence:** Natural language financial queries with visual charts, query tables, and collapsible SQL inspection via local Ollama (`qwen2.5-coder:7b`). Features heuristic categorization for Dutch/international merchants and optional Brave Search API web lookup for unknown merchants.
+- **⚙️ Settings:** Secure credential management for PSD2 Enable Banking, eToro, Trade Republic cash accounts & APY interest rates, mortgage parts, allocation presets, Brave Search API, and one-click database backups.
 
 ---
 
@@ -59,4 +59,5 @@ Run the full automated test suite:
 ```powershell
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
-All 22 unit tests verify database migrations, deduplication hash logic, merchant cleaning rules, statement import parsers, savings & runway math, rebalancing engines, mortgage schedules, and SQL sandbox query denial.
+All 37 unit tests verify database migrations, deduplication hash logic, merchant cleaning rules, statement import parsers (including Trade Republic multi-format statements and closing balances), savings & runway math, rebalancing engines, mortgage schedules, eToro connectors, UI components & privacy masking, and SQL sandbox query denial.
+

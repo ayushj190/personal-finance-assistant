@@ -5,6 +5,7 @@ INSERT OR IGNORE INTO categories (id, name, parent_id, kind) VALUES
   (3, 'Bonus & Benefits', 1, 'income'),
   (4, 'Investment Returns', 1, 'income'),
   (5, 'Other Income', 1, 'income'),
+  (6, 'Interest', 1, 'income'),
 
   (10, 'Housing & Utilities', NULL, 'fixed'),
   (11, 'Mortgage', 10, 'fixed'),

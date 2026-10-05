@@ -121,7 +121,7 @@ def render():
     with st.expander("⚙️ Add / Edit Mortgage Configuration"):
         render_mortgage_editor(conn, existing_lib=liabilities[0])
 
-    lib = liabilities[0]
+    lib = dict(liabilities[0])
     lib_id = lib["id"]
 
     # Ensure schedule is generated

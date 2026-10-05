@@ -24,6 +24,10 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
             conn.executescript(f.read())
         with open(SEED_FILE, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
+        # Migration: ensure apy column exists on accounts
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+        if "apy" not in cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
         row = conn.execute("SELECT version FROM schema_version LIMIT 1;").fetchone()
         if not row:
             conn.execute("INSERT INTO schema_version (version) VALUES (1);")
@@ -32,13 +36,14 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
 
 def upsert_account(conn: sqlite3.Connection, acc: dict[str, Any]) -> int:
     query = """
-    INSERT INTO accounts (provider, institution, external_id, iban, name, currency, asset_class, is_active)
-    VALUES (:provider, :institution, :external_id, :iban, :name, :currency, :asset_class, :is_active)
+    INSERT INTO accounts (provider, institution, external_id, iban, name, currency, asset_class, apy, is_active)
+    VALUES (:provider, :institution, :external_id, :iban, :name, :currency, :asset_class, :apy, :is_active)
     ON CONFLICT(provider, external_id) DO UPDATE SET
         name = excluded.name,
         iban = COALESCE(excluded.iban, accounts.iban),
         currency = excluded.currency,
         asset_class = excluded.asset_class,
+        apy = COALESCE(excluded.apy, accounts.apy),
         is_active = excluded.is_active;
     """
     params = {
@@ -49,6 +54,7 @@ def upsert_account(conn: sqlite3.Connection, acc: dict[str, Any]) -> int:
         "name": acc["name"],
         "currency": acc.get("currency", "EUR"),
         "asset_class": acc.get("asset_class", "cash"),
+        "apy": acc.get("apy"),
         "is_active": acc.get("is_active", 1),
     }
     with conn:

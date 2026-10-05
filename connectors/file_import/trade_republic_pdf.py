@@ -32,8 +32,8 @@ def parse_trade_republic_pdf(
 
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    # 1. Check for Wertpapierabrechnung (Single trade confirmation)
-    if "WERTPAPIERABRECHNUNG" in text.upper() or "ABRECHNUNG" in text.upper():
+    is_statement = any(k in text.upper() for k in ("KONTOAUSZUG", "REKENINGAFSCHRIFT", "EINDSALDO", "BEGINSALDO", "ACCOUNT STATEMENT"))
+    if not is_statement and ("WERTPAPIERABRECHNUNG" in text.upper() or "ABRECHNUNG" in text.upper()):
         isin_match = re.search(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b", text)
         date_match = re.search(r"(\d{2}\.\d{2}\.\d{4})", text)
         qty_match = re.search(r"(\d+(?:[,\.]\d+)?)\s*(?:Stk|Stück|St\b)", text, re.IGNORECASE)
@@ -94,7 +94,7 @@ def parse_trade_republic_pdf(
     # 2. Check for Kontoauszug (Account statement table)
     # Line pattern: DD.MM.YYYY Description [+-]Amount [EUR|€]
     # And handle Dutch dates: DD MMM YYYY (e.g. 01 sep 2026)
-    date_regex = re.compile(r"^(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{2}\s+[a-z]{3}\s+\d{4})", re.IGNORECASE)
+    date_regex = re.compile(r"^(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{2}\s+[a-z]{3}\.?\s+\d{4})", re.IGNORECASE)
     nl_months = {"jan": "01", "feb": "02", "maa": "03", "apr": "04", "mei": "05", "jun": "06", 
                  "jul": "07", "aug": "08", "sep": "09", "okt": "10", "nov": "11", "dec": "12"}
 
@@ -104,20 +104,21 @@ def parse_trade_republic_pdf(
         if not d_match:
             continue
 
-        date_str = d_match.group(1)
+        date_str = d_match.group(1).replace(".", "")
         try:
-            if "." in date_str:
-                booking_date = datetime.strptime(date_str, "%d.%m.%Y").date()
-            elif "-" in date_str:
-                booking_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            if "." in d_match.group(1):
+                booking_date = datetime.strptime(d_match.group(1), "%d.%m.%Y").date()
+            elif "-" in d_match.group(1):
+                booking_date = datetime.strptime(d_match.group(1), "%Y-%m-%d").date()
             else:
-                d, m, y = date_str.lower().split()
+                parts = d_match.group(1).lower().replace(".", "").split()
+                d, m, y = parts[0], parts[1], parts[2]
                 m_num = nl_months.get(m, "01")
                 booking_date = datetime.strptime(f"{d}.{m_num}.{y}", "%d.%m.%Y").date()
         except ValueError:
             continue
 
-        rest = line[len(date_str) :].strip()
+        rest = line[len(d_match.group(1)) :].strip()
         # Find all amounts at the end or embedded
         amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", rest)
         if not amounts:
@@ -184,10 +185,38 @@ def parse_trade_republic_pdf(
                 pass
 
     final_balance_minor = None
-    for line in lines:
-        if line.startswith("Deutsche Bank") or line.startswith("Betaalrekening") or "ESCROW-REKENINGEN SALDO" in line or "EINDSALDO" in line:
-            amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", line)
-            if amounts:
-                final_balance_minor = to_minor(amounts[-1].replace(" ", ""))
+
+    # Priority 1: Check for EINDSALDO / ENDSALDO / CLOSING BALANCE / SALDO EINDE across text
+    eindsaldo_match = re.search(
+        r"(?:EINDSALDO|ENDSALDO|CLOSING\s+BALANCE|SALDO\s+EINDE)[\s\S]{0,150}?(?:€|EUR)?\s*([+-]?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2})(?!\s*[\.\-\/]\d)(?!\d)",
+        text,
+        re.IGNORECASE,
+    )
+    if eindsaldo_match:
+        try:
+            final_balance_minor = to_minor(eindsaldo_match.group(1).replace(" ", ""))
+        except Exception:
+            pass
+
+    # Priority 2: Line-by-line fallback
+    if final_balance_minor is None:
+        for idx, line in enumerate(lines):
+            line_u = line.upper()
+            if any(k in line_u for k in ("DEUTSCHE BANK", "BETAALREKENING", "ESCROW-REKENINGEN SALDO", "EINDSALDO", "ENDSALDO")):
+                amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", line)
+                if amounts:
+                    try:
+                        final_balance_minor = to_minor(amounts[-1].replace(" ", ""))
+                        break
+                    except Exception:
+                        pass
+                if idx + 1 < len(lines):
+                    next_amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", lines[idx + 1])
+                    if next_amounts:
+                        try:
+                            final_balance_minor = to_minor(next_amounts[-1].replace(" ", ""))
+                            break
+                        except Exception:
+                            pass
 
     return txs, holdings, final_balance_minor

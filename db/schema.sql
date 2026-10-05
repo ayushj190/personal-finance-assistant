@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   name            TEXT NOT NULL,                 -- 'ABN Checking','ABN Savings'...
   currency        TEXT NOT NULL DEFAULT 'EUR',
   asset_class     TEXT NOT NULL CHECK (asset_class IN ('cash','investment','liability')),
+  apy             REAL,                          -- annual percentage yield for savings accounts
   is_active       INTEGER NOT NULL DEFAULT 1,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (provider, external_id)
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   category_id         INTEGER REFERENCES categories(id),
   category_source     TEXT CHECK (category_source IN ('mcc','rule','llm','user')),
   is_internal_transfer INTEGER NOT NULL DEFAULT 0,
-  source              TEXT NOT NULL CHECK (source IN ('api','csv','mt940','camt053')),
+  source              TEXT NOT NULL CHECK (source IN ('api','csv','mt940','camt053','pdf')),
   imported_at         TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (account_id, dedup_hash)
 );
@@ -195,16 +196,18 @@ GROUP BY s.snapshot_date, a.asset_class;
 CREATE VIEW IF NOT EXISTS v_holdings AS
 SELECT h.id, a.institution, a.name AS account, h.ticker, h.isin, h.name,
        h.asset_type, h.region, h.sector, h.quantity,
-       h.cost_basis_minor / 100.0 AS cost_basis,
+       ((COALESCE(h.cost_basis_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS cost_basis,
+       h.cost_basis_minor / 100.0 AS cost_basis_native,
        h.currency,
        COALESCE(mq.close, 0) AS latest_close,
        COALESCE(mq.prev_close, mq.close, 0) AS prev_close,
-       (h.quantity * COALESCE(mq.close, 0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS value_eur,
-       ((h.quantity * COALESCE(mq.close, 0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) - (COALESCE(h.cost_basis_minor, 0) / 100.0)) AS unrealized_pnl_eur
+       (h.quantity * COALESCE(mq.close, 0) * (CASE WHEN COALESCE(mq.currency, h.currency) = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS value_eur,
+       ((h.quantity * COALESCE(mq.close, 0) * (CASE WHEN COALESCE(mq.currency, h.currency) = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END))
+        - ((COALESCE(h.cost_basis_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END))) AS unrealized_pnl_eur
 FROM holdings h
 JOIN accounts a ON a.id = h.account_id
 LEFT JOIN (
-  SELECT ticker, close, prev_close
+  SELECT ticker, close, prev_close, currency
   FROM market_quotes
   WHERE (ticker, quote_date) IN (SELECT ticker, MAX(quote_date) FROM market_quotes GROUP BY ticker)
 ) mq ON mq.ticker = h.ticker

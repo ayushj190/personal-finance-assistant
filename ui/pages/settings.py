@@ -235,111 +235,74 @@ def render():
 
         st.divider()
 
-        # Trade Republic Section
-        section_header("Trade Republic Integration", "Securities portfolio and cash sync")
-        st.markdown(
-            "Trade Republic statements can be uploaded directly below (**PDF Kontoauszug / Depotauszug or CSV**). "
-            "You can also upload via the **Import** tab or connect pytr:"
-        )
+        st.divider()
 
-        with st.expander("📤 Upload Trade Republic Statement (PDF / CSV)", expanded=True):
-            tr_file = st.file_uploader(
-                "Upload Trade Republic Account Statement (PDF, CSV)",
-                type=["pdf", "csv", "tsv"],
-                key="tr_settings_file_uploader",
-            )
-            if tr_file:
-                raw_bytes = tr_file.read()
-                from connectors.file_import.detect import FileFormat, detect_format, parse_statement, parse_statement_holdings, parse_statement_balance
-                from connectors.market_data_service import update_quotes
-                from services.sync_service import process_and_save_transactions
+        # Savings Accounts & APY Configuration
+        section_header("Savings Accounts & Balances", "Adjust savings account balances (Trade Republic, bank savings) and set APY interest rates")
+        cash_accounts = conn.execute(
+            "SELECT id, institution, name, currency, apy FROM accounts WHERE asset_class = 'cash' AND is_active = 1 ORDER BY institution, name"
+        ).fetchall()
 
+        if cash_accounts:
+            with st.form("savings_apy_form"):
+                st.caption("Update current money/savings value or set the Annual Percentage Yield (APY) for your high-yield cash accounts (e.g., Trade Republic).")
+                apy_inputs = {}
+                balance_inputs = {}
+                for acc in cash_accounts:
+                    snap_row = conn.execute(
+                        "SELECT balance_eur_minor FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
+                        (acc["id"],),
+                    ).fetchone()
+                    if snap_row:
+                        cur_bal = snap_row["balance_eur_minor"] / 100.0
+                    else:
+                        tx_sum = conn.execute(
+                            "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
+                            (acc["id"],),
+                        ).fetchone()
+                        cur_bal = (tx_sum["total"] or 0) / 100.0
 
-                tr_cash = conn.execute("SELECT id FROM accounts WHERE institution = 'Trade Republic' AND asset_class = 'cash' LIMIT 1").fetchone()
-                tr_inv = conn.execute("SELECT id FROM accounts WHERE institution = 'Trade Republic' AND asset_class = 'investment' LIMIT 1").fetchone()
-                tr_cash_id = tr_cash["id"] if tr_cash else 7
-                tr_inv_id = tr_inv["id"] if tr_inv else 8
-
-                fmt, txs = parse_statement(raw_bytes, default_account_id=str(tr_cash_id))
-                holdings = parse_statement_holdings(raw_bytes, default_account_id=str(tr_inv_id))
-                raw_balance = parse_statement_balance(raw_bytes)
-
-                st.markdown(f"**Detected Format:** `{fmt.value}`")
-                if txs:
-                    st.caption(f"Found {len(txs)} transactions:")
-                    preview_data = [
-                        {
-                            "Date": tx.booking_date.isoformat(),
-                            "Amount": f"{tx.currency} {tx.amount_minor / 100.0:,.2f}",
-                            "Description": tx.description,
-                        }
-                        for tx in txs[:5]
-                    ]
-                    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
-
-                if holdings:
-                    st.caption(f"Found {len(holdings)} investment holdings:")
-                    h_preview = [
-                        {
-                            "Ticker / ISIN": h.ticker,
-                            "Units": h.quantity,
-                            "Cost Basis": f"{h.currency} {h.cost_basis_minor / 100.0:,.2f}",
-                        }
-                        for h in holdings[:5]
-                    ]
-                    st.dataframe(pd.DataFrame(h_preview), use_container_width=True, hide_index=True)
-
-                if st.button("Import Trade Republic Statement Now", type="primary", key="tr_settings_import_btn"):
-                    msg_parts = []
-                    if txs:
-                        ins, skp = process_and_save_transactions(
-                            conn, account_id=tr_cash_id, raw_txs=txs, source="csv", enable_llm_categorization=False
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    with col1:
+                        st.markdown(f"**{acc['institution']}**\n\n{acc['name']} ({acc['currency']})")
+                    with col2:
+                        balance_inputs[acc["id"]] = st.number_input(
+                            "Balance (€)",
+                            value=float(cur_bal),
+                            min_value=0.0,
+                            step=50.0,
+                            format="%.2f",
+                            key=f"bal_{acc['id']}",
                         )
-                        msg_parts.append(f"{ins} transactions inserted ({skp} skipped)")
-
-                    if raw_balance is not None:
-                        database.upsert_snapshots(conn, [{
-                            "account_id": tr_cash_id,
-                            "snapshot_date": __import__('pandas').Timestamp.now().date().isoformat(),
-                            "balance_minor": raw_balance,
-                            "balance_eur_minor": raw_balance
-                        }])
-                        msg_parts.append(f"Balance updated to {raw_balance / 100.0:,.2f}")
-
-                    if holdings:
-                        prepared_h = [
-                            {
-                                "account_id": tr_inv_id,
-                                "ticker": h.ticker,
-                                "isin": h.isin,
-                                "name": h.name,
-                                "asset_type": h.asset_type,
-                                "region": h.region,
-                                "sector": h.sector,
-                                "quantity": h.quantity,
-                                "cost_basis_minor": h.cost_basis_minor,
-                                "currency": h.currency,
-                                "updated_at": pd.Timestamp.now().isoformat(),
-                            }
-                            for h in holdings
-                        ]
-                        database.upsert_holdings(conn, prepared_h)
-                        msg_parts.append(f"{len(holdings)} holdings saved")
-                        try:
-                            update_quotes([h.ticker for h in holdings if h.ticker], db_conn=conn)
-                        except Exception:
-                            pass
-
-                    st.success(f"Trade Republic import complete! {', '.join(msg_parts)}.")
+                    with col3:
+                        current_apy = float(acc["apy"] or 0.0)
+                        apy_inputs[acc["id"]] = st.number_input(
+                            "APY %",
+                            value=current_apy,
+                            min_value=0.0,
+                            max_value=25.0,
+                            step=0.1,
+                            format="%.2f",
+                            key=f"apy_{acc['id']}",
+                        )
+                if st.form_submit_button("Save Balances & APY Rates", type="primary"):
+                    today_str = date.today().isoformat()
+                    with conn:
+                        for acc_id, val in apy_inputs.items():
+                            rate = val if val > 0 else None
+                            conn.execute("UPDATE accounts SET apy = ? WHERE id = ?", (rate, acc_id))
+                        snapshots_to_upsert = []
+                        for acc_id, bal in balance_inputs.items():
+                            b_minor = int(round(bal * 100))
+                            snapshots_to_upsert.append({
+                                "account_id": acc_id,
+                                "snapshot_date": today_str,
+                                "balance_minor": b_minor,
+                                "balance_eur_minor": b_minor,
+                            })
+                        database.upsert_snapshots(conn, snapshots_to_upsert)
+                    st.success("Savings balances and APY rates updated!")
                     st.rerun()
-
-        with st.expander("Trade Republic Login (pytr) - Optional"):
-            tr_phone = st.text_input("Phone Number (+31...)", value=secrets_vault.get("tr_phone") or "")
-            tr_pin = st.text_input("PIN (4 digits)", value=secrets_vault.get("tr_pin") or "", type="password")
-            if st.button("Save Trade Republic Login"):
-                secrets_vault.put("tr_phone", tr_phone.strip())
-                secrets_vault.put("tr_pin", tr_pin.strip())
-                st.success("Trade Republic settings saved!")
 
     # 2. Mortgage Tab
     with tab_mortgage:
@@ -460,13 +423,16 @@ def render():
         section_header("Local AI Analyst (Ollama)", "Zero cloud telemetry, runs completely local")
         ollama_url = st.text_input("Ollama Endpoint URL", value=secrets_vault.get("ollama_endpoint") or DEFAULT_OLLAMA_URL)
         ollama_model = st.text_input("Ollama Model Name", value=secrets_vault.get("ollama_model") or DEFAULT_MODEL)
+        brave_api_key = st.text_input("Brave Search API Key (Optional)", value=secrets_vault.get("brave_api_key") or "", type="password", help="Enables live web search lookup for unknown merchants to improve categorization.")
 
         c_save, c_test = st.columns(2)
         with c_save:
-            if st.button("Save LLM Settings"):
+            if st.button("Save AI & Search Settings"):
                 secrets_vault.put("ollama_endpoint", ollama_url.strip())
                 secrets_vault.put("ollama_model", ollama_model.strip())
-                st.success("LLM endpoint settings saved!")
+                if brave_api_key:
+                    secrets_vault.put("brave_api_key", brave_api_key.strip())
+                st.success("AI & search settings saved!")
 
         with c_test:
             if st.button("Test Ollama Connection"):

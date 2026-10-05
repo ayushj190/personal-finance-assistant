@@ -8,7 +8,8 @@ from db import database
 
 
 def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None) -> None:
-    all_tickers = list(set(tickers + ["EURUSD=X"]))
+    valid_tickers = [t for t in tickers if t and not t.startswith("COPY:") and not t.startswith("ID_")]
+    all_tickers = list(set(valid_tickers + ["EURUSD=X"]))
     if not all_tickers:
         return
 

@@ -102,6 +102,21 @@ KONTOAUSZUG
         self.assertEqual(txs[1].amount_minor, 1230)
         self.assertEqual(txs[2].amount_minor, 100000)
 
+    def test_trade_republic_eindsaldo_balance(self):
+        from connectors.file_import.trade_republic_pdf import parse_trade_republic_pdf
+        pdf_text = """TRADE REPUBLIC BANK GMBH
+REKENINGAFSCHRIFT
+BEGINSALDO
+€ 1.000,00
+01.03.2026 Zinsen 52,33 EUR
+EINDSALDO
+€ 18.052,33
+"""
+        txs, holdings, balance = parse_trade_republic_pdf(pdf_text)
+        self.assertEqual(balance, 1805233)
+        self.assertEqual(len(txs), 1)
+        self.assertEqual(txs[0].amount_minor, 5233)
+
 
 if __name__ == "__main__":
     unittest.main()
