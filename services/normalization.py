@@ -34,9 +34,10 @@ NOISE_PATTERNS = [
 ]
 
 TRANSFER_KEYWORDS = re.compile(
-    r"\b(top-?up|revolut|trade\s*republic|etoro|overboeking\s*naar\s*spaarrekening|"
-    r"naar\s*betaalrekening|eigen\s*rekening|internal\s*transfer|trading\s*platform\s*wdl|"
-    r"trading\s*platform\s*dep)\b",
+    r"\b(top-?up|revolut|trade\s*republic|trading\s*republic|trbk|etoro|spaarrekening|"
+    r"savings\s*account|overboeking\s*naar\s*spaarrekening|naar\s*betaalrekening|"
+    r"eigen\s*rekening|internal\s*transfer|trading\s*platform\s*wdl|"
+    r"trading\s*platform\s*dep|brokerage|ayush\s*kumar\s*joshi|ayush\s*joshi)\b",
     re.IGNORECASE,
 )
 
@@ -45,6 +46,16 @@ def clean_merchant(raw: str) -> str:
     if not raw:
         return ""
     text = raw.strip()
+
+    # Extract name from SEPA formatted strings if present
+    sepa_naam = re.search(
+        r"Naam:\s*([^,;\n]+?)(?:\s+(?:Machtiging|Omschrijving|IBAN|BIC|Kenmerk|$))",
+        text,
+        re.IGNORECASE,
+    )
+    if sepa_naam:
+        text = sepa_naam.group(1).strip()
+
     text = PROCESSOR_PREFIXES.sub("", text)
     for pat in NOISE_PATTERNS:
         text = pat.sub(" ", text)

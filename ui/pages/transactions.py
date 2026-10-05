@@ -55,14 +55,24 @@ def render():
 
     st.markdown(f"**Showing {len(df)} transactions** (editing category updates rules for merchant)")
 
-    # Data Editor
+    # Data Editor with Privacy Mode support
+    from ui.components import format_money, is_hidden
+
+    if is_hidden():
+        df_display = df.copy()
+        df_display["amount_eur"] = df_display["amount_eur"].map(lambda x: format_money(x))
+        amount_col_cfg = st.column_config.TextColumn("Amount (€)", disabled=True)
+    else:
+        df_display = df
+        amount_col_cfg = st.column_config.NumberColumn("Amount (€)", format="€%.2f", disabled=True)
+
     edited_df = st.data_editor(
-        df,
+        df_display,
         column_config={
             "id": None,
             "booking_date": st.column_config.DateColumn("Date"),
             "account": st.column_config.TextColumn("Account", disabled=True),
-            "amount_eur": st.column_config.NumberColumn("Amount (€)", format="€%.2f", disabled=True),
+            "amount_eur": amount_col_cfg,
             "merchant": st.column_config.TextColumn("Merchant", disabled=True),
             "category": st.column_config.SelectboxColumn("Category", options=cat_names, required=True),
             "is_internal_transfer": st.column_config.CheckboxColumn("Transfer?"),

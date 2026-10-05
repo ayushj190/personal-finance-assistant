@@ -8,15 +8,14 @@ from config import DB_PATH
 from db import database
 
 
-def render_sidebar_filters() -> dict[str, Any]:
-    st.sidebar.header("🪙 PFA Finance")
-    st.sidebar.subheader("Filters")
+def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
+    st.sidebar.subheader(f"🔍 {title}")
 
     # Date range preset
     date_preset = st.sidebar.selectbox(
         "Date Range",
-        options=["MTD", "Last Month", "Last 3 Months", "YTD", "Last 12 Months", "All Time"],
-        index=2,
+        options=["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"],
+        index=0,
     )
 
     today = date.today()
@@ -40,42 +39,22 @@ def render_sidebar_filters() -> dict[str, Any]:
         start_date = None
 
     conn = database.connect(DB_PATH)
-    accounts = conn.execute("SELECT id, name, institution, asset_class, currency FROM accounts ORDER BY institution, name").fetchall()
-    
-    # Calculate balances for each account and filter
-    valid_accounts = []
-    for a in accounts:
-        # Get latest balance from snapshots or transactions
-        row = conn.execute(
-            "SELECT balance_eur_minor FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
-            (a["id"],),
-        ).fetchone()
-        
-        if row:
-            bal_eur = row["balance_eur_minor"] / 100.0
-        else:
-            tx_sum = conn.execute(
-                "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
-                (a["id"],),
-            ).fetchone()
-            bal_eur = (tx_sum["total"] or 0) / 100.0
-
-        # Keep if balance is non-zero, or if it's an eToro account
-        if bal_eur != 0 or "etoro" in a["institution"].lower():
-            # Create a dict that can be modified, since fetchall() returns row objects
-            a_dict = dict(a)
-            a_dict["balance"] = bal_eur
-            valid_accounts.append(a_dict)
-
+    accounts = [dict(r) for r in conn.execute(
+        "SELECT id, name, institution, currency FROM accounts WHERE is_active = 1 ORDER BY institution, name"
+    ).fetchall()]
     conn.close()
 
-    acc_options = {a["id"]: f"{a['institution']} - {a['name']} (€{a['balance']:,.2f})" for a in valid_accounts}
-    selected_account_ids = st.sidebar.multiselect(
-        "Accounts",
+    acc_options: dict[int, str] = {0: "All Accounts"}
+    for a in accounts:
+        acc_options[a["id"]] = f"{a['institution']} - {a['name']}"
+
+    selected_account_id = st.sidebar.selectbox(
+        "Account",
         options=list(acc_options.keys()),
         format_func=lambda x: acc_options[x],
-        default=list(acc_options.keys()),
+        index=0,
     )
+    selected_account_ids = None if selected_account_id == 0 else [selected_account_id]
 
     include_transfers = st.sidebar.toggle("Include internal transfers", value=False)
 

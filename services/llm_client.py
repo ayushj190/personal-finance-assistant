@@ -12,11 +12,34 @@ def get_llm_config() -> tuple[str, str]:
     return endpoint.rstrip("/"), model
 
 
+def search_brave(query: str) -> str:
+    """Perform a web search query via Brave Search API if configured."""
+    api_key = secrets_vault.get("brave_api_key")
+    if not api_key:
+        return ""
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+                params={"q": f"{query} company business", "count": 2},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("web", {}).get("results", [])
+                snippets = [r.get("description") or r.get("title", "") for r in results if r.get("description") or r.get("title")]
+                return " ".join(snippets[:2])
+    except Exception:
+        pass
+    return ""
+
+
 def classify_merchants(
     merchants: list[str],
     categories: list[str],
     endpoint: str | None = None,
     model: str | None = None,
+    use_web_search: bool = True,
 ) -> list[tuple[str, str, float]]:
     if not merchants or not categories:
         return []
@@ -25,9 +48,22 @@ def classify_merchants(
     endpoint = endpoint or ep
     model = model or mdl
 
+    # If Brave API key is available and web search is enabled, fetch context for unknown merchants
+    brave_ctx_lines = []
+    if use_web_search and secrets_vault.get("brave_api_key"):
+        for m in merchants:
+            snip = search_brave(m)
+            if snip:
+                brave_ctx_lines.append(f"- {m}: {snip[:200]}")
+
+    web_ctx_str = ""
+    if brave_ctx_lines:
+        web_ctx_str = "\nWeb Search Context for merchants:\n" + "\n".join(brave_ctx_lines) + "\n"
+
     prompt = (
         "Classify the following merchant/transaction names into one of the allowed categories.\n"
         f"Allowed categories: {json.dumps(categories)}\n"
+        f"{web_ctx_str}"
         f"Merchants: {json.dumps(merchants)}\n"
         "Return a JSON object with a list of classifications containing: merchant, category, confidence (0.0 to 1.0)."
     )

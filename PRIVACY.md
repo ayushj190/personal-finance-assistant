@@ -19,6 +19,7 @@ When you connect your bank account via Open Banking (Enable Banking AISP), the a
 
 ## 4. Third-Party Services
 - **Enable Banking Oy:** Used as an authorized Account Information Service Provider (AISP) to securely connect to European PSD2 banking APIs under your explicit consent. Your consent can be revoked at any time.
+- **Brave Search API (Optional):** If configured in settings, public merchant names are queried against Brave Search to improve automated transaction categorization. No amounts, IBANs, or transaction balances are ever sent.
 
 ## 5. User Rights (GDPR)
 Under EU GDPR:

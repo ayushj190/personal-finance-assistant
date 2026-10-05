@@ -72,6 +72,44 @@ class TestDatabase(unittest.TestCase):
         reinserted = upsert_transactions(self.conn, txs)
         self.assertEqual(reinserted, 0)
 
+    def test_v_holdings_currency_conversion(self):
+        # Setup account, holding in USD and FX rate
+        acc_id = upsert_account(
+            self.conn,
+            {
+                "provider": "etoro",
+                "institution": "eToro",
+                "name": "eToro USD",
+                "currency": "USD",
+                "asset_class": "investment",
+                "external_id": "etoro_test",
+            },
+        )
+        # Cost basis: $1,000 USD (100,000 minor)
+        self.conn.execute(
+            """
+            INSERT INTO holdings (account_id, ticker, name, asset_type, quantity, cost_basis_minor, currency, updated_at)
+            VALUES (?, 'TEST', 'Test Asset', 'stock', 10.0, 100000, 'USD', '2026-10-05')
+            """,
+            (acc_id,),
+        )
+        # FX: 1 EUR = 1.25 USD -> 1 USD = 0.80 EUR. Quote: $120/share -> value = $1,200 USD -> €960 EUR
+        self.conn.execute(
+            "INSERT INTO market_quotes (ticker, quote_date, close, currency) VALUES ('EURUSD=X', '2026-10-05', 1.25, 'EUR')"
+        )
+        self.conn.execute(
+            "INSERT INTO market_quotes (ticker, quote_date, close, currency) VALUES ('TEST', '2026-10-05', 120.0, 'USD')"
+        )
+
+        row = self.conn.execute("SELECT * FROM v_holdings WHERE ticker = 'TEST'").fetchone()
+        self.assertIsNotNone(row)
+        # Cost: $1,000 / 1.25 = €800
+        self.assertAlmostEqual(row["cost_basis"], 800.0, places=2)
+        # Value: 10 * 120 / 1.25 = €960
+        self.assertAlmostEqual(row["value_eur"], 960.0, places=2)
+        # Unrealized PnL: €960 - €800 = +€160 (NOT €960 - $1,000 = -€40!)
+        self.assertAlmostEqual(row["unrealized_pnl_eur"], 160.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -313,3 +313,27 @@ def build_mortgage_interest_principal_bar(schedule_df: pd.DataFrame) -> go.Figur
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     return fig
+
+
+def build_monthly_spending_bar(monthly_df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    if monthly_df.empty:
+        return fig
+
+    df_sorted = monthly_df.sort_values(by="month", ascending=True)
+    months = df_sorted["month"].tolist()
+
+    fig.add_trace(go.Bar(x=months, y=df_sorted["fixed_spent"].tolist(), name="Fixed", marker_color=SKY))
+    fig.add_trace(go.Bar(x=months, y=df_sorted["disc_spent"].tolist(), name="Discretionary", marker_color=AMBER))
+    if "uncat_spent" in df_sorted.columns and df_sorted["uncat_spent"].sum() > 0:
+        fig.add_trace(go.Bar(x=months, y=df_sorted["uncat_spent"].tolist(), name="Uncategorized", marker_color=SLATE))
+
+    fig.update_layout(
+        barmode="stack",
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        yaxis=dict(title="Expenses (€)"),
+        xaxis=dict(title="Month"),
+    )
+    return fig

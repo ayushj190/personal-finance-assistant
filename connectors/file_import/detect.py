@@ -36,7 +36,13 @@ def detect_format(content: str | bytes) -> FileFormat:
             try:
                 pdf_text = extract_text_from_pdf(content)
                 snip_pdf = pdf_text[:4000].lower()
-                if "trade republic" in snip_pdf or "kontoauszug" in snip_pdf or "account statement" in snip_pdf:
+                if (
+                    "trade republic" in snip_pdf
+                    or "kontoauszug" in snip_pdf
+                    or "account statement" in snip_pdf
+                    or "rekeningafschrift" in snip_pdf
+                    or "eindsaldo" in snip_pdf
+                ):
                     return FileFormat.TRADE_REPUBLIC_PDF
             except Exception:
                 pass

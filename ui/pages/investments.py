@@ -6,7 +6,8 @@ from config import DB_PATH
 from db import database
 from services.portfolio import allocate_contribution, calculate_drift, full_rebalance, rebalance_without_selling
 from ui.charts import build_drift_bar_chart
-from ui.components import kpi_card, section_header
+from ui.components import format_money, is_hidden, kpi_card, section_header
+
 
 
 def render():
@@ -35,10 +36,98 @@ def render():
     with c3:
         kpi_card("Unrealized P&L", f"{'+' if total_pnl >= 0 else ''}€{total_pnl:,.2f}", delta_str=f"{pnl_pct:+.1f}%", is_positive=total_pnl >= 0)
 
-    section_header("Holdings", "Securities, ETFs, and assets across accounts")
-    display_df = holdings_df[["ticker", "name", "institution", "asset_type", "quantity", "cost_basis", "latest_close", "value_eur", "unrealized_pnl_eur"]].copy()
-    display_df.columns = ["Ticker", "Name", "Institution", "Asset Type", "Qty", "Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Split into direct holdings and copy portfolios
+    copy_mask = holdings_df["ticker"].str.startswith("COPY:", na=False)
+    copy_df = holdings_df[copy_mask].copy()
+    direct_df = holdings_df[~copy_mask].copy()
+
+    # FX rate for USD display
+    fx_row = conn.execute("SELECT close FROM market_quotes WHERE ticker = 'EURUSD=X' ORDER BY quote_date DESC LIMIT 1").fetchone()
+    usd_to_eur = (1.0 / float(fx_row["close"])) if fx_row and fx_row["close"] else 0.892
+
+    # 1. Copy Portfolios Section
+    if not copy_df.empty:
+        section_header("eToro Copied Traders", "CopyPortfolios and automated trader mirroring")
+        
+        # Try loading mirror positions cache
+        from pathlib import Path
+        import json
+        cache_path = Path(__file__).resolve().parent.parent.parent / "data" / "etoro_mirrors_cache.json"
+        mirrors_map = {}
+        if cache_path.exists():
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    mirrors_data = json.load(f)
+                    mirrors_map = {m["ticker"]: m for m in mirrors_data}
+            except Exception:
+                pass
+
+        for _, row in copy_df.iterrows():
+            ticker = row["ticker"]
+            username = ticker.replace("COPY:", "")
+            mirror_info = mirrors_map.get(ticker, {})
+
+            invested_usd = mirror_info.get("invested_usd", float(row["cost_basis"]))
+            val_usd = mirror_info.get("value_usd", float(row["value_eur"]) / usd_to_eur)
+            pnl_usd = mirror_info.get("unrealized_pnl_usd", val_usd - invested_usd)
+            ret_pct = (pnl_usd / invested_usd * 100.0) if invested_usd > 0 else 0.0
+
+            invested_eur = invested_usd * usd_to_eur
+            val_eur = val_usd * usd_to_eur
+            pnl_eur = pnl_usd * usd_to_eur
+
+            pnl_color = "normal" if pnl_eur >= 0 else "off"
+            pnl_sign = "+" if pnl_eur >= 0 else ""
+
+            with st.container(border=True):
+                col_u1, col_u2, col_u3, col_u4, col_u5 = st.columns([2, 2, 2, 2, 2])
+                with col_u1:
+                    st.markdown(f"### 👤 {username}")
+                    st.caption(f"{mirror_info.get('positions_count', 'N/A')} open positions")
+                with col_u2:
+                    st.metric("Invested", format_money(invested_eur, "€"), format_money(invested_usd, "$"))
+                with col_u3:
+                    st.metric("Current Value", format_money(val_eur, "€"), format_money(val_usd, "$"))
+                with col_u4:
+                    pnl_eur_str = f"{pnl_sign}{format_money(abs(pnl_eur), '€')}" if not is_hidden() else "€****"
+                    pnl_usd_str = f"{pnl_sign}{format_money(abs(pnl_usd), '$')}" if not is_hidden() else "$****"
+                    st.metric("Unrealized P&L", pnl_eur_str, pnl_usd_str, delta_color=pnl_color)
+                with col_u5:
+                    st.metric("Total Return", f"{pnl_sign}{ret_pct:.2f}%", delta_color=pnl_color)
+
+                # Underlying positions expander
+                underlying = mirror_info.get("positions", [])
+                if underlying:
+                    with st.expander(f"View {username}'s Top Holdings ({len(underlying)} positions)"):
+                        pos_rows = []
+                        for p in underlying:
+                            p_amt = p.get("amount_usd", 0.0)
+                            p_pnl = p.get("pnl_usd", 0.0)
+                            p_ret = (p_pnl / p_amt * 100.0) if p_amt > 0 else 0.0
+                            pos_rows.append({
+                                "Symbol": p.get("symbol") or f"ID_{p.get('instrument_id')}",
+                                "Name": p.get("name") or "-",
+                                "Amount ($)": format_money(p_amt, "$"),
+                                "Amount (€)": format_money(p_amt * usd_to_eur, "€"),
+                                "P&L ($)": (f"{'+' if p_pnl >= 0 else ''}{format_money(abs(pnl_usd), '$')}") if not is_hidden() else "$****",
+                                "Return": f"{'+' if p_ret >= 0 else ''}{p_ret:.1f}%",
+                            })
+                        st.dataframe(pd.DataFrame(pos_rows), use_container_width=True, hide_index=True)
+
+    # 2. Direct Holdings Section
+    section_header("Direct Holdings", "Stocks, ETFs, and assets held directly")
+    if not direct_df.empty:
+        display_df = direct_df[["ticker", "name", "institution", "asset_type", "quantity", "cost_basis", "latest_close", "value_eur", "unrealized_pnl_eur"]].copy()
+        display_df.columns = ["Ticker", "Name", "Institution", "Asset Type", "Qty", "Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]
+        if is_hidden():
+            for c in ["Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]:
+                display_df[c] = "€****"
+        else:
+            for c in ["Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]:
+                display_df[c] = display_df[c].map(lambda x: f"€{x:,.2f}" if pd.notnull(x) else "-")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No direct holdings found.")
 
     # 2. Allocation & Drift Analysis
     section_header("Allocation & Rebalancing", "Track drift from targets and generate buy/sell recommendations")

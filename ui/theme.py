@@ -47,62 +47,97 @@ def inject_custom_css() -> None:
             """
             <style>
         /* Modern Glass UI Elements */
+        /* Modern Glass UI Elements */
         .glass-card, div[data-testid="stMetric"] {
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(148, 163, 184, 0.15);
-            border-radius: 14px;
-            padding: 16px 20px;
-            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25);
-            transition: all 0.2s ease-in-out;
-            margin-bottom: 8px;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+            backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(148, 163, 184, 0.15) !important;
+            border-radius: 14px !important;
+            padding: 16px 20px !important;
+            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25) !important;
+            transition: all 0.2s ease-in-out !important;
+            min-height: 115px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
         }
         .glass-card:hover, div[data-testid="stMetric"]:hover {
-            border-color: rgba(45, 212, 191, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.35);
+            border-color: rgba(45, 212, 191, 0.4) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.35) !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.82rem !important;
+            font-weight: 600 !important;
+            color: #94A3B8 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: 4px !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.75rem !important;
+            font-weight: 700 !important;
+            color: #F8FAFC !important;
+            line-height: 1.2 !important;
         }
 
-        /* Bordered Containers */
+        /* Bordered Containers & Standardized Cards */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: rgba(15, 23, 42, 0.4);
-            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(10px) !important;
             border: 1px solid rgba(148, 163, 184, 0.18) !important;
-            border-radius: 12px;
-            padding: 16px;
-            transition: border-color 0.2s ease;
+            border-radius: 12px !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            transition: border-color 0.2s ease, transform 0.2s ease !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
-            border-color: rgba(45, 212, 191, 0.3) !important;
+            border-color: rgba(45, 212, 191, 0.35) !important;
         }
 
-        /* Buttons Styling */
-        button[kind="primary"] {
+        /* Standardized Buttons & Popover Triggers */
+        button[kind="primary"], button[data-testid="baseButton-primary"] {
             background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
             color: #FFFFFF !important;
             border: none !important;
             font-weight: 600 !important;
             border-radius: 8px !important;
-            box-shadow: 0 2px 10px rgba(20, 184, 166, 0.25);
+            min-height: 38px !important;
+            height: 38px !important;
+            box-shadow: 0 2px 10px rgba(20, 184, 166, 0.25) !important;
             transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
-        button[kind="primary"]:hover {
+        button[kind="primary"]:hover, button[data-testid="baseButton-primary"]:hover {
             background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%) !important;
-            box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4);
-            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4) !important;
+            transform: translateY(-1px) !important;
         }
-        button[kind="secondary"] {
+        button[kind="secondary"], button[data-testid="baseButton-secondary"], div[data-testid="stPopover"] > button {
             background: rgba(30, 41, 59, 0.5) !important;
             border: 1px solid rgba(148, 163, 184, 0.25) !important;
             color: #E2E8F0 !important;
             border-radius: 8px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            font-weight: 500 !important;
             transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
         }
-        button[kind="secondary"]:hover {
+        button[kind="secondary"]:hover, button[data-testid="baseButton-secondary"]:hover, div[data-testid="stPopover"] > button:hover {
             border-color: rgba(45, 212, 191, 0.5) !important;
             color: #2DD4BF !important;
             background: rgba(30, 41, 59, 0.8) !important;
-            transform: translateY(-1px);
+            transform: translateY(-1px) !important;
+        }
+        div[data-testid="stPopover"] {
+            width: 100% !important;
         }
 
         .kpi-title {
@@ -140,14 +175,31 @@ def inject_custom_css() -> None:
             margin-top: 6px;
         }
         .badge-pill {
-            display: inline-block;
-            padding: 3px 10px;
-            font-size: 0.78rem;
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 0.72rem;
             font-weight: 600;
             border-radius: 9999px;
-            background: rgba(45, 212, 191, 0.15);
+            background: rgba(45, 212, 191, 0.12);
             color: #2DD4BF;
-            border: 1px solid rgba(45, 212, 191, 0.3);
+            border: 1px solid rgba(45, 212, 191, 0.28);
+            white-space: nowrap;
+        }
+        .badge-success {
+            background: rgba(52, 211, 153, 0.12);
+            color: #34D399;
+            border-color: rgba(52, 211, 153, 0.28);
+        }
+        .badge-warning {
+            background: rgba(251, 191, 36, 0.12);
+            color: #FBBF24;
+            border-color: rgba(251, 191, 36, 0.28);
+        }
+        .badge-neutral {
+            background: rgba(148, 163, 184, 0.12);
+            color: #94A3B8;
+            border-color: rgba(148, 163, 184, 0.28);
         }
         </style>
         """

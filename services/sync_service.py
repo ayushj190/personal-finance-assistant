@@ -262,7 +262,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                 if max_dt_row and max_dt_row["m"]:
                     since_dt = datetime.strptime(max_dt_row["m"][:10], "%Y-%m-%d").date() - timedelta(days=7)
                 else:
-                    since_dt = date.today() - timedelta(days=90)
+                    since_dt = date(2020, 1, 1)
 
                 txs = etoro.fetch_transactions(since=since_dt)
                 acc_txs = [tx for tx in txs if tx.account_external_id == acc.external_id]
@@ -317,7 +317,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                 )
             results["connectors"]["etoro"] = {"status": "error", "error": str(e)}
 
-    # 3. Trade Republic
+    # 3. Trade Republic (Savings Account)
     tr = TradeRepublicService()
     if tr.is_configured():
         started = datetime.now().isoformat()
@@ -327,7 +327,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                 database.upsert_account(
                     conn,
                     {
-                        "provider": "trade_republic",
+                        "provider": "manual",
                         "institution": acc.institution,
                         "external_id": acc.external_id,
                         "name": acc.name,
@@ -335,35 +335,12 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                         "asset_class": acc.asset_class,
                     },
                 )
-            holdings = tr.fetch_holdings()
-            if holdings:
-                acc_row = database.get_account_by_provider_ext_id(conn, "trade_republic", "tr_portfolio_eur")
-                if acc_row:
-                    acc_id = acc_row["id"]
-                    db_holdings = [
-                        {
-                            "account_id": acc_id,
-                            "ticker": h.ticker,
-                            "isin": h.isin,
-                            "name": h.name,
-                            "asset_type": h.asset_type,
-                            "region": "Europe",
-                            "sector": "Diversified",
-                            "quantity": h.quantity,
-                            "cost_basis_minor": h.cost_basis_minor,
-                            "currency": h.currency,
-                            "updated_at": date.today().isoformat(),
-                        }
-                        for h in holdings
-                    ]
-                    database.upsert_holdings(conn, db_holdings)
-
             with conn:
                 conn.execute(
-                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('trade_republic', ?, datetime('now'), 'ok', 0, ?)",
-                    (started, f"Synced {len(holdings)} holdings"),
+                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('trade_republic', ?, datetime('now'), 'ok', 0, 'Trade Republic savings account verified')",
+                    (started,),
                 )
-            results["connectors"]["trade_republic"] = {"status": "ok", "holdings": len(holdings)}
+            results["connectors"]["trade_republic"] = {"status": "ok", "holdings": 0}
         except NeedsReauth as e:
             with conn:
                 conn.execute(

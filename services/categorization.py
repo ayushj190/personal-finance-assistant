@@ -28,6 +28,76 @@ def load_mcc_map() -> dict[str, str]:
     return _MCC_CACHE
 
 
+def match_heuristic_category(description: str, merchant: str, cat_map: dict[str, int]) -> int | None:
+    text = f"{merchant} {description}".lower()
+
+    # Interest
+    if any(k in text for k in ("rente", "interest payment", "zinsen", "interest cash")):
+        return cat_map.get("Interest")
+    # Salary
+    if any(k in text for k in ("salaris", "salary", "payroll", "loon")):
+        return cat_map.get("Salary")
+    # Supermarkets
+    if any(k in text for k in ("albert heijn", "ah to go", "jumbo", "dekamarkt", "dirk", "lidl", "aldi", "spar", "coop", "ekoplaza", "vomar", "sahan")):
+        return cat_map.get("Supermarket")
+    # Food delivery
+    if any(k in text for k in ("uber eats", "thuisbezorgd", "deliveroo", "yemeksepeti")):
+        return cat_map.get("Food Delivery & Takeaway")
+    # Cafes & Bakeries
+    if any(k in text for k in ("starbucks", "bakkerij", "bagels & beans", "cafe ", "coffee")):
+        return cat_map.get("Cafes & Bakeries")
+    # Pharmacy & Drugstore
+    if any(k in text for k in ("kruidvat", "etos", "apotheek", "drogist")):
+        return cat_map.get("Pharmacy & Drugstore")
+    # Home & Maintenance
+    if any(k in text for k in ("action", "hema", "blokker", "ikea", "praxis", "gamma", "hornbach")):
+        return cat_map.get("Home & Maintenance")
+    # Restaurants
+    if any(k in text for k in ("cirfood", "mcdonald", "burger king", "kfc", "restaurant")):
+        return cat_map.get("Restaurants")
+    # Public Transit & Rideshare
+    if any(k in text for k in ("bit mobility", "ns groep", "gvb", "connexxion", "ov-chipkaart", "tier", "bolt", "uber ")):
+        return cat_map.get("Public Transit")
+    # Mortgage
+    if any(k in text for k in ("hypotheek", "termijnbetaling hy", "mortgage")):
+        return cat_map.get("Mortgage")
+    # Insurance
+    if any(k in text for k in ("zilveren kruis", "vgz", "cz zorg", "menzis", "onvz", "dsw zorg")):
+        return cat_map.get("Health Insurance")
+    if any(k in text for k in ("schadeverzekering", "schadev", "abn amro schade", "liability insurance")):
+        return cat_map.get("Home & Liability Insurance")
+    # Telecom & Utilities
+    if any(k in text for k in ("kpn", "ziggo", "vodafone", "odido")):
+        return cat_map.get("Internet & Telecom")
+    if any(k in text for k in ("eneco", "vattenfall", "essent", "greenchoice", "budget energie")):
+        return cat_map.get("Electricity & Gas")
+    # Municipal taxes & Official
+    if any(k in text for k in ("belastingdienst", "gemeente", "waterschap", "gblt", "bsgr", "duo inburgering", "duo ")):
+        return cat_map.get("Municipal Taxes")
+    # Subscriptions
+    if any(k in text for k in ("netflix", "spotify", "apple.com/bill", "disney", "youtube", "amazon prime", "uber one")):
+        return cat_map.get("Streaming & Media")
+    # Travel & Flights
+    if any(k in text for k in ("pegasus", "klm", "transavia", "ryanair", "easyjet", "airline")):
+        return cat_map.get("Flights")
+    # Shopping & Electronics
+    if any(k in text for k in ("bol.com", "aliexpress", "amazon", "alipay", "media markt", "bsh household")):
+        return cat_map.get("Shopping & Personal")
+    # Personal Care
+    if any(k in text for k in ("headlines", "kapper", "barber")):
+        return cat_map.get("Personal Care")
+    # Hobbies & Entertainment
+    if any(k in text for k in ("squad (the)", "boulder", "cinema", "pathe")):
+        return cat_map.get("Hobbies & Entertainment")
+    # Supermarkets
+    if any(k in text for k in ("albert heijn", "ah to go", "jumbo", "dekamarkt", "dirk", "lidl", "aldi", "spar", "coop", "ekoplaza", "vomar", "sahan", "koog supermarkten")):
+        return cat_map.get("Supermarket")
+    # Restaurants
+    if any(k in text for k in ("cirfood", "mcdonald", "burger king", "kfc", "restaurant", "neni amsterdam", "tatsu", "madras diaries", "korean food", "osteria", "filippo manzini")):
+        return cat_map.get("Restaurants")
+    return None
+
+
 def categorize_transactions(
     conn: sqlite3.Connection,
     txs: list[dict[str, Any]],
@@ -48,11 +118,22 @@ def categorize_transactions(
             continue
 
         merchant = tx.get("merchant_normalized", "").strip()
+        raw_desc = tx.get("description_raw", "")
 
         # Check rules cache (user / llm overrides)
         if merchant and merchant in rules_cache:
             tx["category_id"] = rules_cache[merchant]
             tx["category_source"] = "rule"
+            continue
+
+        # Check heuristics (interest, salary, supermarkets, health insurance)
+        heur_cat_id = match_heuristic_category(raw_desc, merchant, cat_map)
+        if heur_cat_id:
+            tx["category_id"] = heur_cat_id
+            tx["category_source"] = "rule"
+            if merchant:
+                database.upsert_category_rule(conn, merchant, heur_cat_id, source="seed", confidence=0.95)
+                rules_cache[merchant] = heur_cat_id
             continue
 
         # Check MCC map
