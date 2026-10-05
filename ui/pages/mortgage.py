@@ -6,7 +6,7 @@ from config import DB_PATH
 from db import database
 from services.mortgage import calculate_mortgage_schedule, sync_liability_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
-from ui.components import kpi_card, section_header
+from ui.components import format_money, kpi_card, section_header
 
 
 def render_mortgage_editor(conn, existing_lib=None):
@@ -162,12 +162,38 @@ def render():
     fixed_until_str = rate_period["fixed_until"] if rate_period else "N/A"
     annual_rate = (rate_period["annual_rate"] * 100.0) if rate_period else 3.85
 
+    # Fetch actual mortgage payments from bank accounts
+    mortgage_cat_row = conn.execute("SELECT id FROM categories WHERE name = 'Mortgage'").fetchone()
+    mortgage_cat_id = mortgage_cat_row["id"] if mortgage_cat_row else 11
+    lib_pattern = lib.get("payment_match_pattern")
+
+    where_or = ["t.category_id = ?"]
+    p_params = [mortgage_cat_id]
+    if lib_pattern:
+        where_or.append("(t.merchant_normalized LIKE ? OR t.description_raw LIKE ?)")
+        p_params.extend([f"%{lib_pattern}%", f"%{lib_pattern}%"])
+
+    tx_query = f"""
+    SELECT t.id, t.booking_date, a.name AS account,
+           -t.amount_eur_minor / 100.0 AS amount_eur,
+           COALESCE(NULLIF(t.merchant_normalized, ''), t.description_raw) AS merchant,
+           t.description_raw
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    WHERE ({' OR '.join(where_or)})
+      AND t.amount_eur_minor < 0
+    ORDER BY t.booking_date DESC
+    """
+    mortgage_tx_rows = conn.execute(tx_query, p_params).fetchall()
+    total_bank_paid = sum(r["amount_eur"] for r in mortgage_tx_rows)
+
     # Top KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         kpi_card("Current Balance", f"€{latest_balance:,.2f}", subtext=f"Original €{original_principal:,.2f}")
     with c2:
-        kpi_card("Principal Repaid", f"€{principal_paid:,.2f}", delta_str=f"{pct_repaid:.1f}%", is_positive=True)
+        kpi_sub = f"{len(mortgage_tx_rows)} bank debits verified (€{total_bank_paid:,.2f})" if mortgage_tx_rows else f"{pct_repaid:.1f}% repaid"
+        kpi_card("Principal Repaid", f"€{principal_paid:,.2f}", delta_str=f"{pct_repaid:.1f}%", is_positive=True, subtext=kpi_sub)
     with c3:
         kpi_card("Current Rate", f"{annual_rate:.2f}%", subtext=f"Fixed until {fixed_until_str}")
     with c4:
@@ -182,6 +208,68 @@ def render():
     # Monthly breakdown: interest vs principal
     section_header("Monthly Payment Composition", "Principal vs Interest per monthly installment")
     st.plotly_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)), use_container_width=True)
+
+    # Actual Mortgage Payments & Bank Debits
+    section_header(
+        "Actual Mortgage Payments (Bank Transactions)",
+        f"Verified debits matched to {lib['name']} ({lib['lender']})",
+    )
+    if mortgage_tx_rows:
+        matched_records = []
+        for tx in mortgage_tx_rows:
+            tx_month = tx["booking_date"][:7]
+            # Find schedule row matching month
+            sched_match = schedule_df[schedule_df["due_date"].str.startswith(tx_month)]
+            if sched_match.empty:
+                sched_match = schedule_df[schedule_df["due_date"] <= tx["booking_date"]].tail(1)
+
+            if not sched_match.empty:
+                s_row = sched_match.iloc[0]
+                s_pay = s_row["payment_minor"] / 100.0
+                s_p = s_row["principal_minor"] / 100.0
+                s_i = s_row["interest_minor"] / 100.0
+                s_due = s_row["due_date"]
+                diff = abs(tx["amount_eur"] - s_pay)
+                status = "Exact Match" if diff < 1.0 else ("Extra Payment" if tx["amount_eur"] > s_pay else "Partial Payment")
+            else:
+                s_pay = 0.0
+                s_p = 0.0
+                s_i = 0.0
+                s_due = "-"
+                status = "Unmatched Period"
+
+            matched_records.append({
+                "Date": tx["booking_date"],
+                "Account": tx["account"],
+                "Merchant": tx["merchant"],
+                "Paid (€)": format_money(tx["amount_eur"]),
+                "Scheduled Due": s_due,
+                "Scheduled (€)": format_money(s_pay) if s_pay > 0 else "-",
+                "Principal (€)": format_money(s_p) if s_p > 0 else "-",
+                "Interest (€)": format_money(s_i) if s_i > 0 else "-",
+                "Status": status,
+            })
+
+        matched_df = pd.DataFrame(matched_records)
+        st.dataframe(matched_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No bank payment transactions assigned to mortgage yet. You can assign uncategorized bank payments to this mortgage from the Spending tab.")
+
+    # Recorded Extra Repayments (Boetevrij Aflossen)
+    extra_repayments = conn.execute(
+        "SELECT * FROM liability_extra_payments WHERE liability_id = ? ORDER BY paid_date DESC",
+        (lib_id,),
+    ).fetchall()
+    if extra_repayments:
+        st.markdown("##### ⚡ Logged Extra Principal Repayments")
+        extra_recs = []
+        for er in extra_repayments:
+            extra_recs.append({
+                "Date": er["paid_date"],
+                "Amount (€)": format_money(er["amount_minor"] / 100.0),
+                "Benefit Strategy": "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term",
+            })
+        st.dataframe(pd.DataFrame(extra_recs), use_container_width=True, hide_index=True)
 
     # Simulator: Extra Repayments
     section_header("Extra Repayment Simulator (Boetevrij Aflossen)", "See the impact of penalty-free extra principal repayments")
