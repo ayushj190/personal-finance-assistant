@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
+from textwrap import dedent
 
 TEAL = "#2DD4BF"
 VIOLET = "#A78BFA"
@@ -13,63 +14,136 @@ SLATE = "#94A3B8"
 COLOR_PALETTE = [TEAL, VIOLET, AMBER, ROSE, SKY, EMERALD, "#F472B6", "#818CF8", "#A3E635", SLATE]
 
 
+def _patch_plotly_chart() -> None:
+    """Ensure st.plotly_chart defaults to theme=None and transparent background."""
+    if getattr(st, "_pfa_plotly_chart_patched", False):
+        return
+    orig_plotly_chart = st.plotly_chart
+
+    def themed_plotly_chart(figure_or_data, *args, **kwargs):
+        if "theme" not in kwargs:
+            kwargs["theme"] = None
+        if "use_container_width" not in kwargs:
+            kwargs["use_container_width"] = True
+
+        if hasattr(figure_or_data, "layout"):
+            if not figure_or_data.layout.paper_bgcolor:
+                figure_or_data.layout.paper_bgcolor = "rgba(0,0,0,0)"
+            if not figure_or_data.layout.plot_bgcolor:
+                figure_or_data.layout.plot_bgcolor = "rgba(0,0,0,0)"
+            if not figure_or_data.layout.template:
+                figure_or_data.layout.template = "pfa_theme"
+
+        return orig_plotly_chart(figure_or_data, *args, **kwargs)
+
+    st.plotly_chart = themed_plotly_chart
+    st._pfa_plotly_chart_patched = True
+
+
 def register_plotly_theme() -> None:
     current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
     template = go.layout.Template()
     template.layout.paper_bgcolor = "rgba(0,0,0,0)"
     template.layout.plot_bgcolor = "rgba(0,0,0,0)"
+    template.layout.colorway = COLOR_PALETTE
+
     if current_theme == "light":
         template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#0F172A", size=13)
-        template.layout.colorway = COLOR_PALETTE
-        template.layout.xaxis = dict(gridcolor="rgba(148, 163, 184, 0.2)", showgrid=True)
-        template.layout.yaxis = dict(gridcolor="rgba(148, 163, 184, 0.2)", showgrid=True)
+        template.layout.xaxis = dict(
+            gridcolor="rgba(148, 163, 184, 0.25)",
+            zerolinecolor="rgba(148, 163, 184, 0.35)",
+            tickfont=dict(color="#475569", size=11),
+            title=dict(font=dict(color="#0F172A", size=12)),
+            showgrid=True,
+        )
+        template.layout.yaxis = dict(
+            gridcolor="rgba(148, 163, 184, 0.25)",
+            zerolinecolor="rgba(148, 163, 184, 0.35)",
+            tickfont=dict(color="#475569", size=11),
+            title=dict(font=dict(color="#0F172A", size=12)),
+            showgrid=True,
+        )
         template.layout.legend = dict(
             font=dict(color="#334155"),
-            bgcolor="rgba(255, 255, 255, 0.8)",
-            bordercolor="rgba(148, 163, 184, 0.3)",
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(148, 163, 184, 0.35)",
             borderwidth=1,
         )
-        pio.templates["pfa_theme"] = template
     else:
         template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#F8FAFC", size=13)
-        template.layout.colorway = COLOR_PALETTE
         template.layout.xaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.12)",
             zerolinecolor="rgba(148, 163, 184, 0.2)",
+            tickfont=dict(color="#94A3B8", size=11),
+            title=dict(font=dict(color="#F8FAFC", size=12)),
             showgrid=True,
         )
         template.layout.yaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.12)",
             zerolinecolor="rgba(148, 163, 184, 0.2)",
+            tickfont=dict(color="#94A3B8", size=11),
+            title=dict(font=dict(color="#F8FAFC", size=12)),
             showgrid=True,
         )
         template.layout.legend = dict(
             font=dict(color="#CBD5E1"),
-            bgcolor="rgba(15, 23, 42, 0.6)",
+            bgcolor="rgba(15, 23, 42, 0.65)",
             bordercolor="rgba(148, 163, 184, 0.2)",
             borderwidth=1,
         )
-        pio.templates["pfa_theme"] = template
+
+    pio.templates["pfa_theme"] = template
     pio.templates.default = "pfa_theme"
+    _patch_plotly_chart()
 
-
-from textwrap import dedent
 
 def inject_custom_css() -> None:
     current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
     if current_theme == "light":
         css_theme = """
-        .stApp {
+        :root, .stApp {
+            --background-color: #F8FAFC !important;
+            --secondary-background-color: #FFFFFF !important;
+            --text-color: #0F172A !important;
+            --primary-color: #0D9488 !important;
             background-color: #F8FAFC !important;
             color: #0F172A !important;
         }
+
+        /* Sidebar in Light Mode */
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarContent"],
+        div[data-testid="stSidebarUserContent"] {
+            background-color: #FFFFFF !important;
+            border-right: 1px solid #E2E8F0 !important;
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] .stMarkdown p,
+        section[data-testid="stSidebar"] .stMarkdown span,
+        section[data-testid="stSidebar"] .stCaption,
+        section[data-testid="stSidebar"] .stCaption * {
+            color: #64748B !important;
+        }
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3 {
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] hr {
+            border-color: #E2E8F0 !important;
+        }
+
+        /* Metric Cards & Glass Cards */
         .glass-card, div[data-testid="stMetric"] {
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(241, 245, 249, 0.95) 100%) !important;
-            backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+            background: #FFFFFF !important;
+            backdrop-filter: none !important;
+            border: 1px solid #E2E8F0 !important;
             border-radius: 14px !important;
             padding: 16px 20px !important;
-            box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.06) !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 4px 12px 0 rgba(0, 0, 0, 0.03) !important;
             transition: all 0.2s ease-in-out !important;
             min-height: 115px !important;
             display: flex !important;
@@ -78,25 +152,210 @@ def inject_custom_css() -> None:
             box-sizing: border-box !important;
         }
         .glass-card:hover, div[data-testid="stMetric"]:hover {
-            border-color: rgba(13, 148, 136, 0.5) !important;
+            border-color: rgba(13, 148, 136, 0.6) !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 8px 20px 0 rgba(0, 0, 0, 0.1) !important;
+            box-shadow: 0 6px 18px 0 rgba(0, 0, 0, 0.08) !important;
         }
-        div[data-testid="stMetricLabel"] {
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"] * {
+            color: #334155 !important;
+            opacity: 1 !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stMetricLabel"] svg {
+            fill: #64748B !important;
             color: #64748B !important;
+            opacity: 0.9 !important;
         }
-        div[data-testid="stMetricValue"] {
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricValue"] * {
+            color: #0F172A !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+        .kpi-title { color: #334155 !important; opacity: 1 !important; }
+        .kpi-value { color: #0F172A !important; opacity: 1 !important; }
+
+        /* Bordered Containers */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px !important;
+            padding: 16px !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+            backdrop-filter: none !important;
             color: #0F172A !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: rgba(255, 255, 255, 0.85) !important;
-            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+        div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+            border-color: rgba(13, 148, 136, 0.4) !important;
         }
-        .kpi-title { color: #64748B !important; }
-        .kpi-value { color: #0F172A !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div * {
+            color: #0F172A;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
+            color: #64748B !important;
+        }
+
+        /* Tabs in Light Mode */
+        div[data-baseweb="tab-list"],
+        div[data-testid="stTabs"] [role="tablist"] {
+            background-color: transparent !important;
+            border-bottom: 2px solid #E2E8F0 !important;
+            gap: 8px !important;
+        }
+        [role="tab"],
+        [data-baseweb="tab"],
+        [data-testid="stTab"],
+        div[data-testid="stTabs"] button,
+        div[data-testid="stTabs"] div[role="tab"] {
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 6px 6px 0 0 !important;
+            padding: 8px 16px !important;
+            color: #334155 !important;
+            opacity: 1 !important;
+            transition: all 0.15s ease-in-out !important;
+            cursor: pointer !important;
+        }
+        [role="tab"] *,
+        [data-baseweb="tab"] *,
+        [data-testid="stTab"] *,
+        div[data-testid="stTabs"] button *,
+        div[data-testid="stTabs"] div[role="tab"] * {
+            color: #334155 !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+        }
+        [role="tab"]:hover,
+        [role="tab"]:hover *,
+        [data-baseweb="tab"]:hover,
+        [data-baseweb="tab"]:hover *,
+        [data-testid="stTab"]:hover,
+        [data-testid="stTab"]:hover * {
+            color: #0F172A !important;
+            opacity: 1 !important;
+        }
+        [role="tab"][aria-selected="true"],
+        [role="tab"][aria-selected="true"] *,
+        [data-baseweb="tab"][aria-selected="true"],
+        [data-baseweb="tab"][aria-selected="true"] *,
+        [data-testid="stTab"][aria-selected="true"],
+        [data-testid="stTab"][aria-selected="true"] * {
+            color: #0D9488 !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+        div[data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #0D9488 !important;
+            height: 3px !important;
+            border-radius: 2px !important;
+        }
+        div[data-baseweb="tab-border"] {
+            background-color: #E2E8F0 !important;
+        }
+
+        /* Secondary Buttons & Popovers */
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"],
+        div[data-testid="stPopover"] > button {
+            background: #FFFFFF !important;
+            border: 1px solid #CBD5E1 !important;
+            color: #334155 !important;
+            border-radius: 8px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        }
+        button[kind="secondary"]:hover,
+        button[data-testid="baseButton-secondary"]:hover,
+        div[data-testid="stPopover"] > button:hover {
+            border-color: #0D9488 !important;
+            color: #0D9488 !important;
+            background: #F8FAFC !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Inputs, Selects, Expanders */
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"],
+        .stTextInput input,
+        .stNumberInput input,
+        .stDateInput input {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #CBD5E1 !important;
+        }
+        div[data-testid="stExpander"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stExpander"] details summary,
+        div[data-testid="stExpander"] details summary span,
+        div[data-testid="stExpander"] details summary p {
+            color: #0F172A !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stPopoverBody"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            color: #0F172A !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+        }
+        div[data-testid="stChatMessage"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 10px !important;
+            color: #0F172A !important;
+        }
+        div[data-testid="stRadio"] label p,
+        div[data-testid="stCheckbox"] label p {
+            color: #0F172A !important;
+        }
         """
     else:
         css_theme = """
+        :root, .stApp {
+            --background-color: #0B1120 !important;
+            --secondary-background-color: #1E293B !important;
+            --text-color: #F8FAFC !important;
+            --primary-color: #2DD4BF !important;
+            background-color: #0B1120 !important;
+            color: #F8FAFC !important;
+        }
+
+        /* Sidebar in Dark Mode */
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarContent"],
+        div[data-testid="stSidebarUserContent"] {
+            background-color: #0B1120 !important;
+            border-right: 1px solid rgba(148, 163, 184, 0.15) !important;
+            color: #F8FAFC !important;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #F8FAFC;
+        }
+        section[data-testid="stSidebar"] .stMarkdown p,
+        section[data-testid="stSidebar"] .stMarkdown span,
+        section[data-testid="stSidebar"] .stCaption,
+        section[data-testid="stSidebar"] .stCaption * {
+            color: #94A3B8 !important;
+        }
+        section[data-testid="stSidebar"] hr {
+            border-color: rgba(148, 163, 184, 0.15) !important;
+        }
+
+        /* Metric Cards & Glass Cards */
         .glass-card, div[data-testid="stMetric"] {
             background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
             backdrop-filter: blur(12px) !important;
@@ -116,38 +375,18 @@ def inject_custom_css() -> None:
             transform: translateY(-2px) !important;
             box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.35) !important;
         }
-        div[data-testid="stMetricLabel"] {
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"] * {
             color: #94A3B8 !important;
         }
-        div[data-testid="stMetricValue"] {
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricValue"] * {
             color: #F8FAFC !important;
-        }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: rgba(15, 23, 42, 0.45) !important;
-            border: 1px solid rgba(148, 163, 184, 0.18) !important;
         }
         .kpi-title { color: #94A3B8 !important; }
         .kpi-value { color: #F8FAFC !important; }
-        """
 
-    raw_css = """
-        <style>
-        __CSS_THEME__
-
-        div[data-testid="stMetricLabel"] {
-            font-size: 0.82rem !important;
-            font-weight: 600 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.05em !important;
-            margin-bottom: 4px !important;
-        }
-        div[data-testid="stMetricValue"] {
-            font-size: 1.75rem !important;
-            font-weight: 700 !important;
-            line-height: 1.2 !important;
-        }
-
-        /* Bordered Containers & Standardized Cards */
+        /* Bordered Containers */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
             background: rgba(15, 23, 42, 0.45) !important;
             backdrop-filter: blur(10px) !important;
@@ -155,13 +394,237 @@ def inject_custom_css() -> None:
             border-radius: 12px !important;
             padding: 16px !important;
             box-sizing: border-box !important;
+            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25) !important;
             transition: border-color 0.2s ease, transform 0.2s ease !important;
+            color: #F8FAFC !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
             border-color: rgba(45, 212, 191, 0.35) !important;
         }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div * {
+            color: #F8FAFC;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
+            color: #94A3B8 !important;
+        }
 
-        /* Standardized Buttons & Popover Triggers */
+        /* Tabs in Dark Mode */
+        div[data-baseweb="tab-list"],
+        div[data-testid="stTabs"] [role="tablist"] {
+            background-color: transparent !important;
+            border-bottom: 2px solid rgba(148, 163, 184, 0.18) !important;
+            gap: 8px !important;
+        }
+        [role="tab"],
+        [data-baseweb="tab"],
+        [data-testid="stTab"],
+        div[data-testid="stTabs"] button,
+        div[data-testid="stTabs"] div[role="tab"] {
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 6px 6px 0 0 !important;
+            padding: 8px 16px !important;
+            transition: all 0.15s ease-in-out !important;
+            cursor: pointer !important;
+        }
+        [role="tab"] *,
+        [data-baseweb="tab"] *,
+        [data-testid="stTab"] *,
+        div[data-testid="stTabs"] button *,
+        div[data-testid="stTabs"] div[role="tab"] * {
+            color: #94A3B8 !important;
+            font-size: 0.92rem !important;
+            font-weight: 500 !important;
+        }
+        [role="tab"]:hover,
+        [role="tab"]:hover *,
+        [data-baseweb="tab"]:hover,
+        [data-baseweb="tab"]:hover *,
+        [data-testid="stTab"]:hover,
+        [data-testid="stTab"]:hover * {
+            color: #F8FAFC !important;
+        }
+        [role="tab"][aria-selected="true"],
+        [role="tab"][aria-selected="true"] *,
+        [data-baseweb="tab"][aria-selected="true"],
+        [data-baseweb="tab"][aria-selected="true"] *,
+        [data-testid="stTab"][aria-selected="true"],
+        [data-testid="stTab"][aria-selected="true"] * {
+            color: #2DD4BF !important;
+            font-weight: 700 !important;
+        }
+        div[data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #2DD4BF !important;
+            height: 3px !important;
+            border-radius: 2px !important;
+        }
+        div[data-baseweb="tab-border"] {
+            background-color: rgba(148, 163, 184, 0.18) !important;
+        }
+
+        /* Secondary Buttons & Popovers */
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"],
+        div[data-testid="stPopover"] > button {
+            background: rgba(30, 41, 59, 0.5) !important;
+            border: 1px solid rgba(148, 163, 184, 0.25) !important;
+            color: #E2E8F0 !important;
+            border-radius: 8px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+        }
+        button[kind="secondary"]:hover,
+        button[data-testid="baseButton-secondary"]:hover,
+        div[data-testid="stPopover"] > button:hover {
+            border-color: rgba(45, 212, 191, 0.5) !important;
+            color: #2DD4BF !important;
+            background: rgba(30, 41, 59, 0.8) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Inputs, Selects, Expanders */
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"],
+        .stTextInput input,
+        .stNumberInput input,
+        .stDateInput input {
+            background-color: #1E293B !important;
+            color: #F8FAFC !important;
+            border-color: rgba(148, 163, 184, 0.2) !important;
+        }
+        div[data-testid="stExpander"] {
+            background-color: rgba(15, 23, 42, 0.45) !important;
+            border: 1px solid rgba(148, 163, 184, 0.18) !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stExpander"] details summary,
+        div[data-testid="stExpander"] details summary span,
+        div[data-testid="stExpander"] details summary p {
+            color: #F8FAFC !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stPopoverBody"] {
+            background-color: #0F172A !important;
+            border: 1px solid rgba(148, 163, 184, 0.25) !important;
+            color: #F8FAFC !important;
+        }
+        div[data-testid="stChatMessage"] {
+            background-color: rgba(30, 41, 59, 0.5) !important;
+            border: 1px solid rgba(148, 163, 184, 0.15) !important;
+            border-radius: 10px !important;
+            color: #F8FAFC !important;
+        }
+        div[data-testid="stRadio"] label p,
+        div[data-testid="stCheckbox"] label p {
+            color: #F8FAFC !important;
+        }
+        """
+
+    raw_css = """
+        <style>
+        __CSS_THEME__
+
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
+
+        /* --- VSCode-style Double Sidebar Layout --- */
+        div[data-testid="stSidebarContent"] {
+            display: flex !important;
+            flex-direction: row !important;
+            padding: 0 !important;
+        }
+
+        /* Nav Menu (Icons column) */
+        div[data-testid="stSidebarNav"] {
+            width: 68px !important;
+            min-width: 68px !important;
+            height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            border-right: 1px solid rgba(148, 163, 184, 0.25) !important;
+            padding-top: 15px !important;
+            padding-bottom: 20px !important;
+            background-color: transparent !important;
+        }
+
+        div[data-testid="stSidebarNavItems"] {
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        div[data-testid="stSidebarNavSeparator"] {
+            display: none !important;
+        }
+
+        /* Main Sidebar Panel (User Content / Copilot) */
+        div[data-testid="stSidebarUserContent"] {
+            flex: 1 !important;
+            height: 100vh !important;
+            overflow-y: auto !important;
+            padding: 1.5rem 1rem !important;
+            width: 100% !important;
+        }
+
+        /* Center icons and hide text */
+        [data-testid="stSidebarNavLinkContainer"] {
+            width: 100% !important;
+        }
+        [data-testid="stSidebarNavLink"] {
+            display: flex !important;
+            justify-content: center !important;
+            padding: 12px 0 !important;
+            margin: 0 !important;
+        }
+        [data-testid="stSidebarNavLink"] > span[label] {
+            display: none !important;
+        }
+        [data-testid="stSidebarNavLink"] > span:first-child {
+            margin: 0 !important;
+            font-size: 1.4rem !important;
+        }
+
+        /* Push Settings to the bottom */
+        div[data-testid="stSidebarNavItems"] > li:last-child {
+            margin-top: auto !important;
+        }
+
+        /* Fix Header/Collapse Button position */
+        [data-testid="stSidebarHeader"] {
+            position: absolute !important;
+            right: 0;
+            top: 0;
+            padding: 10px !important;
+            z-index: 100;
+        }
+        /* ------------------------------------------ */
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.82rem !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: 4px !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.75rem !important;
+            font-weight: 700 !important;
+            line-height: 1.2 !important;
+        }
+
+        /* Standardized Primary Buttons */
         button[kind="primary"], button[data-testid="baseButton-primary"] {
             background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
             color: #FFFFFF !important;
@@ -181,32 +644,11 @@ def inject_custom_css() -> None:
             box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4) !important;
             transform: translateY(-1px) !important;
         }
-        button[kind="secondary"], button[data-testid="baseButton-secondary"], div[data-testid="stPopover"] > button {
-            background: rgba(30, 41, 59, 0.5) !important;
-            border: 1px solid rgba(148, 163, 184, 0.25) !important;
-            color: #E2E8F0 !important;
-            border-radius: 8px !important;
-            min-height: 38px !important;
-            height: 38px !important;
-            font-weight: 500 !important;
-            transition: all 0.2s ease !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            width: 100% !important;
-        }
-        button[kind="secondary"]:hover, button[data-testid="baseButton-secondary"]:hover, div[data-testid="stPopover"] > button:hover {
-            border-color: rgba(45, 212, 191, 0.5) !important;
-            color: #2DD4BF !important;
-            background: rgba(30, 41, 59, 0.8) !important;
-            transform: translateY(-1px) !important;
-        }
         div[data-testid="stPopover"] {
             width: 100% !important;
         }
 
         .kpi-title {
-            color: #94A3B8;
             font-size: 0.82rem;
             font-weight: 600;
             text-transform: uppercase;
@@ -214,7 +656,6 @@ def inject_custom_css() -> None:
             margin-bottom: 6px;
         }
         .kpi-value {
-            color: #F8FAFC;
             font-size: 1.85rem;
             font-weight: 700;
             letter-spacing: -0.02em;
@@ -273,4 +714,5 @@ def inject_custom_css() -> None:
         dedent(raw_css.replace("__CSS_THEME__", css_theme)).strip(),
         unsafe_allow_html=True,
     )
+
 

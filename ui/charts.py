@@ -2,6 +2,7 @@ from typing import Any
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
 from ui.theme import AMBER, COLOR_PALETTE, EMERALD, ROSE, SKY, SLATE, TEAL, VIOLET
 
@@ -55,13 +56,16 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
             )
         )
 
+    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
+    nw_color = "#0F172A" if current_theme == "light" else "#F8FAFC"
+
     fig.add_trace(
         go.Scatter(
             x=dates,
             y=net_worth,
             mode="lines+markers",
             name="Net Worth",
-            line=dict(width=3, color="#F8FAFC"),
+            line=dict(width=3, color=nw_color),
             marker=dict(size=5),
         )
     )
@@ -192,6 +196,10 @@ def build_cashflow_sankey(
         values.append(amt)
         colors.append("rgba(45, 212, 191, 0.25)")
 
+    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
+    node_color = "#64748B" if current_theme == "light" else "#1E293B"
+    font_color = "#0F172A" if current_theme == "light" else "#F8FAFC"
+
     fig = go.Figure(
         go.Sankey(
             node=dict(
@@ -199,12 +207,15 @@ def build_cashflow_sankey(
                 thickness=18,
                 line=dict(color="rgba(148, 163, 184, 0.2)", width=1),
                 label=labels,
-                color="#1E293B",
+                color=node_color,
             ),
             link=dict(source=sources, target=targets, value=values, color=colors),
         )
     )
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10))
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        font=dict(color=font_color),
+    )
     return fig
 
 
