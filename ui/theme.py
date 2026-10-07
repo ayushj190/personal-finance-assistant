@@ -14,40 +14,89 @@ COLOR_PALETTE = [TEAL, VIOLET, AMBER, ROSE, SKY, EMERALD, "#F472B6", "#818CF8", 
 
 
 def register_plotly_theme() -> None:
+    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
     template = go.layout.Template()
     template.layout.paper_bgcolor = "rgba(0,0,0,0)"
     template.layout.plot_bgcolor = "rgba(0,0,0,0)"
-    template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#F8FAFC", size=13)
-    template.layout.colorway = COLOR_PALETTE
-    template.layout.xaxis = dict(
-        gridcolor="rgba(148, 163, 184, 0.12)",
-        zerolinecolor="rgba(148, 163, 184, 0.2)",
-        showgrid=True,
-    )
-    template.layout.yaxis = dict(
-        gridcolor="rgba(148, 163, 184, 0.12)",
-        zerolinecolor="rgba(148, 163, 184, 0.2)",
-        showgrid=True,
-    )
-    template.layout.legend = dict(
-        font=dict(color="#CBD5E1"),
-        bgcolor="rgba(15, 23, 42, 0.6)",
-        bordercolor="rgba(148, 163, 184, 0.2)",
-        borderwidth=1,
-    )
-    pio.templates["pfa_dark"] = template
-    pio.templates.default = "pfa_dark"
+    if current_theme == "light":
+        template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#0F172A", size=13)
+        template.layout.colorway = COLOR_PALETTE
+        template.layout.xaxis = dict(gridcolor="rgba(148, 163, 184, 0.2)", showgrid=True)
+        template.layout.yaxis = dict(gridcolor="rgba(148, 163, 184, 0.2)", showgrid=True)
+        template.layout.legend = dict(
+            font=dict(color="#334155"),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="rgba(148, 163, 184, 0.3)",
+            borderwidth=1,
+        )
+        pio.templates["pfa_theme"] = template
+    else:
+        template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#F8FAFC", size=13)
+        template.layout.colorway = COLOR_PALETTE
+        template.layout.xaxis = dict(
+            gridcolor="rgba(148, 163, 184, 0.12)",
+            zerolinecolor="rgba(148, 163, 184, 0.2)",
+            showgrid=True,
+        )
+        template.layout.yaxis = dict(
+            gridcolor="rgba(148, 163, 184, 0.12)",
+            zerolinecolor="rgba(148, 163, 184, 0.2)",
+            showgrid=True,
+        )
+        template.layout.legend = dict(
+            font=dict(color="#CBD5E1"),
+            bgcolor="rgba(15, 23, 42, 0.6)",
+            bordercolor="rgba(148, 163, 184, 0.2)",
+            borderwidth=1,
+        )
+        pio.templates["pfa_theme"] = template
+    pio.templates.default = "pfa_theme"
 
 
 from textwrap import dedent
 
 def inject_custom_css() -> None:
-    st.markdown(
-        dedent(
-            """
-            <style>
-        /* Modern Glass UI Elements */
-        /* Modern Glass UI Elements */
+    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
+    if current_theme == "light":
+        css_theme = """
+        .stApp {
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
+        }
+        .glass-card, div[data-testid="stMetric"] {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(241, 245, 249, 0.95) 100%) !important;
+            backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+            border-radius: 14px !important;
+            padding: 16px 20px !important;
+            box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.06) !important;
+            transition: all 0.2s ease-in-out !important;
+            min-height: 115px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+        }
+        .glass-card:hover, div[data-testid="stMetric"]:hover {
+            border-color: rgba(13, 148, 136, 0.5) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 20px 0 rgba(0, 0, 0, 0.1) !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #64748B !important;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #0F172A !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: rgba(255, 255, 255, 0.85) !important;
+            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+        }
+        .kpi-title { color: #64748B !important; }
+        .kpi-value { color: #0F172A !important; }
+        """
+    else:
+        css_theme = """
         .glass-card, div[data-testid="stMetric"] {
             background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
             backdrop-filter: blur(12px) !important;
@@ -68,9 +117,26 @@ def inject_custom_css() -> None:
             box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.35) !important;
         }
         div[data-testid="stMetricLabel"] {
+            color: #94A3B8 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #F8FAFC !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: rgba(15, 23, 42, 0.45) !important;
+            border: 1px solid rgba(148, 163, 184, 0.18) !important;
+        }
+        .kpi-title { color: #94A3B8 !important; }
+        .kpi-value { color: #F8FAFC !important; }
+        """
+
+    raw_css = """
+        <style>
+        __CSS_THEME__
+
+        div[data-testid="stMetricLabel"] {
             font-size: 0.82rem !important;
             font-weight: 600 !important;
-            color: #94A3B8 !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
             margin-bottom: 4px !important;
@@ -78,7 +144,6 @@ def inject_custom_css() -> None:
         div[data-testid="stMetricValue"] {
             font-size: 1.75rem !important;
             font-weight: 700 !important;
-            color: #F8FAFC !important;
             line-height: 1.2 !important;
         }
 
@@ -203,6 +268,9 @@ def inject_custom_css() -> None:
         }
         </style>
         """
-        ).strip(),
+
+    st.markdown(
+        dedent(raw_css.replace("__CSS_THEME__", css_theme)).strip(),
         unsafe_allow_html=True,
     )
+

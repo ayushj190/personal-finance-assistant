@@ -29,14 +29,30 @@ theme.inject_custom_css()
 # Global sidebar preferences
 with st.sidebar:
     st.markdown("### 🪙 PFA Finance")
-    hide_vals = st.toggle(
-        "🔒 Privacy Mode (Hide Values)",
-        value=st.session_state.get("hide_amounts", False),
-        key="global_privacy_toggle",
-        help="Globally hide financial numbers with currency symbol and ****",
-    )
-    st.session_state["hide_amounts"] = hide_vals
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        hide_vals = st.toggle(
+            "🔒 Privacy",
+            value=st.session_state.get("hide_amounts", False),
+            key="global_privacy_toggle",
+            help="Globally hide financial numbers with currency symbol and ****",
+        )
+        st.session_state["hide_amounts"] = hide_vals
+    with col_t2:
+        is_light = st.toggle(
+            "☀️ Light",
+            value=(st.session_state.get("theme", "dark") == "light"),
+            key="global_theme_toggle",
+            help="Switch between Dark and Light mode",
+        )
+        st.session_state["theme"] = "light" if is_light else "dark"
+
     st.divider()
+
+    from ui.copilot_sidebar import render_copilot_sidebar
+    render_copilot_sidebar()
+    st.divider()
+
 
 # Navigation definition
 pages = [
