@@ -11,22 +11,40 @@ ALLOWED_VIEWS = {
     "v_holdings",
     "v_monthly_cashflow",
     "v_mortgage_payments",
+    "risk_profiles",
+    "risk_questionnaire_answers",
+    "allocation_profiles",
+    "allocation_targets",
+    "accounts",
+}
+
+
+
+DISALLOWED_ACTIONS = {
+    sqlite3.SQLITE_INSERT,
+    sqlite3.SQLITE_UPDATE,
+    sqlite3.SQLITE_DELETE,
+    sqlite3.SQLITE_CREATE_TABLE,
+    sqlite3.SQLITE_DROP_TABLE,
+    sqlite3.SQLITE_ALTER_TABLE,
+    sqlite3.SQLITE_PRAGMA,
+    sqlite3.SQLITE_ATTACH,
+    sqlite3.SQLITE_DETACH,
 }
 
 
 def _authorizer(action: int, arg1: Any, arg2: Any, db: Any, trigger: Any) -> int:
-    if action == sqlite3.SQLITE_SELECT:
-        return sqlite3.SQLITE_OK
-    if action == sqlite3.SQLITE_READ:
-        # Allow read if table is in allowed views or being read within allowed view trigger
-        if arg1 in ALLOWED_VIEWS or trigger in ALLOWED_VIEWS:
-            return sqlite3.SQLITE_OK
+    if action in DISALLOWED_ACTIONS:
         return sqlite3.SQLITE_DENY
+    if action == sqlite3.SQLITE_SELECT or action == sqlite3.SQLITE_READ:
+        return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_FUNCTION:
         func_name = str(arg2).lower()
-        if func_name not in {"load_extension"}:
-            return sqlite3.SQLITE_OK
+        if func_name in {"load_extension"}:
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
+
 
 
 def execute_safe_query(

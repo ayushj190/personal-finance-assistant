@@ -196,3 +196,47 @@ def get_category_map(conn: sqlite3.Connection) -> dict[str, int]:
 def get_own_ibans(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''").fetchall()
     return {r["iban"].replace(" ", "").upper() for r in rows}
+
+
+def save_risk_profile(
+    conn: sqlite3.Connection,
+    risk_score: int,
+    risk_tolerance: str,
+    notes: str = "",
+    answers: dict[str, str] | None = None,
+) -> int:
+    with conn:
+        cur = conn.execute(
+            """
+            INSERT INTO risk_profiles (risk_score, risk_tolerance, notes)
+            VALUES (?, ?, ?)
+            """,
+            (risk_score, risk_tolerance, notes),
+        )
+        profile_id = cur.lastrowid
+        if answers:
+            for q, a in answers.items():
+                conn.execute(
+                    """
+                    INSERT INTO risk_questionnaire_answers (profile_id, question, answer)
+                    VALUES (?, ?, ?)
+                    """,
+                    (profile_id, str(q), str(a)),
+                )
+        return profile_id
+
+
+def get_latest_risk_profile(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM risk_profiles ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return None
+    res = dict(row)
+    answers = conn.execute(
+        "SELECT question, answer FROM risk_questionnaire_answers WHERE profile_id = ?",
+        (res["id"],),
+    ).fetchall()
+    res["answers"] = {a["question"]: a["answer"] for a in answers}
+    return res
+

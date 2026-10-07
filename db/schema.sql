@@ -237,3 +237,20 @@ SELECT l.name AS loan_name, l.lender, s.month_idx, s.due_date,
        s.balance_minor / 100.0 AS balance_eur
 FROM liability_schedule s
 JOIN liabilities l ON l.id = s.liability_id;
+
+-- ── Risk Profile & Assessment ─────────────────────────────
+CREATE TABLE IF NOT EXISTS risk_profiles (
+  id              INTEGER PRIMARY KEY,
+  assessed_date   TEXT NOT NULL DEFAULT (datetime('now')),
+  risk_score      INTEGER NOT NULL,              -- 1 to 10 scale
+  risk_tolerance  TEXT NOT NULL,                 -- 'Conservative', 'Moderately Conservative', 'Moderate', 'Growth', 'Aggressive'
+  notes           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS risk_questionnaire_answers (
+  id              INTEGER PRIMARY KEY,
+  profile_id      INTEGER NOT NULL REFERENCES risk_profiles(id) ON DELETE CASCADE,
+  question        TEXT NOT NULL,
+  answer          TEXT NOT NULL
+);
+
