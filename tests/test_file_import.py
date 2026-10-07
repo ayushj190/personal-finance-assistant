@@ -1,5 +1,4 @@
 from datetime import date
-from pathlib import Path
 import unittest
 
 from connectors.file_import.detect import FileFormat, detect_format, parse_statement
@@ -7,20 +6,25 @@ from connectors.file_import.detect import FileFormat, detect_format, parse_state
 
 class TestFileImport(unittest.TestCase):
     def test_etoro_money_tsv_fixture(self):
-        fixture_path = Path(__file__).resolve().parent / "fixtures" / "etoro_money_sample.tsv"
-        content = fixture_path.read_text(encoding="utf-8")
+        sample_tsv = (
+            "Name\tDate\tAmount\tCurrency\tLocal Amount\tLocal Currency\tExchange Rate\tMoney Out\tMoney In\n"
+            "SYNTHETIC STORE UTRECHT NL\t03/10/2026 13:17:09\t-7.49\tEUR\t-7.49\tEUR\t\t-7.49\t\n"
+            "ONLINE MERCHANT EU\t02/10/2026 20:51:34\t-77.18\tEUR\t-77.18\tEUR\t\t-77.18\t\n"
+            "Broker Transfer WDL\t02/10/2026 20:48:04\t100.00\tEUR\t100.00\tEUR\t\t\t100.00\n"
+            "Sample Cafe London GB\t01/10/2026 10:15:00\t-3.50\tEUR\t-3.00\tGBP\t0.8571\t-3.50\t\n"
+        )
 
-        fmt, txs = parse_statement(content, default_account_id="etoro_cash_eur")
+        fmt, txs = parse_statement(sample_tsv, default_account_id="etoro_cash_eur")
         self.assertEqual(fmt, FileFormat.ETORO_MONEY_TSV)
         self.assertEqual(len(txs), 4)
 
-        # First row: Dekamarkt € -7.49
+        # First row: € -7.49
         self.assertEqual(txs[0].amount_minor, -749)
         self.assertEqual(txs[0].currency, "EUR")
         self.assertEqual(txs[0].booking_date, date(2026, 10, 3))
         self.assertEqual(txs[0].account_external_id, "etoro_cash_eur")
 
-        # Foreign spend: Coffee Shop with exchange rate and local amount
+        # Foreign spend: Cafe with exchange rate and local amount
         self.assertEqual(txs[3].amount_minor, -350)
         self.assertIn("GBP", txs[3].description)
 

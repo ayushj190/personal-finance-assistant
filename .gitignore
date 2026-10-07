@@ -13,3 +13,5 @@ htmlcov/
 *.sqlite
 *.sqlite3
 scratch/
+.env
+.env.*
