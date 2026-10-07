@@ -108,7 +108,7 @@ def render():
     section_header("Monthly Expenses Trend", "Month-by-month spending broken down by expense kind")
     col_chart, col_tbl = st.columns([3, 2])
     with col_chart:
-        st.plotly_chart(build_monthly_spending_bar(monthly_df), use_container_width=True)
+        st.plotly_chart(build_monthly_spending_bar(monthly_df), use_container_width=True, theme=None)
     with col_tbl:
         tbl_df = monthly_df[["month", "total_spent", "fixed_spent", "disc_spent", "uncat_spent"]].copy()
         tbl_df.columns = ["Month", "Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]
@@ -121,9 +121,9 @@ def render():
     if not display_df.empty:
         view_type = st.radio("Chart Type", options=["Sunburst", "Donut"], horizontal=True)
         if view_type == "Sunburst":
-            st.plotly_chart(build_spending_sunburst(display_df), use_container_width=True)
+            st.plotly_chart(build_spending_sunburst(display_df), use_container_width=True, theme=None)
         else:
-            st.plotly_chart(build_spending_donut(display_df, group_col="category"), use_container_width=True)
+            st.plotly_chart(build_spending_donut(display_df, group_col="category"), use_container_width=True, theme=None)
 
         col_left, col_right = st.columns([1, 1])
         with col_left:

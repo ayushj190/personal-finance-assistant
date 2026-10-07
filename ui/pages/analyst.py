@@ -61,7 +61,7 @@ def render():
         with st.chat_message(msg.get("role", "assistant")):
             st.markdown(msg.get("content", ""))
             if msg.get("figure"):
-                st.plotly_chart(msg["figure"], use_container_width=True)
+                st.plotly_chart(msg["figure"], use_container_width=True, theme=None)
             if msg.get("df") is not None and not msg["df"].empty:
                 st.dataframe(msg["df"], use_container_width=True, hide_index=True)
             if msg.get("sql"):
@@ -82,7 +82,7 @@ def render():
                 result = run_copilot(user_prompt, history=st.session_state.copilot_history)
                 st.markdown(result["content"])
                 if result.get("figure"):
-                    st.plotly_chart(result["figure"], use_container_width=True)
+                    st.plotly_chart(result["figure"], use_container_width=True, theme=None)
                 if result.get("df") is not None and not result["df"].empty:
                     st.dataframe(result["df"], use_container_width=True, hide_index=True)
                 if result.get("sql"):

@@ -62,7 +62,7 @@ def render_copilot_sidebar() -> None:
             with st.chat_message(role):
                 st.markdown(msg.get("content", ""))
                 if msg.get("figure"):
-                    st.plotly_chart(msg["figure"], use_container_width=True)
+                    st.plotly_chart(msg["figure"], use_container_width=True, theme=None)
                 if msg.get("df") is not None and not msg["df"].empty:
                     st.dataframe(msg["df"], use_container_width=True, hide_index=True)
                 if msg.get("sql"):

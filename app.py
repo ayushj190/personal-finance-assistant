@@ -1,7 +1,9 @@
+import importlib
 import streamlit as st
 
 from db import database
 from ui import theme
+importlib.reload(theme)
 from ui.pages import (
     analyst,
     dashboard,
@@ -21,6 +23,32 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Synchronize theme state before rendering or injecting styles
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "dark"
+
+if "global_theme_toggle" in st.session_state:
+    st.session_state["theme"] = "light" if st.session_state["global_theme_toggle"] else "dark"
+else:
+    st.session_state["global_theme_toggle"] = (st.session_state["theme"] == "light")
+
+if "hide_amounts" not in st.session_state:
+    st.session_state["hide_amounts"] = False
+
+if "global_privacy_toggle" in st.session_state:
+    st.session_state["hide_amounts"] = bool(st.session_state["global_privacy_toggle"])
+else:
+    st.session_state["global_privacy_toggle"] = bool(st.session_state["hide_amounts"])
+
+
+def _on_theme_toggle() -> None:
+    st.session_state["theme"] = "light" if st.session_state["global_theme_toggle"] else "dark"
+
+
+def _on_privacy_toggle() -> None:
+    st.session_state["hide_amounts"] = bool(st.session_state["global_privacy_toggle"])
+
+
 # Apply styling and database migrations
 database.migrate()
 theme.register_plotly_theme()
@@ -31,21 +59,19 @@ with st.sidebar:
     st.markdown("### 🪙 PFA Finance")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        hide_vals = st.toggle(
+        st.toggle(
             "🔒 Privacy",
-            value=st.session_state.get("hide_amounts", False),
             key="global_privacy_toggle",
+            on_change=_on_privacy_toggle,
             help="Globally hide financial numbers with currency symbol and ****",
         )
-        st.session_state["hide_amounts"] = hide_vals
     with col_t2:
-        is_light = st.toggle(
+        st.toggle(
             "☀️ Light",
-            value=(st.session_state.get("theme", "dark") == "light"),
             key="global_theme_toggle",
+            on_change=_on_theme_toggle,
             help="Switch between Dark and Light mode",
         )
-        st.session_state["theme"] = "light" if is_light else "dark"
 
     st.divider()
 

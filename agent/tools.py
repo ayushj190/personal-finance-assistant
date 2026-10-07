@@ -29,6 +29,7 @@ def tool_toggle_privacy_mode(enable: bool | None = None) -> dict[str, Any]:
     new_val = not current if enable is None else bool(enable)
     if hasattr(st, "session_state"):
         st.session_state["hide_amounts"] = new_val
+        st.session_state["global_privacy_toggle"] = new_val
     state_str = "ENABLED (Amounts hidden)" if new_val else "DISABLED (Amounts visible)"
     return {"success": True, "message": f"Privacy mode is now {state_str}."}
 
@@ -40,6 +41,7 @@ def tool_set_theme(theme: str) -> dict[str, Any]:
         return {"success": False, "message": "Theme must be either 'dark' or 'light'."}
     if hasattr(st, "session_state"):
         st.session_state["theme"] = clean_theme
+        st.session_state["global_theme_toggle"] = (clean_theme == "light")
     return {"success": True, "message": f"App theme switched to {clean_theme} mode."}
 
 

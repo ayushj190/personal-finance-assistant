@@ -203,11 +203,11 @@ def render():
 
     # Amortization curve
     section_header("Amortization Schedule", "Evolution of loan balance and principal paydown over 30 years")
-    st.plotly_chart(build_mortgage_amortization_chart(schedule_df), use_container_width=True)
+    st.plotly_chart(build_mortgage_amortization_chart(schedule_df), use_container_width=True, theme=None)
 
     # Monthly breakdown: interest vs principal
     section_header("Monthly Payment Composition", "Principal vs Interest per monthly installment")
-    st.plotly_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)), use_container_width=True)
+    st.plotly_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)), use_container_width=True, theme=None)
 
     # Actual Mortgage Payments & Bank Debits
     section_header(

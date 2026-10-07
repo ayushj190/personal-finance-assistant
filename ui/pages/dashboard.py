@@ -278,7 +278,7 @@ def render():
     """
     nw_df = pd.read_sql_query(nw_query, conn)
     if not nw_df.empty:
-        st.plotly_chart(build_net_worth_area_chart(nw_df), use_container_width=True)
+        st.plotly_chart(build_net_worth_area_chart(nw_df), use_container_width=True, theme=None)
     else:
         st.info("Net worth historical daily snapshots will populate automatically as transactions and quotes accumulate.")
 
@@ -298,7 +298,7 @@ def render():
         """
         spend_df = pd.read_sql_query(spend_query, conn)
         if not spend_df.empty:
-            st.plotly_chart(build_spending_donut(spend_df, group_col="category"), use_container_width=True)
+            st.plotly_chart(build_spending_donut(spend_df, group_col="category"), use_container_width=True, theme=None)
         else:
             st.caption("No expense transactions found in the last 30 days.")
 

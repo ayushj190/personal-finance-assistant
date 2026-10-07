@@ -165,7 +165,7 @@ def render():
 
     col_chart, col_targets = st.columns([1, 1])
     with col_chart:
-        st.plotly_chart(build_drift_bar_chart(drift_data, drift_band_pct=profile["drift_band_pct"]), use_container_width=True)
+        st.plotly_chart(build_drift_bar_chart(drift_data, drift_band_pct=profile["drift_band_pct"]), use_container_width=True, theme=None)
 
     with col_targets:
         drift_df = pd.DataFrame(drift_data)[["bucket", "actual_pct", "target_pct", "drift_pp", "alert"]]
