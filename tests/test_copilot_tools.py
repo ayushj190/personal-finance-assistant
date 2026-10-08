@@ -1,7 +1,5 @@
-import sqlite3
 import unittest
 from agent import tools
-from db import database
 
 
 class TestCopilotTools(unittest.TestCase):
@@ -35,7 +33,8 @@ class TestCopilotTools(unittest.TestCase):
         self.assertEqual(res_get["profile"]["risk_tolerance"], "Growth")
 
     def test_allocation_and_savings_tools(self):
-        res_alloc = tools.tool_set_active_allocation_profile("80/20 Core-Satellite")
+        res_alloc = tools.tool_set_active_allocation_profile(
+            "80/20 Core-Satellite")
         self.assertTrue(res_alloc["success"])
 
         res_savings = tools.tool_update_savings_rate("Trade Republic", 3.25)
@@ -46,7 +45,8 @@ class TestCopilotTools(unittest.TestCase):
         self.assertTrue(summary["success"])
         self.assertIn("asset_classes_eur", summary)
 
-        sql_res = tools.tool_query_financial_data("SELECT count(*) as total_accounts FROM accounts")
+        sql_res = tools.tool_query_financial_data(
+            "SELECT count(*) as total_accounts FROM accounts")
         self.assertTrue(sql_res["success"])
         self.assertIsNotNone(sql_res["df"])
 

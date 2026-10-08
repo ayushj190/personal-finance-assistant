@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS liabilities (
   lender               TEXT NOT NULL DEFAULT 'ABN AMRO',
   loan_type            TEXT NOT NULL CHECK (loan_type IN ('annuity','linear','interest_only')),
   original_principal_minor INTEGER NOT NULL,
+  home_value_minor     INTEGER,                  -- estimated property / asset value
   start_date           TEXT NOT NULL,
   term_months          INTEGER NOT NULL DEFAULT 360,
   payment_match_pattern TEXT,                    -- regex to match payment tx

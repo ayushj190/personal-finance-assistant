@@ -1,7 +1,6 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import statistics
 from typing import Any
-import pandas as pd
 
 
 def calculate_savings_rate(income: float, expenses: float) -> float:
@@ -21,7 +20,8 @@ def calculate_burn_and_runway(
     if not monthly_expenses:
         return 0.0, 0.0, 0.0
 
-    recent_3 = monthly_expenses[-3:] if len(monthly_expenses) >= 3 else monthly_expenses
+    recent_3 = monthly_expenses[-3:] if len(
+        monthly_expenses) >= 3 else monthly_expenses
     burn_rate = sum(recent_3) / len(recent_3)
 
     if burn_rate <= 0:
@@ -91,7 +91,8 @@ def detect_recurring_charges(
             for t in sorted_txs
         ]
 
-        intervals = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
+        intervals = [
+            (dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
         med_interval = statistics.median(intervals)
 
         cadence = None

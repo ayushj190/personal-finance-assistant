@@ -8,7 +8,7 @@ class TestEnableBankingServiceDefensive(unittest.TestCase):
     @patch.object(EnableBankingService, "_headers", return_value={"Authorization": "Bearer test"})
     @patch("connectors.enable_banking_service.secrets_vault.get", return_value="sess-123")
     @patch("connectors.enable_banking_service.httpx.Client")
-    def test_fetch_accounts_handles_string_accounts_and_aspsp(self, mock_client_cls, mock_vault_get, mock_headers):
+    def test_fetch_accounts_handles_string_accounts_and_aspsp(self, mock_client_cls, _mock_vault_get, _mock_headers):
 
         # Mock response where accounts is a list of strings (UIDs) and aspsp is a string
         mock_session_resp = MagicMock()
@@ -58,7 +58,7 @@ class TestEnableBankingServiceDefensive(unittest.TestCase):
     @patch.object(EnableBankingService, "_headers", return_value={"Authorization": "Bearer test"})
     @patch("connectors.enable_banking_service.secrets_vault.get", return_value="sess-123")
     @patch("connectors.enable_banking_service.httpx.Client")
-    def test_fetch_transactions_handles_defensive_fields(self, mock_client_cls, mock_vault_get, mock_headers):
+    def test_fetch_transactions_handles_defensive_fields(self, mock_client_cls, _mock_vault_get, _mock_headers):
 
         # Mock session response
         mock_session_resp = MagicMock()

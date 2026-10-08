@@ -1,6 +1,4 @@
-from datetime import date, datetime, timedelta
-import sqlite3
-from textwrap import dedent
+from datetime import date, timedelta
 from typing import Any
 import streamlit as st
 
@@ -14,7 +12,8 @@ def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
     # Date range preset
     date_preset = st.sidebar.selectbox(
         "Date Range",
-        options=["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"],
+        options=["Last 3 Months", "MTD", "Last Month",
+                 "YTD", "Last 12 Months", "All Time"],
         index=0,
     )
 
@@ -54,9 +53,11 @@ def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
         format_func=lambda x: acc_options[x],
         index=0,
     )
-    selected_account_ids = None if selected_account_id == 0 else [selected_account_id]
+    selected_account_ids = None if selected_account_id == 0 else [
+        selected_account_id]
 
-    include_transfers = st.sidebar.toggle("Include internal transfers", value=False)
+    include_transfers = st.sidebar.toggle(
+        "Include internal transfers", value=False)
 
     return {
         "start_date": start_date,

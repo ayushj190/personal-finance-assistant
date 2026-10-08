@@ -5,21 +5,6 @@ import pandas as pd
 
 from config import DB_PATH
 
-ALLOWED_VIEWS = {
-    "v_transactions",
-    "v_net_worth_daily",
-    "v_holdings",
-    "v_monthly_cashflow",
-    "v_mortgage_payments",
-    "risk_profiles",
-    "risk_questionnaire_answers",
-    "allocation_profiles",
-    "allocation_targets",
-    "accounts",
-}
-
-
-
 DISALLOWED_ACTIONS = {
     sqlite3.SQLITE_INSERT,
     sqlite3.SQLITE_UPDATE,
@@ -33,7 +18,7 @@ DISALLOWED_ACTIONS = {
 }
 
 
-def _authorizer(action: int, arg1: Any, arg2: Any, db: Any, trigger: Any) -> int:
+def _authorizer(action: int, _arg1: Any, arg2: Any, _db: Any, _trigger: Any) -> int:
     if action in DISALLOWED_ACTIONS:
         return sqlite3.SQLITE_DENY
     if action == sqlite3.SQLITE_SELECT or action == sqlite3.SQLITE_READ:
@@ -44,7 +29,6 @@ def _authorizer(action: int, arg1: Any, arg2: Any, db: Any, trigger: Any) -> int
             return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
-
 
 
 def execute_safe_query(

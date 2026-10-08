@@ -1,8 +1,6 @@
 import csv
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-import io
-from typing import Iterator
 
 from connectors.base import RawHolding, RawTransaction
 
@@ -93,7 +91,8 @@ def parse_revolut_csv(text: str, default_account_id: str = "revolut_eur") -> lis
         if state not in ("COMPLETED", "FINISHED", ""):
             continue
 
-        date_str = row.get("Completed Date") or row.get("Started Date") or row.get("Date")
+        date_str = row.get("Completed Date") or row.get(
+            "Started Date") or row.get("Date")
         if not date_str:
             continue
         date_str = date_str.strip()
@@ -111,7 +110,8 @@ def parse_revolut_csv(text: str, default_account_id: str = "revolut_eur") -> lis
 
         amount_str = row.get("Amount", "0").strip()
         currency = row.get("Currency", "EUR").strip()
-        desc = row.get("Description", "").strip() or row.get("Type", "Revolut transaction").strip()
+        desc = row.get("Description", "").strip() or row.get(
+            "Type", "Revolut transaction").strip()
         amount_minor = to_minor(amount_str)
 
         txs.append(
@@ -157,7 +157,8 @@ def parse_abn_amro_tab(text: str, default_account_id: str = "abn_checking") -> l
             if len(date_raw) == 8 and date_raw.isdigit():
                 booking_date = datetime.strptime(date_raw, "%Y%m%d").date()
             else:
-                booking_date = datetime.strptime(date_raw[:10], "%Y-%m-%d").date()
+                booking_date = datetime.strptime(
+                    date_raw[:10], "%Y-%m-%d").date()
         except Exception:
             continue
 
@@ -174,7 +175,8 @@ def parse_abn_amro_tab(text: str, default_account_id: str = "abn_checking") -> l
                 amount_minor=amount_minor,
                 currency=currency,
                 description=desc,
-                counterparty_iban=account_iban if account_iban.startswith("NL") else None,
+                counterparty_iban=account_iban if account_iban.startswith(
+                    "NL") else None,
             )
         )
     return txs
@@ -195,16 +197,19 @@ def parse_trade_republic_csv(text: str, default_account_id: str = "tr_cash") -> 
         if not date_str:
             continue
         try:
-            booking_date = datetime.strptime(date_str.strip()[:10], "%Y-%m-%d").date()
+            booking_date = datetime.strptime(
+                date_str.strip()[:10], "%Y-%m-%d").date()
         except ValueError:
             try:
-                booking_date = datetime.strptime(date_str.strip()[:10], "%d.%m.%Y").date()
+                booking_date = datetime.strptime(
+                    date_str.strip()[:10], "%d.%m.%Y").date()
             except ValueError:
                 continue
 
         amount_str = row.get("Amount") or row.get("Betrag") or "0"
         amount_minor = to_minor(amount_str)
-        desc = row.get("Name") or row.get("Description") or row.get("Typ") or "Trade Republic"
+        desc = row.get("Name") or row.get(
+            "Description") or row.get("Typ") or "Trade Republic"
 
         txs.append(
             RawTransaction(
@@ -221,30 +226,32 @@ def parse_trade_republic_csv(text: str, default_account_id: str = "tr_cash") -> 
 def _extract_sections(text: str) -> dict[str, list[str]]:
     sections: dict[str, list[str]] = {}
     current_sec = "default"
-    known_headers = {"closed positions", "open positions", "account activity", "dividends", "financial summary"}
+    known_headers = {"closed positions", "open positions",
+                     "account activity", "dividends", "financial summary"}
 
     for line in text.splitlines():
         trimmed = line.strip().strip('"').strip("'").strip()
         lower = trimmed.lower()
-        
+
         matched_header = None
         for kh in known_headers:
             if lower.startswith(kh):
                 matched_header = kh
                 break
-                
+
         if matched_header:
             current_sec = matched_header
             sections[current_sec] = []
             continue
-            
+
         sections.setdefault(current_sec, []).append(line)
     return sections
 
 
 def parse_etoro_statement_transactions(text: str, default_account_id: str = "etoro_cash") -> list[RawTransaction]:
     sections = _extract_sections(text)
-    act_lines = sections.get("account activity") or sections.get("default") or []
+    act_lines = sections.get(
+        "account activity") or sections.get("default") or []
     act_lines = [l for l in act_lines if l.strip(', \t\r\n')]
     if not act_lines:
         return []

@@ -12,7 +12,8 @@ class TestMortgage(unittest.TestCase):
             principal_cents=30000000,
             start_date=date(2024, 1, 1),
             term_months=360,
-            rate_periods=[{"from_date": "2024-01-01", "annual_rate": 0.036, "fixed_until": None}],
+            rate_periods=[{"from_date": "2024-01-01",
+                           "annual_rate": 0.036, "fixed_until": None}],
             extra_payments=[],
         )
         self.assertEqual(len(schedule), 360)
@@ -33,7 +34,8 @@ class TestMortgage(unittest.TestCase):
             principal_cents=12000000,
             start_date=date(2024, 1, 1),
             term_months=120,
-            rate_periods=[{"from_date": "2024-01-01", "annual_rate": 0.04, "fixed_until": None}],
+            rate_periods=[{"from_date": "2024-01-01",
+                           "annual_rate": 0.04, "fixed_until": None}],
             extra_payments=[],
         )
         self.assertEqual(len(schedule), 120)
@@ -44,13 +46,15 @@ class TestMortgage(unittest.TestCase):
 
     def test_extra_payment_lowers_balance(self):
         # Annuity with lump-sum extra payment of €10,000 at month 12
-        extra = [{"paid_date": date(2025, 1, 1), "amount_minor": 1000000, "recalc": "lower_payment"}]
+        extra = [{"paid_date": date(
+            2025, 1, 1), "amount_minor": 1000000, "recalc": "lower_payment"}]
         schedule = calculate_mortgage_schedule(
             loan_type="annuity",
             principal_cents=30000000,
             start_date=date(2024, 1, 1),
             term_months=360,
-            rate_periods=[{"from_date": "2024-01-01", "annual_rate": 0.036, "fixed_until": None}],
+            rate_periods=[{"from_date": "2024-01-01",
+                           "annual_rate": 0.036, "fixed_until": None}],
             extra_payments=extra,
         )
         # Payment after month 12 should be lower than initial payment
@@ -84,10 +88,48 @@ class TestMortgage(unittest.TestCase):
             )
 
         sync_liability_schedule(conn, lib_id)
-        sched_rows = conn.execute("SELECT * FROM liability_schedule WHERE liability_id = ? ORDER BY month_idx ASC", (lib_id,)).fetchall()
+        sched_rows = conn.execute(
+            "SELECT * FROM liability_schedule WHERE liability_id = ? ORDER BY month_idx ASC", (lib_id,)).fetchall()
         self.assertEqual(len(sched_rows), 360)
         self.assertGreater(sched_rows[0]["payment_minor"], 0)
         self.assertEqual(sched_rows[-1]["balance_minor"], 0)
+        conn.close()
+
+    def test_home_value_and_net_worth_equity(self):
+        import sqlite3
+        from db import database
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        with conn:
+            with open(database.SCHEMA_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+            with open(database.SEED_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+            # Verify home_value_minor column exists and stores property valuation
+            cur = conn.execute(
+                """
+                INSERT INTO liabilities (name, lender, loan_type, original_principal_minor, home_value_minor, start_date, term_months)
+                VALUES ('Mortgage 1', 'ABN AMRO', 'annuity', 30000000, 40000000, '2024-01-01', 360)
+                """
+            )
+            lib = conn.execute(
+                "SELECT * FROM liabilities WHERE id = ?", (cur.lastrowid,)).fetchone()
+            self.assertEqual(lib["home_value_minor"], 40000000)
+            self.assertEqual(lib["original_principal_minor"], 30000000)
+
+            # Home Equity = Home Value - Mortgage Balance
+            home_val = lib["home_value_minor"] / 100.0
+            mortgage_bal = lib["original_principal_minor"] / 100.0
+            home_equity = home_val - mortgage_bal
+            self.assertEqual(home_equity, 100000.0)
+
+            # Net Worth = Liquid Cash + Investments + Home Equity
+            cash = 25000.0
+            invested = 15000.0
+            net_worth = cash + invested + home_equity
+            self.assertEqual(net_worth, 140000.0)
         conn.close()
 
 

@@ -1,7 +1,6 @@
-from datetime import date
 import unittest
 from connectors.etoro_service import EtoroService
-from connectors.base import RawAccount, RawHolding, RawTransaction
+from connectors.base import RawHolding
 
 
 class TestEtoroService(unittest.TestCase):

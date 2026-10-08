@@ -1,7 +1,6 @@
 from datetime import date, datetime
-import json
-from pathlib import Path
-import sqlite3
+import sys
+import io
 from typing import Any
 import pandas as pd
 import streamlit as st
@@ -11,21 +10,21 @@ from agent.sql_sandbox import execute_safe_query
 from config import DB_PATH
 from connectors.file_import.detect import (
     FileFormat,
-    detect_format,
     parse_statement,
     parse_statement_balance,
     parse_statement_holdings,
 )
-from connectors.market_data_service import update_quotes
+from connectors.market_data_service import update_quotes, fetch_yfinance_quote
 from db import database
-from services.llm_client import classify_merchants
+from services.llm_client import classify_merchants, search_brave
 from services.mortgage import sync_liability_schedule
 from services.sync_service import import_statement_content, process_and_save_transactions
 
 
 def tool_toggle_privacy_mode(enable: bool | None = None) -> dict[str, Any]:
     """Toggle or set privacy mode (hide or show financial amounts)."""
-    current = st.session_state.get("hide_amounts", False) if hasattr(st, "session_state") else False
+    current = st.session_state.get("hide_amounts", False) if hasattr(
+        st, "session_state") else False
     new_val = not current if enable is None else bool(enable)
     if hasattr(st, "session_state"):
         st.session_state["hide_amounts"] = new_val
@@ -54,7 +53,8 @@ def tool_set_active_allocation_profile(profile_name: str) -> dict[str, Any]:
             (f"%{profile_name.strip()}%",),
         ).fetchone()
         if not row:
-            profiles = conn.execute("SELECT name FROM allocation_profiles").fetchall()
+            profiles = conn.execute(
+                "SELECT name FROM allocation_profiles").fetchall()
             available = [p["name"] for p in profiles]
             return {
                 "success": False,
@@ -63,7 +63,8 @@ def tool_set_active_allocation_profile(profile_name: str) -> dict[str, Any]:
 
         with conn:
             conn.execute("UPDATE allocation_profiles SET is_active = 0")
-            conn.execute("UPDATE allocation_profiles SET is_active = 1 WHERE id = ?", (row["id"],))
+            conn.execute(
+                "UPDATE allocation_profiles SET is_active = 1 WHERE id = ?", (row["id"],))
 
         return {
             "success": True,
@@ -87,11 +88,13 @@ def tool_update_savings_rate(
             WHERE asset_class = 'cash' AND (LOWER(institution) LIKE LOWER(?) OR LOWER(name) LIKE LOWER(?))
             LIMIT 1
             """,
-            (f"%{institution_or_name.strip()}%", f"%{institution_or_name.strip()}%"),
+            (f"%{institution_or_name.strip()}%",
+             f"%{institution_or_name.strip()}%"),
         ).fetchone()
 
         if not row:
-            accounts = conn.execute("SELECT institution, name FROM accounts WHERE asset_class = 'cash'").fetchall()
+            accounts = conn.execute(
+                "SELECT institution, name FROM accounts WHERE asset_class = 'cash'").fetchall()
             names = [f"{a['institution']} - {a['name']}" for a in accounts]
             return {
                 "success": False,
@@ -100,7 +103,8 @@ def tool_update_savings_rate(
 
         acc_id = row["id"]
         with conn:
-            conn.execute("UPDATE accounts SET apy = ? WHERE id = ?", (apy_pct, acc_id))
+            conn.execute(
+                "UPDATE accounts SET apy = ? WHERE id = ?", (apy_pct, acc_id))
             if balance_eur is not None:
                 b_minor = int(round(balance_eur * 100))
                 database.upsert_snapshots(
@@ -136,7 +140,8 @@ def tool_add_mortgage_payment(
         ).fetchone()
 
         if not row:
-            all_loans = conn.execute("SELECT name, lender FROM liabilities").fetchall()
+            all_loans = conn.execute(
+                "SELECT name, lender FROM liabilities").fetchall()
             names = [f"{l['name']} ({l['lender']})" for l in all_loans]
             return {
                 "success": False,
@@ -146,7 +151,8 @@ def tool_add_mortgage_payment(
         lib_id = row["id"]
         p_date = paid_date or date.today().isoformat()
         amt_minor = int(round(amount_eur * 100))
-        recalc_mode = "shorter_term" if recalc in ("shorter_term", "term") else "lower_payment"
+        recalc_mode = "shorter_term" if recalc in (
+            "shorter_term", "term") else "lower_payment"
 
         with conn:
             conn.execute(
@@ -239,7 +245,8 @@ def tool_get_portfolio_and_risk_summary() -> dict[str, Any]:
         holdings_by_type = {r["asset_type"]: r["total_eur"] for r in h_rows}
 
         # Active allocation profile & targets
-        profile = conn.execute("SELECT * FROM allocation_profiles WHERE is_active = 1 LIMIT 1").fetchone()
+        profile = conn.execute(
+            "SELECT * FROM allocation_profiles WHERE is_active = 1 LIMIT 1").fetchone()
         targets = []
         if profile:
             t_rows = conn.execute(
@@ -292,10 +299,12 @@ def tool_parse_and_import_file(
             FileFormat.REVOLUT_CSV: ("Revolut", "revolut_eur", "revolut_eur"),
             FileFormat.ABN_AMRO_TAB: ("ABN AMRO", "abn_checking", "abn_checking"),
         }
-        inst, cash_ext, inv_ext = mapping.get(fmt, ("Imported Bank", "imported_cash", "imported_inv"))
+        inst, cash_ext, inv_ext = mapping.get(
+            fmt, ("Imported Bank", "imported_cash", "imported_inv"))
 
         # Resolve accounts
-        cash_row = conn.execute("SELECT id FROM accounts WHERE external_id = ?", (cash_ext,)).fetchone()
+        cash_row = conn.execute(
+            "SELECT id FROM accounts WHERE external_id = ?", (cash_ext,)).fetchone()
         if cash_row:
             cash_id = cash_row["id"]
         else:
@@ -312,7 +321,8 @@ def tool_parse_and_import_file(
                 },
             )
 
-        inv_row = conn.execute("SELECT id FROM accounts WHERE external_id = ?", (inv_ext,)).fetchone()
+        inv_row = conn.execute(
+            "SELECT id FROM accounts WHERE external_id = ?", (inv_ext,)).fetchone()
         if inv_row:
             inv_id = inv_row["id"]
         else:
@@ -340,10 +350,12 @@ def tool_parse_and_import_file(
                 inserted, skipped, _ = import_statement_content(
                     conn, content=content_str, target_account_id=cash_id, enable_llm=False
                 )
-            details.append(f"{inserted} transactions imported ({skipped} duplicates skipped)")
+            details.append(
+                f"{inserted} transactions imported ({skipped} duplicates skipped)")
 
         # Balance update
-        final_bal = confirm_balance if confirm_balance is not None else (detected_balance / 100.0 if detected_balance else None)
+        final_bal = confirm_balance if confirm_balance is not None else (
+            detected_balance / 100.0 if detected_balance else None)
         if final_bal is not None:
             b_minor = int(round(final_bal * 100))
             database.upsert_snapshots(
@@ -400,7 +412,8 @@ def tool_categorize_expenses(limit: int = 50) -> dict[str, Any]:
     conn = database.connect(DB_PATH)
     try:
         cat_map = database.get_category_map(conn)
-        allowed_cats = [c for c in cat_map.keys() if c not in ("Income", "Transfers")]
+        allowed_cats = [c for c in cat_map.keys(
+        ) if c not in ("Income", "Transfers")]
 
         rows = conn.execute(
             """
@@ -415,7 +428,8 @@ def tool_categorize_expenses(limit: int = 50) -> dict[str, Any]:
         if not rows:
             return {"success": True, "classified_count": 0, "message": "All transactions are already categorized!"}
 
-        merchants = list(dict.fromkeys(r["merchant_normalized"] for r in rows if r["merchant_normalized"]))
+        merchants = list(dict.fromkeys(
+            r["merchant_normalized"] for r in rows if r["merchant_normalized"]))
         classifications = classify_merchants(merchants, allowed_cats)
 
         updated_count = 0
@@ -423,7 +437,8 @@ def tool_categorize_expenses(limit: int = 50) -> dict[str, Any]:
             for merch, cat_name, conf in classifications:
                 if cat_name in cat_map and conf >= 0.5:
                     c_id = cat_map[cat_name]
-                    database.upsert_category_rule(conn, merch, c_id, source="llm", confidence=conf)
+                    database.upsert_category_rule(
+                        conn, merch, c_id, source="llm", confidence=conf)
                     res = conn.execute(
                         "UPDATE transactions SET category_id = ?, category_source = 'llm' WHERE merchant_normalized = ? AND category_id IS NULL",
                         (c_id, merch),
@@ -465,7 +480,8 @@ def tool_query_financial_data(
         try:
             first_row = df.iloc[0].to_dict()
             first_val = list(first_row.values())[0] if first_row else ""
-            summary = summary.replace("{total}", str(round(first_val, 2)) if isinstance(first_val, (int, float)) else str(first_val))
+            summary = summary.replace("{total}", str(round(first_val, 2)) if isinstance(
+                first_val, (int, float)) else str(first_val))
             summary = summary.replace("{count}", str(len(df)))
         except Exception:
             pass
@@ -479,3 +495,44 @@ def tool_query_financial_data(
         "df": df,
         "figure": fig,
     }
+
+
+def tool_search_web(query: str) -> dict[str, Any]:
+    """Search the web for up-to-date information, news, or context."""
+    result = search_brave(query)
+    if not result:
+        return {"success": False, "message": "No web search results found or Brave API key is missing."}
+    return {"success": True, "results": result}
+
+
+def tool_analyze_market_data(ticker: str) -> dict[str, Any]:
+    """Fetch live market data and fundamentals for a stock or ETF ticker (e.g., AAPL, VWCE.DE)."""
+    quote = fetch_yfinance_quote(ticker)
+    if not quote:
+        return {"success": False, "message": f"Could not find market data for ticker: {ticker}"}
+    return {"success": True, "quote": quote}
+
+
+def tool_execute_python(code: str) -> dict[str, Any]:
+    """Execute Python code for complex data analysis using pandas or sqlite3. Returns stdout."""
+    old_stdout = sys.stdout
+    redirected_output = sys.stdout = io.StringIO()
+    try:
+        import pandas as pd
+        import sqlite3
+        import numpy as np
+        from config import DB_PATH
+
+        local_env = {
+            "pd": pd,
+            "sqlite3": sqlite3,
+            "np": np,
+            "DB_PATH": DB_PATH,
+        }
+        exec(code, local_env)
+        stdout_val = redirected_output.getvalue()
+        return {"success": True, "output": stdout_val.strip()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    finally:
+        sys.stdout = old_stdout

@@ -18,7 +18,8 @@ class RawAccount:
 class RawTransaction:
     account_external_id: str
     booking_date: date
-    amount_minor: int  # signed minor units (cents): negative = outflow, positive = inflow
+    # signed minor units (cents): negative = outflow, positive = inflow
+    amount_minor: int
     currency: str
     description: str
     value_date: date | None = None

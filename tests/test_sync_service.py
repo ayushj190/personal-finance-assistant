@@ -1,6 +1,5 @@
 import sqlite3
 import unittest
-from db import database
 from services.sync_service import sync_all
 
 
@@ -17,7 +16,7 @@ class TestSyncService(unittest.TestCase):
         self.conn.close()
 
     @unittest.mock.patch("services.secrets_vault.get", return_value=None)
-    def test_sync_all_smoke(self, mock_vault_get):
+    def test_sync_all_smoke(self, _mock_vault_get):
         # With no connectors configured, sync_all should complete gracefully
         res = sync_all(self.conn)
         self.assertIn("connectors", res)

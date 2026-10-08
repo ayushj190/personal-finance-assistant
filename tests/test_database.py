@@ -20,7 +20,8 @@ class TestDatabase(unittest.TestCase):
     def test_migrate_idempotent(self):
         # Running migrate again should not raise errors
         migrate(self.db_path)
-        row = self.conn.execute("SELECT version FROM schema_version").fetchone()
+        row = self.conn.execute(
+            "SELECT version FROM schema_version").fetchone()
         self.assertEqual(row["version"], 1)
 
     def test_dedup_and_occurrence_idx(self):
@@ -36,8 +37,10 @@ class TestDatabase(unittest.TestCase):
             },
         )
 
-        h1 = dedup_hash("2026-03-01", -350, "EUR", "Coffee Shop", occurrence_idx=0)
-        h2 = dedup_hash("2026-03-01", -350, "EUR", "Coffee Shop", occurrence_idx=1)
+        h1 = dedup_hash("2026-03-01", -350, "EUR",
+                        "Coffee Shop", occurrence_idx=0)
+        h2 = dedup_hash("2026-03-01", -350, "EUR",
+                        "Coffee Shop", occurrence_idx=1)
 
         txs = [
             {
@@ -101,7 +104,8 @@ class TestDatabase(unittest.TestCase):
             "INSERT INTO market_quotes (ticker, quote_date, close, currency) VALUES ('TEST', '2026-10-05', 120.0, 'USD')"
         )
 
-        row = self.conn.execute("SELECT * FROM v_holdings WHERE ticker = 'TEST'").fetchone()
+        row = self.conn.execute(
+            "SELECT * FROM v_holdings WHERE ticker = 'TEST'").fetchone()
         self.assertIsNotNone(row)
         # Cost: $1,000 / 1.25 = €800
         self.assertAlmostEqual(row["cost_basis"], 800.0, places=2)

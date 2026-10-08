@@ -11,4 +11,4 @@ IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 BASE_CURRENCY = "EUR"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_MODEL = "qwen2.5-coder:7b"
+DEFAULT_MODEL = "qwen2.5:7b-instruct"

@@ -3,7 +3,6 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from ui.components import section_header
 from ui.filters import build_where_clause, render_sidebar_filters
 
 
@@ -17,16 +16,20 @@ def render():
     # Filter toggles
     c_f1, c_f2 = st.columns([1, 2])
     with c_f1:
-        only_uncategorized = st.checkbox("Review Uncategorized Only", value=False)
+        only_uncategorized = st.checkbox(
+            "Review Uncategorized Only", value=False)
     with c_f2:
-        search_query = st.text_input("Search merchant or description", placeholder="Filter by text...")
+        search_query = st.text_input(
+            "Search merchant or description", placeholder="Filter by text...")
 
     extra_clauses = []
     if only_uncategorized:
         extra_clauses.append("t.category_id IS NULL")
     if search_query.strip():
-        extra_clauses.append("(t.merchant_normalized LIKE ? OR t.description_raw LIKE ?)")
-        params.extend([f"%{search_query.strip()}%", f"%{search_query.strip()}%"])
+        extra_clauses.append(
+            "(t.merchant_normalized LIKE ? OR t.description_raw LIKE ?)")
+        params.extend([f"%{search_query.strip()}%",
+                      f"%{search_query.strip()}%"])
 
     if extra_clauses:
         prefix = "WHERE " if not where_sql else f"{where_sql} AND "
@@ -49,22 +52,27 @@ def render():
     df = pd.read_sql_query(query, conn, params=params)
 
     # Categories list for dropdown
-    cat_rows = conn.execute("SELECT id, name FROM categories ORDER BY name ASC").fetchall()
+    cat_rows = conn.execute(
+        "SELECT id, name FROM categories ORDER BY name ASC").fetchall()
     cat_names = [r["name"] for r in cat_rows]
     cat_name_to_id = {r["name"]: r["id"] for r in cat_rows}
 
-    st.markdown(f"**Showing {len(df)} transactions** (editing category updates rules for merchant)")
+    st.markdown(
+        f"**Showing {len(df)} transactions** (editing category updates rules for merchant)")
 
     # Data Editor with Privacy Mode support
     from ui.components import format_money, is_hidden
 
     if is_hidden():
         df_display = df.copy()
-        df_display["amount_eur"] = df_display["amount_eur"].map(lambda x: format_money(x))
-        amount_col_cfg = st.column_config.TextColumn("Amount (€)", disabled=True)
+        df_display["amount_eur"] = df_display["amount_eur"].map(
+            lambda x: format_money(x))
+        amount_col_cfg = st.column_config.TextColumn(
+            "Amount (€)", disabled=True)
     else:
         df_display = df
-        amount_col_cfg = st.column_config.NumberColumn("Amount (€)", format="€%.2f", disabled=True)
+        amount_col_cfg = st.column_config.NumberColumn(
+            "Amount (€)", format="€%.2f", disabled=True)
 
     edited_df = st.data_editor(
         df_display,
@@ -73,7 +81,7 @@ def render():
             "booking_date": st.column_config.DateColumn("Date"),
             "account": st.column_config.TextColumn("Account", disabled=True),
             "amount_eur": amount_col_cfg,
-            "merchant": st.column_config.TextColumn("Merchant", disabled=True),
+            "merchant": st.column_config.TextColumn("Merchant", width="medium", disabled=True),
             "category": st.column_config.SelectboxColumn("Category", options=cat_names, required=True),
             "is_internal_transfer": st.column_config.CheckboxColumn("Transfer?"),
         },
@@ -96,7 +104,8 @@ def render():
                 new_cat_id = cat_name_to_id.get(new_cat)
                 if new_cat_id:
                     # 1. Upsert user rule for this merchant
-                    database.upsert_category_rule(conn, merchant, new_cat_id, source="user", confidence=1.0)
+                    database.upsert_category_rule(
+                        conn, merchant, new_cat_id, source="user", confidence=1.0)
                     # 2. Update all past transactions for this merchant
                     with conn:
                         conn.execute(
@@ -106,7 +115,8 @@ def render():
                     updated_rules += 1
 
         if updated_rules > 0:
-            st.success(f"Successfully updated categories and saved {updated_rules} merchant rules!")
+            st.success(
+                f"Successfully updated categories and saved {updated_rules} merchant rules!")
             st.rerun()
 
     conn.close()

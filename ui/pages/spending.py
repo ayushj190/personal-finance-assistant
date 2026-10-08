@@ -9,7 +9,6 @@ from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.filters import build_where_clause, render_sidebar_filters
 
 
-
 def render():
     st.title("Spending Analysis")
     filters = render_sidebar_filters()
@@ -23,7 +22,8 @@ def render():
         where_parts.append(where_sql.replace("WHERE ", "", 1))
     where_parts.append("t.amount_eur_minor < 0")
     where_parts.append("t.is_internal_transfer = 0")
-    where_parts.append("(c.kind IS NULL OR c.kind NOT IN ('savings', 'transfer', 'income'))")
+    where_parts.append(
+        "(c.kind IS NULL OR c.kind NOT IN ('savings', 'transfer', 'income'))")
 
     base_where = "WHERE " + " AND ".join(where_parts)
 
@@ -67,10 +67,11 @@ def render():
     # 3. Monthly Scope Selector
     months = monthly_df["month"].tolist()
     month_options = months + ["All Months (Monthly Average)"]
-    
+
     col_sel, col_empty = st.columns([2, 3])
     with col_sel:
-        selected_scope = st.selectbox("View Scope", options=month_options, index=0)
+        selected_scope = st.selectbox(
+            "View Scope", options=month_options, index=0)
 
     # Filter data according to selected scope
     if selected_scope == "All Months (Monthly Average)":
@@ -93,62 +94,132 @@ def render():
     # KPI Row
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        kpi_card("Total Expenses", f"€{total_spent:,.2f}", subtext=header_title)
+        kpi_card("Total Expenses",
+                 f"€{total_spent:,.2f}", subtext=header_title)
     with c2:
         fixed_pct = (fixed_spent / total_spent * 100) if total_spent > 0 else 0
-        kpi_card("Fixed Expenses", f"€{fixed_spent:,.2f}", subtext=f"{fixed_pct:.1f}% of total")
+        kpi_card("Fixed Expenses",
+                 f"€{fixed_spent:,.2f}", subtext=f"{fixed_pct:.1f}% of total")
     with c3:
         disc_pct = (disc_spent / total_spent * 100) if total_spent > 0 else 0
-        kpi_card("Discretionary", f"€{disc_spent:,.2f}", subtext=f"{disc_pct:.1f}% of total")
+        kpi_card("Discretionary", f"€{disc_spent:,.2f}",
+                 subtext=f"{disc_pct:.1f}% of total")
     with c4:
         uncat_pct = (uncat_spent / total_spent * 100) if total_spent > 0 else 0
-        kpi_card("Uncategorized", f"€{uncat_spent:,.2f}", subtext=f"{uncat_pct:.1f}% of total", is_positive=uncat_spent == 0)
+        kpi_card("Uncategorized", f"€{uncat_spent:,.2f}",
+                 subtext=f"{uncat_pct:.1f}% of total")
 
     # 4. Monthly Trend Chart & Summary Table
-    section_header("Monthly Expenses Trend", "Month-by-month spending broken down by expense kind")
+    section_header("Monthly Expenses Trend",
+                   "Month-by-month spending broken down by expense kind")
     col_chart, col_tbl = st.columns([3, 2])
     with col_chart:
-        st.plotly_chart(build_monthly_spending_bar(monthly_df), use_container_width=True, theme=None)
+        st.plotly_chart(build_monthly_spending_bar(monthly_df),
+                        use_container_width=True, theme=None)
     with col_tbl:
-        tbl_df = monthly_df[["month", "total_spent", "fixed_spent", "disc_spent", "uncat_spent"]].copy()
-        tbl_df.columns = ["Month", "Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]
-        for col in ["Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]:
-            tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
-        st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+        tbl_df = monthly_df[["month", "total_spent",
+                             "fixed_spent", "disc_spent", "uncat_spent"]].copy()
+        tbl_df.columns = [
+            "Month", "Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]
+        if is_hidden():
+            for col in ["Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]:
+                tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
+            st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(
+                tbl_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Total (€)": st.column_config.NumberColumn("Total (€)", format="€%.2f"),
+                    "Fixed (€)": st.column_config.NumberColumn("Fixed (€)", format="€%.2f"),
+                    "Discretionary (€)": st.column_config.NumberColumn("Discretionary (€)", format="€%.2f"),
+                    "Uncategorized (€)": st.column_config.NumberColumn("Uncategorized (€)", format="€%.2f"),
+                }
+            )
 
     # 5. Expense Breakdown & Top Merchants
-    section_header(f"Expense Breakdown ({selected_scope})", "Hierarchical spending across categories and merchants")
+    section_header(f"Expense Breakdown ({selected_scope})",
+                   "Hierarchical spending across categories and merchants")
     if not display_df.empty:
-        view_type = st.radio("Chart Type", options=["Sunburst", "Donut"], horizontal=True)
+        view_type = st.radio("Chart Type", options=[
+                             "Sunburst", "Donut"], horizontal=True)
         if view_type == "Sunburst":
-            st.plotly_chart(build_spending_sunburst(display_df), use_container_width=True, theme=None)
+            st.plotly_chart(build_spending_sunburst(display_df),
+                            use_container_width=True, theme=None)
         else:
-            st.plotly_chart(build_spending_donut(display_df, group_col="category"), use_container_width=True, theme=None)
+            st.plotly_chart(build_spending_donut(
+                display_df, group_col="category"), use_container_width=True, theme=None)
 
         col_left, col_right = st.columns([1, 1])
         with col_left:
-            section_header("Top Merchants", f"Highest spending in {selected_scope}")
-            top_merchants = display_df.groupby("merchant")["amount_eur"].sum().reset_index()
-            top_merchants = top_merchants.sort_values(by="amount_eur", ascending=False).head(10)
+            section_header("Top Merchants",
+                           f"Highest spending in {selected_scope}")
+            top_merchants = display_df.groupby(
+                "merchant")["amount_eur"].sum().reset_index()
+            top_merchants = top_merchants.sort_values(
+                by="amount_eur", ascending=False).head(10)
             top_merchants.columns = ["Merchant", "Spent (€)"]
-            top_merchants["Spent (€)"] = top_merchants["Spent (€)"].map(lambda x: format_money(x))
-            st.dataframe(top_merchants, use_container_width=True, hide_index=True)
+            if is_hidden():
+                top_merchants["Spent (€)"] = top_merchants["Spent (€)"].map(
+                    lambda x: format_money(x))
+                spent_cfg = st.column_config.TextColumn(
+                    "Spent (€)", disabled=True)
+            else:
+                spent_cfg = st.column_config.NumberColumn(
+                    "Spent (€)", format="€%.2f", disabled=True)
+            st.dataframe(
+                top_merchants,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
+                    "Spent (€)": spent_cfg
+                }
+            )
 
         with col_right:
-            section_header("Subscription Leak Detector", "Recurring services and annual commitments")
-            all_tx_rows = [dict(r) for r in conn.execute("SELECT * FROM v_transactions ORDER BY booking_date DESC").fetchall()]
+            section_header("Subscription Leak Detector",
+                           "Recurring services and annual commitments")
+            all_tx_rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM v_transactions ORDER BY booking_date DESC").fetchall()]
             recurring = detect_recurring_charges(all_tx_rows)
             if recurring:
-                rec_df = pd.DataFrame(recurring)[["merchant", "cadence", "amount_eur", "annual_cost_eur"]]
-                rec_df.columns = ["Merchant", "Cadence", "Cost / Cycle", "Annual Cost (€)"]
-                rec_df["Cost / Cycle"] = rec_df["Cost / Cycle"].map(lambda x: format_money(x))
-                rec_df["Annual Cost (€)"] = rec_df["Annual Cost (€)"].map(lambda x: format_money(x))
-                st.dataframe(rec_df, use_container_width=True, hide_index=True)
+                rec_df = pd.DataFrame(recurring)[
+                    ["merchant", "cadence", "amount_eur", "annual_cost_eur"]]
+                rec_df.columns = ["Merchant", "Cadence",
+                                  "Cost / Cycle", "Annual Cost (€)"]
+                if is_hidden():
+                    rec_df["Cost / Cycle"] = rec_df["Cost / Cycle"].map(
+                        lambda x: format_money(x))
+                    rec_df["Annual Cost (€)"] = rec_df["Annual Cost (€)"].map(
+                        lambda x: format_money(x))
+                    cost_cfg = st.column_config.TextColumn(
+                        "Cost / Cycle", disabled=True)
+                    ann_cfg = st.column_config.TextColumn(
+                        "Annual Cost (€)", disabled=True)
+                else:
+                    cost_cfg = st.column_config.NumberColumn(
+                        "Cost / Cycle", format="€%.2f", disabled=True)
+                    ann_cfg = st.column_config.NumberColumn(
+                        "Annual Cost (€)", format="€%.2f", disabled=True)
+
+                st.dataframe(
+                    rec_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
+                        "Cost / Cycle": cost_cfg,
+                        "Annual Cost (€)": ann_cfg
+                    }
+                )
             else:
                 st.caption("No subscriptions detected.")
 
     # 6. Top Uncategorized Expenses & Mortgage Assignment
-    section_header("Top Uncategorized Expenses", "Review, categorize, or assign your largest uncategorized expenses to mortgage")
+    section_header("Top Uncategorized Expenses",
+                   "Review, categorize, or assign your largest uncategorized expenses to mortgage")
 
     # Scope selection toggle: allow viewing for current month scope or across all months
     scope_choice = "All Filtered Months"
@@ -157,7 +228,8 @@ def render():
         with col_sc1:
             scope_choice = st.radio(
                 "Uncategorized Scope",
-                options=[f"Selected Month ({selected_scope})", "All Filtered Months"],
+                options=[
+                    f"Selected Month ({selected_scope})", "All Filtered Months"],
                 horizontal=True,
                 key="uncat_spending_scope_toggle",
             )
@@ -192,22 +264,28 @@ def render():
     if uncat_df.empty:
         st.success("🎉 No uncategorized expenses found in this scope!")
     else:
-        cat_rows = conn.execute("SELECT id, name FROM categories ORDER BY name ASC").fetchall()
+        cat_rows = conn.execute(
+            "SELECT id, name FROM categories ORDER BY name ASC").fetchall()
         cat_names = [r["name"] for r in cat_rows]
         cat_name_to_id = {r["name"]: r["id"] for r in cat_rows}
 
-        st.caption(f"Showing top {len(uncat_df)} uncategorized expenses by amount. Select a category below and click **Save Categorizations**, or use the Mortgage Assignment tool.")
+        st.caption(
+            f"Showing top {len(uncat_df)} uncategorized expenses by amount. Select a category below and click **Save Categorizations**, or use the Mortgage Assignment tool.")
 
-        edit_df = uncat_df[["id", "booking_date", "account", "merchant", "amount_eur"]].copy()
+        edit_df = uncat_df[["id", "booking_date",
+                            "account", "merchant", "amount_eur"]].copy()
         edit_df["category"] = None
 
         if is_hidden():
             edit_df_display = edit_df.copy()
-            edit_df_display["amount_eur"] = edit_df_display["amount_eur"].map(lambda x: format_money(x))
-            amount_col_cfg = st.column_config.TextColumn("Amount (€)", disabled=True)
+            edit_df_display["amount_eur"] = edit_df_display["amount_eur"].map(
+                lambda x: format_money(x))
+            amount_col_cfg = st.column_config.TextColumn(
+                "Amount (€)", disabled=True)
         else:
             edit_df_display = edit_df
-            amount_col_cfg = st.column_config.NumberColumn("Amount (€)", format="€%.2f", disabled=True)
+            amount_col_cfg = st.column_config.NumberColumn(
+                "Amount (€)", format="€%.2f", disabled=True)
 
         edited_uncat = st.data_editor(
             edit_df_display,
@@ -215,11 +293,12 @@ def render():
                 "id": None,
                 "booking_date": st.column_config.DateColumn("Date", disabled=True),
                 "account": st.column_config.TextColumn("Account", disabled=True),
-                "merchant": st.column_config.TextColumn("Merchant / Description", disabled=True),
+                "merchant": st.column_config.TextColumn("Merchant / Description", width="medium", disabled=True),
                 "amount_eur": amount_col_cfg,
                 "category": st.column_config.SelectboxColumn("Assign Category", options=cat_names, required=False),
             },
-            disabled=["id", "booking_date", "account", "merchant", "amount_eur"],
+            disabled=["id", "booking_date",
+                      "account", "merchant", "amount_eur"],
             use_container_width=True,
             hide_index=True,
             key="spending_uncat_editor",
@@ -241,7 +320,8 @@ def render():
                                 (new_cat_id, tx_id),
                             )
                             if merchant:
-                                database.upsert_category_rule(conn, merchant, new_cat_id, source="user")
+                                database.upsert_category_rule(
+                                    conn, merchant, new_cat_id, source="user")
                             if new_cat == "Mortgage":
                                 conn.execute(
                                     "UPDATE liabilities SET payment_match_pattern = COALESCE(payment_match_pattern, ?) WHERE id = (SELECT id FROM liabilities LIMIT 1)",
@@ -250,7 +330,8 @@ def render():
                         saved_count += 1
 
                 if saved_count > 0:
-                    st.success(f"Successfully categorized {saved_count} transaction(s) and updated rules!")
+                    st.success(
+                        f"Successfully categorized {saved_count} transaction(s) and updated rules!")
                     st.rerun()
 
         # Dedicated Mortgage Assignment Tool
@@ -271,20 +352,25 @@ def render():
 
             cm1, cm2, cm3 = st.columns([2, 1, 1])
             with cm1:
-                chosen_tx_lbl = st.selectbox("Select Uncategorized Transaction", options=tx_options, key="mortgage_tx_select")
+                chosen_tx_lbl = st.selectbox(
+                    "Select Uncategorized Transaction", options=tx_options, key="mortgage_tx_select")
                 chosen_tx = tx_lookup[chosen_tx_lbl]
             with cm2:
                 if liabilities:
-                    lib_map = {f"{lib['name']} ({lib['lender']})": lib for lib in liabilities}
-                    chosen_lib_lbl = st.selectbox("Mortgage Liability", options=list(lib_map.keys()), key="mortgage_lib_select")
+                    lib_map = {
+                        f"{lib['name']} ({lib['lender']})": lib for lib in liabilities}
+                    chosen_lib_lbl = st.selectbox("Mortgage Liability", options=list(
+                        lib_map.keys()), key="mortgage_lib_select")
                     chosen_lib = lib_map[chosen_lib_lbl]
                 else:
                     chosen_lib = None
-                    st.warning("No mortgage loan configured yet. Set one up in Settings or Mortgage tab.")
+                    st.warning(
+                        "No mortgage loan configured yet. Set one up in Settings or Mortgage tab.")
             with cm3:
                 payment_kind = st.selectbox(
                     "Payment Assignment",
-                    options=["Monthly Installment", "Extra Repayment (Boetevrij)"],
+                    options=["Monthly Installment",
+                             "Extra Repayment (Boetevrij)"],
                     key="mortgage_assign_kind",
                 )
 
@@ -312,7 +398,8 @@ def render():
                     )
                     # 2. Update merchant category rule
                     if tx_merchant:
-                        database.upsert_category_rule(conn, tx_merchant, mortgage_cat_id, source="user")
+                        database.upsert_category_rule(
+                            conn, tx_merchant, mortgage_cat_id, source="user")
 
                     # 3. Save payment match pattern on liability if unset
                     conn.execute(
@@ -330,7 +417,8 @@ def render():
                                 amount_minor = excluded.amount_minor,
                                 recalc = excluded.recalc
                             """,
-                            (chosen_lib["id"], tx_date, tx_amount_minor, recalc_strat),
+                            (chosen_lib["id"], tx_date,
+                             tx_amount_minor, recalc_strat),
                         )
 
                 # Resync schedule if extra payment
@@ -345,4 +433,3 @@ def render():
                 st.rerun()
 
     conn.close()
-

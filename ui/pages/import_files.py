@@ -2,11 +2,10 @@ import pandas as pd
 import streamlit as st
 
 from config import DB_PATH
-from connectors.file_import.detect import FileFormat, detect_format, parse_statement, parse_statement_holdings, parse_statement_balance
+from connectors.file_import.detect import FileFormat, parse_statement, parse_statement_holdings, parse_statement_balance
 from connectors.market_data_service import update_quotes
 from db import database
 from services.sync_service import import_statement_content, process_and_save_transactions
-from ui.components import section_header
 
 
 def render():
@@ -14,7 +13,7 @@ def render():
     st.markdown("Drop your bank, card, or broker export files (Trade Republic, ABN AMRO, Revolut, eToro, MT940, CAMT.053 XML). The system will automatically detect the format and target account.")
 
     conn = database.connect(DB_PATH)
-    
+
     def auto_resolve_accounts(conn, fmt: FileFormat) -> tuple[int, int]:
         # Maps format to (Institution, Cash_Ext_ID, Inv_Ext_ID)
         mapping = {
@@ -25,11 +24,13 @@ def render():
             FileFormat.REVOLUT_CSV: ("Revolut", "revolut_eur", "revolut_eur"),
             FileFormat.ABN_AMRO_TAB: ("ABN AMRO", "abn_checking", "abn_checking"),
         }
-        
-        inst, cash_ext, inv_ext = mapping.get(fmt, ("Imported Bank", "imported_cash", "imported_inv"))
-        
+
+        inst, cash_ext, inv_ext = mapping.get(
+            fmt, ("Imported Bank", "imported_cash", "imported_inv"))
+
         # Resolve Cash Account
-        cash_row = conn.execute("SELECT id FROM accounts WHERE external_id = ?", (cash_ext,)).fetchone()
+        cash_row = conn.execute(
+            "SELECT id FROM accounts WHERE external_id = ?", (cash_ext,)).fetchone()
         if cash_row:
             cash_id = cash_row["id"]
         else:
@@ -38,9 +39,10 @@ def render():
                 "name": f"{inst} Cash", "currency": "EUR", "asset_class": "cash",
                 "apy": 3.0 if inst == "Trade Republic" else None,
             })
-            
+
         # Resolve Investment Account
-        inv_row = conn.execute("SELECT id FROM accounts WHERE external_id = ?", (inv_ext,)).fetchone()
+        inv_row = conn.execute(
+            "SELECT id FROM accounts WHERE external_id = ?", (inv_ext,)).fetchone()
         if inv_row:
             inv_id = inv_row["id"]
         else:
@@ -48,7 +50,7 @@ def render():
                 "provider": "manual", "institution": inst, "external_id": inv_ext,
                 "name": f"{inst} Investment", "currency": "EUR", "asset_class": "investment"
             })
-            
+
         return cash_id, inv_id
 
     uploaded_files = st.file_uploader(
@@ -67,15 +69,18 @@ def render():
             if fmt in (FileFormat.TRADE_REPUBLIC_PDF, FileFormat.TRADE_REPUBLIC_CSV):
                 raw_holdings = []
 
-            st.markdown(f"**File:** `{file.name}` | **Detected Format:** `{fmt.value}`")
+            st.markdown(
+                f"**File:** `{file.name}` | **Detected Format:** `{fmt.value}`")
 
             if not raw_txs and not raw_holdings and raw_balance is None:
-                st.error("No valid transactions, holdings, or account balance found in this file.")
+                st.error(
+                    "No valid transactions, holdings, or account balance found in this file.")
                 continue
 
             final_balance_to_save = raw_balance
             if raw_balance is not None:
-                st.info(f"💰 **Detected Account Balance (Eindsaldo):** €{raw_balance / 100.0:,.2f}")
+                st.info(
+                    f"💰 **Detected Account Balance (Eindsaldo):** €{raw_balance / 100.0:,.2f}")
                 adj_bal = st.number_input(
                     "Confirm or adjust account balance (€)",
                     value=float(raw_balance / 100.0),
@@ -96,7 +101,8 @@ def render():
                     }
                     for tx in raw_txs[:5]
                 ]
-                st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(preview_data),
+                             use_container_width=True, hide_index=True)
 
             if raw_holdings:
                 st.caption(f"Found {len(raw_holdings)} investment positions:")
@@ -109,7 +115,8 @@ def render():
                     }
                     for h in raw_holdings[:5]
                 ]
-                st.dataframe(pd.DataFrame(h_preview), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(h_preview),
+                             use_container_width=True, hide_index=True)
 
             if not raw_txs and not raw_holdings and final_balance_to_save is not None:
                 btn_label = f"Update balance to €{final_balance_to_save / 100.0:,.2f} from {file.name}"
@@ -130,14 +137,16 @@ def render():
                             conn, account_id=cash_acc_id, raw_txs=raw_txs, source="pdf", enable_llm_categorization=False
                         )
                     else:
-                        content_str = raw_bytes.decode("utf-8", errors="replace")
+                        content_str = raw_bytes.decode(
+                            "utf-8", errors="replace")
                         inserted, skipped, _ = import_statement_content(
                             conn,
                             content=content_str,
                             target_account_id=cash_acc_id,
                             enable_llm=False,
                         )
-                    msg_parts.append(f"{inserted} new transactions inserted ({skipped} duplicates skipped)")
+                    msg_parts.append(
+                        f"{inserted} new transactions inserted ({skipped} duplicates skipped)")
 
                 if final_balance_to_save is not None:
                     database.upsert_snapshots(conn, [{
@@ -146,7 +155,8 @@ def render():
                         "balance_minor": final_balance_to_save,
                         "balance_eur_minor": final_balance_to_save
                     }])
-                    msg_parts.append(f"Account balance updated to €{final_balance_to_save / 100.0:,.2f}")
+                    msg_parts.append(
+                        f"Account balance updated to €{final_balance_to_save / 100.0:,.2f}")
 
                 if raw_holdings:
 

@@ -1,4 +1,3 @@
-from datetime import date, datetime
 import sqlite3
 from typing import Any
 import yfinance as yf
@@ -8,7 +7,8 @@ from db import database
 
 
 def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None) -> None:
-    valid_tickers = [t for t in tickers if t and not t.startswith("COPY:") and not t.startswith("ID_")]
+    valid_tickers = [t for t in tickers if t and not t.startswith(
+        "COPY:") and not t.startswith("ID_")]
     all_tickers = list(set(valid_tickers + ["EURUSD=X"]))
     if not all_tickers:
         return
@@ -17,7 +17,8 @@ def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None)
     close_conn = db_conn is None
 
     try:
-        data = yf.download(all_tickers, period="5d", interval="1d", group_by="ticker", progress=False)
+        data = yf.download(all_tickers, period="5d",
+                           interval="1d", group_by="ticker", progress=False)
         quotes: list[dict[str, Any]] = []
 
         for t in all_tickers:
@@ -27,7 +28,8 @@ def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None)
                 if len(sub) == 0:
                     continue
                 latest_close = float(sub["Close"].iloc[-1])
-                prev_close = float(sub["Close"].iloc[-2]) if len(sub) >= 2 else latest_close
+                prev_close = float(sub["Close"].iloc[-2]
+                                   ) if len(sub) >= 2 else latest_close
                 quote_date = str(sub.index[-1].date())
                 quotes.append(
                     {
@@ -61,3 +63,26 @@ def get_latest_fx_to_eur(currency: str, conn: sqlite3.Connection) -> float:
             return 1.0 / float(row["close"])
         return 1.0 / 1.08  # reasonable fallback
     return 1.0
+
+
+def fetch_yfinance_quote(ticker: str) -> dict[str, Any] | None:
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info
+        if not info or "regularMarketPrice" not in info:
+            hist = t.history(period="1d")
+            if hist.empty:
+                return None
+            return {"price": float(hist["Close"].iloc[-1])}
+
+        return {
+            "price": info.get("regularMarketPrice") or info.get("currentPrice"),
+            "name": info.get("shortName", ticker),
+            "currency": info.get("currency", "USD"),
+            "52WeekHigh": info.get("fiftyTwoWeekHigh"),
+            "52WeekLow": info.get("fiftyTwoWeekLow"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry")
+        }
+    except Exception:
+        return None
