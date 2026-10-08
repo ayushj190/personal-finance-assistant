@@ -23,7 +23,8 @@ class TestUIComponents(unittest.TestCase):
             self.assertEqual(mask_if_hidden("+€50.00"), "+€****")
             self.assertEqual(mask_if_hidden("-€25.00"), "-€****")
             self.assertEqual(mask_if_hidden("$100.50"), "$****")
-            self.assertEqual(mask_if_hidden("Est. +€2.50 accrued"), "Est. +€**** accrued")
+            self.assertEqual(mask_if_hidden(
+                "Est. +€2.50 accrued"), "Est. +€**** accrued")
             self.assertEqual(mask_if_hidden("12.5% return"), "12.5% return")
 
     def test_mask_if_not_hidden(self):
@@ -33,7 +34,7 @@ class TestUIComponents(unittest.TestCase):
 
     def test_status_badge(self):
         badge = status_badge("🟢 Synced 12:00", "success")
-        self.assertIn("badge-success", badge)
+        self.assertIn("status-dot-success", badge)
         self.assertIn("🟢 Synced 12:00", badge)
 
 

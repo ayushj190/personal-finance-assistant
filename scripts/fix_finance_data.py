@@ -1,5 +1,3 @@
-import sqlite3
-from pathlib import Path
 
 from config import DB_PATH
 from db import database
@@ -45,9 +43,9 @@ def run_migration():
     brokerage_deposit_cat_id = cat_map.get("Brokerage Deposits")
 
     tx_rows = conn.execute("SELECT * FROM transactions").fetchall()
-    
+
     updated_transfers = 0
-    updated_categories = 0
+    _updated_categories = 0
 
     tx_dicts = []
     for r in tx_rows:
@@ -67,7 +65,7 @@ def run_migration():
             counterparty_iban=iban,
             own_ibans=own_ibans,
         )
-        
+
         # Check specific brokerage / savings keywords
         combined = f"{desc} {cp}".lower()
         if "trbk" in combined or "trade republic" in combined or "etoro" in combined:
@@ -85,7 +83,7 @@ def run_migration():
             if not t.get("category_id"):
                 t["category_id"] = internal_transfer_cat_id
             updated_transfers += 1
-        
+
         tx_dicts.append(t)
 
     # Re-run categorization on transactions that are not internal transfers

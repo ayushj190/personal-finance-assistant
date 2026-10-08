@@ -13,9 +13,12 @@ def parse_mt940(text: str, default_account_id: str = "bank_account") -> list[Raw
     for tx in transactions:
         data: dict[str, Any] = tx.data
         amt_obj = data.get("amount", {})
-        amt_val = amt_obj.amount if hasattr(amt_obj, "amount") else Decimal(str(amt_obj.get("amount", "0")))
-        status = data.get("status", "D")  # 'C' = credit (inflow), 'D' = debit (outflow)
-        currency = str(amt_obj.currency if hasattr(amt_obj, "currency") else amt_obj.get("currency", "EUR"))
+        amt_val = amt_obj.amount if hasattr(
+            amt_obj, "amount") else Decimal(str(amt_obj.get("amount", "0")))
+        # 'C' = credit (inflow), 'D' = debit (outflow)
+        status = data.get("status", "D")
+        currency = str(amt_obj.currency if hasattr(
+            amt_obj, "currency") else amt_obj.get("currency", "EUR"))
 
         amount_minor = to_minor(amt_val)
         if status == "D" and amount_minor > 0:

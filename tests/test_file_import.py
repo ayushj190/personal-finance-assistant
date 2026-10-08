@@ -14,7 +14,8 @@ class TestFileImport(unittest.TestCase):
             "Sample Cafe London GB\t01/10/2026 10:15:00\t-3.50\tEUR\t-3.00\tGBP\t0.8571\t-3.50\t\n"
         )
 
-        fmt, txs = parse_statement(sample_tsv, default_account_id="etoro_cash_eur")
+        fmt, txs = parse_statement(
+            sample_tsv, default_account_id="etoro_cash_eur")
         self.assertEqual(fmt, FileFormat.ETORO_MONEY_TSV)
         self.assertEqual(len(txs), 4)
 
@@ -90,7 +91,6 @@ Position ID,Action,Amount,Units,Open Rate,Current Rate,Spread,Profit(USD),Open D
         self.assertEqual(len(txs), 2)
         self.assertEqual(txs[0].amount_minor, -50000)
         self.assertEqual(txs[1].amount_minor, 1525)
-
 
     def test_trade_republic_pdf_parsing(self):
         from connectors.file_import.trade_republic_pdf import parse_trade_republic_pdf

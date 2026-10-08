@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 import json
 from pathlib import Path
 from typing import Any
@@ -7,12 +7,12 @@ import httpx
 
 from config import DB_PATH
 from connectors.base import NeedsReauth, RawAccount, RawHolding, RawTransaction
-from connectors.file_import.csv_profiles import to_minor
 from db import database
 from services import secrets_vault
 
 BASE_URL = "https://public-api.etoro.com/api/v1"
-CACHE_FILE = Path(__file__).resolve().parent.parent / "data" / "etoro_mirrors_cache.json"
+CACHE_FILE = Path(__file__).resolve().parent.parent / \
+    "data" / "etoro_mirrors_cache.json"
 
 
 class EtoroService:
@@ -41,9 +41,11 @@ class EtoroService:
 
         try:
             with httpx.Client(timeout=30.0) as client:
-                resp = client.get(f"{BASE_URL}/balances", headers=self._headers())
+                resp = client.get(f"{BASE_URL}/balances",
+                                  headers=self._headers())
                 if resp.status_code in (401, 403):
-                    raise NeedsReauth("eToro API keys invalid or unauthorized.")
+                    raise NeedsReauth(
+                        "eToro API keys invalid or unauthorized.")
                 if resp.status_code == 200:
                     data = resp.json()
                     balances = data.get("balances", [])
@@ -56,7 +58,8 @@ class EtoroService:
                         elif acc_type == "Cash" or curr == "EUR":
                             cash_balance_minor = int(round(bal * 100))
                             if b.get("accountId"):
-                                secrets_vault.put("etoro_cash_account_id", str(b["accountId"]))
+                                secrets_vault.put(
+                                    "etoro_cash_account_id", str(b["accountId"]))
                             if b.get("exchangeRate"):
                                 fx_rate = float(b["exchangeRate"])
 
@@ -114,9 +117,11 @@ class EtoroService:
 
         try:
             with httpx.Client(timeout=45.0) as client:
-                resp = client.get(f"{BASE_URL}/trading/info/real/pnl", headers=self._headers())
+                resp = client.get(
+                    f"{BASE_URL}/trading/info/real/pnl", headers=self._headers())
                 if resp.status_code in (401, 403):
-                    raise NeedsReauth("eToro API keys invalid or unauthorized.")
+                    raise NeedsReauth(
+                        "eToro API keys invalid or unauthorized.")
                 if resp.status_code != 200:
                     return holdings
 
@@ -126,18 +131,21 @@ class EtoroService:
                 mirrors = portfolio.get("mirrors", [])
 
                 # 1. Fetch metadata for direct position and top mirror instruments
-                mirror_pos_ids = {p.get("instrumentID") for m in mirrors for p in m.get("positions", [])[:25] if p.get("instrumentID")}
-                inst_ids = sorted(list({p.get("instrumentID") for p in direct_positions if p.get("instrumentID")} | mirror_pos_ids))
+                mirror_pos_ids = {p.get("instrumentID") for m in mirrors for p in m.get(
+                    "positions", [])[:25] if p.get("instrumentID")}
+                inst_ids = sorted(list({p.get("instrumentID") for p in direct_positions if p.get(
+                    "instrumentID")} | mirror_pos_ids))
                 inst_map: dict[int, dict[str, Any]] = {}
                 if inst_ids:
                     # eToro allows comma-separated instrument IDs
                     chunk_size = 50
                     for i in range(0, len(inst_ids), chunk_size):
-                        chunk = inst_ids[i : i + chunk_size]
+                        chunk = inst_ids[i: i + chunk_size]
                         m_resp = client.get(
                             f"{BASE_URL}/market-data/instruments",
                             headers=self._headers(),
-                            params={"instrumentIds": ",".join(str(cid) for cid in chunk)},
+                            params={"instrumentIds": ",".join(
+                                str(cid) for cid in chunk)},
                         )
                         if m_resp.status_code == 200:
                             for inst in m_resp.json().get("instrumentDisplayDatas", []):
@@ -157,12 +165,13 @@ class EtoroService:
                     symbol = info.get("symbol") or f"ID_{iid}"
                     name = info.get("name") or symbol
                     type_id = info.get("type_id", 5)
-                    asset_type = "etf" if type_id == 6 else ("crypto" if type_id == 1 else "stock")
+                    asset_type = "etf" if type_id == 6 else (
+                        "crypto" if type_id == 1 else "stock")
 
                     units = float(p.get("units") or 0.0)
                     amount = float(p.get("amount") or 0.0)
                     pnl_info = p.get("unrealizedPnL") or {}
-                    pnl = float(pnl_info.get("pnL") or 0.0)
+                    _pnl = float(pnl_info.get("pnL") or 0.0)
                     close_rate = float(pnl_info.get("closeRate") or 0.0)
 
                     if symbol not in direct_agg:
@@ -203,7 +212,8 @@ class EtoroService:
 
                 # 3. Process Copy Portfolios (Mirrors)
                 for m in mirrors:
-                    parent_username = m.get("parentUsername") or f"Trader_{m.get('parentCID')}"
+                    parent_username = m.get(
+                        "parentUsername") or f"Trader_{m.get('parentCID')}"
                     ticker = f"COPY:{parent_username}"
                     name = f"Copy: {parent_username}"
 
@@ -215,11 +225,13 @@ class EtoroService:
                     avail_cash = float(m.get("availableAmount") or 0.0)
                     mirror_positions = m.get("positions", [])
 
-                    pos_invested = sum(float(p.get("amount") or 0.0) for p in mirror_positions)
-                    pos_pnl = sum(float((p.get("unrealizedPnL") or {}).get("pnL") or 0.0) for p in mirror_positions)
+                    pos_invested = sum(float(p.get("amount") or 0.0)
+                                       for p in mirror_positions)
+                    pos__pnl = sum(float((p.get("unrealizedPnL") or {}).get(
+                        "pnL") or 0.0) for p in mirror_positions)
                     open_pos_val = pos_invested + pos_pnl
                     total_val = open_pos_val + avail_cash
-                    unrealized_pnl = total_val - invested
+                    unrealized__pnl = total_val - invested
 
                     # One row in holdings for the copied trader
                     holdings.append(
@@ -266,7 +278,8 @@ class EtoroService:
                                     "units": float(p.get("units") or 0.0),
                                     "pnl_usd": float((p.get("unrealizedPnL") or {}).get("pnL") or 0.0),
                                 }
-                                for p in mirror_positions[:50]  # top 50 positions preview
+                                # top 50 positions preview
+                                for p in mirror_positions[:50]
                             ],
                         }
                     )
@@ -308,12 +321,14 @@ class EtoroService:
                 cash_acc_id = secrets_vault.get("etoro_cash_account_id")
                 if not cash_acc_id:
                     # Attempt to look up cash account id
-                    b_resp = client.get(f"{BASE_URL}/balances/cash", headers=headers, params={"includeZeroBalances": "true"})
+                    b_resp = client.get(
+                        f"{BASE_URL}/balances/cash", headers=headers, params={"includeZeroBalances": "true"})
                     if b_resp.status_code == 200:
                         b_list = b_resp.json().get("balances", [])
                         if b_list and b_list[0].get("accountId"):
                             cash_acc_id = str(b_list[0]["accountId"])
-                            secrets_vault.put("etoro_cash_account_id", cash_acc_id)
+                            secrets_vault.put(
+                                "etoro_cash_account_id", cash_acc_id)
 
                 if cash_acc_id:
                     page_token = None
@@ -329,7 +344,8 @@ class EtoroService:
                             params=params,
                         )
                         if resp.status_code in (401, 403):
-                            raise NeedsReauth("eToro API keys invalid or unauthorized.")
+                            raise NeedsReauth(
+                                "eToro API keys invalid or unauthorized.")
                         if resp.status_code != 200:
                             break
 
@@ -343,7 +359,8 @@ class EtoroService:
                             if not raw_date:
                                 continue
                             try:
-                                tx_date = date.fromisoformat(str(raw_date)[:10])
+                                tx_date = date.fromisoformat(
+                                    str(raw_date)[:10])
                             except ValueError:
                                 continue
 
@@ -352,7 +369,8 @@ class EtoroService:
                                 break
 
                             amount_val = float(item.get("amount") or 0.0)
-                            direction = str(item.get("direction") or "").lower()
+                            direction = str(
+                                item.get("direction") or "").lower()
                             # Debit is outflow (negative), credit is inflow (positive)
                             if direction == "debit":
                                 amt_minor = -int(round(abs(amount_val) * 100))
@@ -363,10 +381,13 @@ class EtoroService:
                                 continue
 
                             # Extract merchant / counterparty
-                            card_details = item.get("cardTransactionDetails") or {}
+                            card_details = item.get(
+                                "cardTransactionDetails") or {}
                             counterparty = item.get("counterparty") or {}
-                            merchant = card_details.get("merchantName") or counterparty.get("name")
-                            desc = merchant or item.get("transactionType") or "eToro Cash Transaction"
+                            merchant = card_details.get(
+                                "merchantName") or counterparty.get("name")
+                            desc = merchant or item.get(
+                                "transactionType") or "eToro Cash Transaction"
                             curr = item.get("currency") or "EUR"
                             ext_id = str(item.get("id"))
 
@@ -393,11 +414,13 @@ class EtoroService:
                     trades_resp = client.get(
                         f"{BASE_URL}/trading/info/trade/history",
                         headers=headers,
-                        params={"minDate": since.isoformat(), "page": 1, "pageSize": 100},
+                        params={"minDate": since.isoformat(), "page": 1,
+                                "pageSize": 100},
                     )
                     if trades_resp.status_code == 200:
                         trades_data = trades_resp.json()
-                        trades = trades_data if isinstance(trades_data, list) else trades_data.get("trades", [])
+                        trades = trades_data if isinstance(
+                            trades_data, list) else trades_data.get("trades", [])
                         for trade in trades:
                             close_ts = trade.get("closeTimestamp")
                             if not close_ts:

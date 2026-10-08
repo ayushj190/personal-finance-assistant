@@ -2,6 +2,7 @@ streamlit
 plotly
 pandas
 httpx
+ollama
 PyJWT[crypto]
 cryptography
 keyring
@@ -10,4 +11,3 @@ pytr
 mt-940
 openpyxl
 pypdf
-

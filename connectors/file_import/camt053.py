@@ -42,7 +42,8 @@ def parse_camt053(xml_text: str, default_account_id: str = "bank_account") -> li
             continue
 
         try:
-            booking_date = datetime.strptime(date_elem.text.strip()[:10], "%Y-%m-%d").date()
+            booking_date = datetime.strptime(
+                date_elem.text.strip()[:10], "%Y-%m-%d").date()
         except ValueError:
             continue
 
@@ -63,7 +64,8 @@ def parse_camt053(xml_text: str, default_account_id: str = "bank_account") -> li
         dbtr_iban = entry.findtext(".//RltdPties/DbtrAcct/Id/IBAN")
         counterparty_iban = cdtr_iban if indicator == "DBIT" else dbtr_iban
 
-        ref = entry.findtext(".//AcctSvcrRef") or entry.findtext(".//Refs/EndToEndId")
+        ref = entry.findtext(
+            ".//AcctSvcrRef") or entry.findtext(".//Refs/EndToEndId")
 
         description = " ".join(desc_parts) if desc_parts else "Bank Transfer"
 

@@ -1,7 +1,9 @@
+import datetime
 from enum import Enum
 import re
 from typing import Callable
 
+from services.llm_client import generate_json
 from connectors.base import RawHolding, RawTransaction
 from connectors.file_import.camt053 import parse_camt053
 from connectors.file_import.csv_profiles import (
@@ -79,7 +81,8 @@ def detect_format(content: str | bytes) -> FileFormat:
         return FileFormat.ABN_AMRO_TAB
 
     # Check lines starting with NL.. IBAN followed by tab or comma
-    first_lines = [line.strip() for line in snippet.splitlines() if line.strip()][:3]
+    first_lines = [line.strip()
+                   for line in snippet.splitlines() if line.strip()][:3]
     for line in first_lines:
         if re.match(r"^NL\d{2}[A-Z]{4}\d{10}", line):
             return FileFormat.ABN_AMRO_TAB
@@ -122,8 +125,63 @@ def parse_statement(content: str | bytes, default_account_id: str = "imported_ac
 
     parser = get_parser(fmt)
     if not parser:
-        return fmt, []
+        return FileFormat.UNKNOWN, parse_statement_with_llm(content, default_account_id)
     return fmt, parser(content, default_account_id)
+
+
+def parse_statement_with_llm(content: str | bytes, default_account_id: str) -> list[RawTransaction]:
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+
+    # LLM might not handle huge files, limit to first 8k chars
+    snippet = content[:8000]
+    schema = {
+        "type": "object",
+        "properties": {
+            "transactions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "amount": {"type": "number", "description": "Negative for outflows/expenses, positive for income"},
+                        "merchant": {"type": "string"},
+                        "description": {"type": "string"}
+                    },
+                    "required": ["date", "amount", "merchant"]
+                }
+            }
+        },
+        "required": ["transactions"]
+    }
+
+    messages = [
+        {"role": "system", "content": "You are a data extraction AI. Extract transactions from the provided raw bank statement. Always convert amounts to negative for expenses and positive for income."},
+        {"role": "user", "content": f"Extract transactions from this statement snippet:\n\n{snippet}"}
+    ]
+
+    parsed = generate_json(messages, schema=schema)
+    if not parsed or "transactions" not in parsed:
+        return []
+
+    txs = []
+    for tx in parsed["transactions"]:
+        try:
+            amt_minor = int(float(tx["amount"]) * 100)
+            d = datetime.datetime.strptime(tx["date"][:10], "%Y-%m-%d").date()
+            txs.append(
+                RawTransaction(
+                    account_external_id=default_account_id,
+                    booking_date=d,
+                    amount_minor=amt_minor,
+                    currency="EUR",
+                    description=tx.get("description", tx["merchant"]),
+                    counterparty_name=tx["merchant"]
+                )
+            )
+        except Exception:
+            continue
+    return txs
 
 
 def parse_statement_holdings(content: str | bytes, default_account_id: str = "imported_account") -> list[RawHolding]:
@@ -136,6 +194,7 @@ def parse_statement_holdings(content: str | bytes, default_account_id: str = "im
             content = content.decode("utf-8", errors="replace")
         return parse_etoro_statement_holdings(content, default_account_id)
     return []
+
 
 def parse_statement_balance(content: str | bytes, default_account_id: str = "imported_account") -> int | None:
     fmt = detect_format(content)

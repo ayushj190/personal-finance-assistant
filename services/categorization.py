@@ -132,7 +132,8 @@ def categorize_transactions(
             tx["category_id"] = heur_cat_id
             tx["category_source"] = "rule"
             if merchant:
-                database.upsert_category_rule(conn, merchant, heur_cat_id, source="seed", confidence=0.95)
+                database.upsert_category_rule(
+                    conn, merchant, heur_cat_id, source="seed", confidence=0.95)
                 rules_cache[merchant] = heur_cat_id
             continue
 
@@ -149,16 +150,18 @@ def categorize_transactions(
 
     # Optional LLM classification batch
     if enable_llm and unknown_merchants:
-        cat_names = [name for name in cat_map.keys() if name != "Income" and name != "Transfers"]
+        cat_names = [name for name in cat_map.keys() if name !=
+                     "Income" and name != "Transfers"]
         merchants_list = list(unknown_merchants.keys())
         # Chunk in batches of 30
         for i in range(0, len(merchants_list), 30):
-            batch = merchants_list[i : i + 30]
+            batch = merchants_list[i: i + 30]
             classifications = classify_merchants(batch, cat_names)
             for merchant, cat_name, conf in classifications:
                 if cat_name in cat_map and conf >= 0.6:
                     cat_id = cat_map[cat_name]
-                    database.upsert_category_rule(conn, merchant, cat_id, source="llm", confidence=conf)
+                    database.upsert_category_rule(
+                        conn, merchant, cat_id, source="llm", confidence=conf)
                     rules_cache[merchant] = cat_id
                     for tx in unknown_merchants.get(merchant, []):
                         tx["category_id"] = cat_id

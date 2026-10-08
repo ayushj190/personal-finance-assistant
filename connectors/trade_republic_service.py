@@ -1,12 +1,6 @@
-import asyncio
-from datetime import date, datetime
-import json
-from pathlib import Path
-from typing import Any
+from datetime import date
 
-from connectors.base import NeedsReauth, RawAccount, RawHolding, RawTransaction
-from connectors.file_import.csv_profiles import to_minor
-from services import secrets_vault
+from connectors.base import RawAccount, RawHolding, RawTransaction
 
 
 class TradeRepublicService:

@@ -1,5 +1,4 @@
 import re
-from typing import Any
 import streamlit as st
 
 
@@ -27,20 +26,13 @@ def mask_if_hidden(text: str | None) -> str:
 
 
 def status_badge(text: str, kind: str = "success") -> str:
-    kind_class = {
-        "success": "badge-success",
-        "warning": "badge-warning",
-        "neutral": "badge-neutral",
-    }.get(kind, "badge-success")
-    return f"<span class='badge-pill {kind_class}'>{text}</span>"
+    return f"<div class='status-dot status-dot-{kind}' title='{text}'></div>"
 
 
 def kpi_card(
     title: str,
     value_str: str,
-    delta_str: str | None = None,
-    is_positive: bool = True,
-    subtext: str | None = None,
+    delta_str: str | None = None, subtext: str | None = None,
 ) -> None:
     if is_hidden():
         value_str = mask_if_hidden(value_str)
@@ -60,4 +52,3 @@ def section_header(title: str, subtitle: str | None = None, badge: str | None = 
 
 def empty_state(title: str, message: str) -> None:
     st.info(f"### 📊 {title}\n\n{message}")
-

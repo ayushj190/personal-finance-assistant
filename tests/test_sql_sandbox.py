@@ -17,7 +17,8 @@ class TestSqlSandbox(unittest.TestCase):
 
     def test_allowed_view_select(self):
         # v_transactions query should succeed
-        df = execute_safe_query("SELECT * FROM v_transactions LIMIT 5", db_path=self.db_path)
+        df = execute_safe_query(
+            "SELECT * FROM v_transactions LIMIT 5", db_path=self.db_path)
         self.assertIsNotNone(df)
 
     def test_multi_statement_rejection(self):

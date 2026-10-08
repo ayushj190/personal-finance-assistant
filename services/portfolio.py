@@ -20,7 +20,8 @@ def calculate_drift(
 
         # 5/25 rule: absolute drift > band OR relative drift > 25% of target
         is_abs_drift = abs(diff_pp) > drift_band_pct
-        is_rel_drift = (abs(diff_pp) / target_pct > 0.25) if target_pct > 0 else (actual_pct > 0)
+        is_rel_drift = (abs(diff_pp) / target_pct >
+                        0.25) if target_pct > 0 else (actual_pct > 0)
         alert = is_abs_drift or is_rel_drift
 
         results.append(
@@ -42,12 +43,14 @@ def rebalance_without_selling(
 ) -> tuple[float, dict[str, float]]:
     all_buckets = sorted(set(current_values.keys()) | set(targets.keys()))
     # Filter targets > 0
-    valid_targets = {b: targets.get(b, 0.0) for b in all_buckets if targets.get(b, 0.0) > 0}
+    valid_targets = {b: targets.get(b, 0.0)
+                     for b in all_buckets if targets.get(b, 0.0) > 0}
     if not valid_targets:
         return 0.0, {}
 
     # Ratio of current value to target fraction
-    total_needed = max(current_values.get(b, 0.0) / (valid_targets[b] / 100.0) for b in valid_targets)
+    total_needed = max(current_values.get(b, 0.0) /
+                       (valid_targets[b] / 100.0) for b in valid_targets)
     buys: dict[str, float] = {}
     for b in valid_targets:
         target_val = (valid_targets[b] / 100.0) * total_needed
@@ -66,7 +69,8 @@ def allocate_contribution(
         return {b: 0.0 for b in targets}
 
     all_buckets = sorted(set(current_values.keys()) | set(targets.keys()))
-    valid_targets = {b: targets.get(b, 0.0) for b in all_buckets if targets.get(b, 0.0) > 0}
+    valid_targets = {b: targets.get(b, 0.0)
+                     for b in all_buckets if targets.get(b, 0.0) > 0}
     if not valid_targets:
         return {}
 
@@ -79,7 +83,8 @@ def allocate_contribution(
     while remaining > 1e-4:
         total = sum(vals.values())
         # Find bucket with lowest ratio of actual to target
-        ratios = {b: (vals[b] / total) / (valid_targets[b] / 100.0) if total > 0 else 0.0 for b in valid_targets}
+        ratios = {b: (vals[b] / total) / (valid_targets[b] / 100.0)
+                  if total > 0 else 0.0 for b in valid_targets}
         min_bucket = min(ratios, key=ratios.get)  # type: ignore
 
         cur_step = min(step, remaining)

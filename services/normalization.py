@@ -21,13 +21,15 @@ LOCATION_SUFFIX = re.compile(
 
 NOISE_PATTERNS = [
     re.compile(r"\b(NR|PAS|TERM(INAL)?)[:\s]*[A-Z0-9]+", re.IGNORECASE),
-    re.compile(r"(\b\d{4}[.\-/]\d{2}[.\-/]\d{2}|\b\d{2}[.\-/]\d{2}[.\-/]\d{2,4})(\s*\d{2}[:.]\d{2}(:\d{2})?)?"),
+    re.compile(
+        r"(\b\d{4}[.\-/]\d{2}[.\-/]\d{2}|\b\d{2}[.\-/]\d{2}[.\-/]\d{2,4})(\s*\d{2}[:.]\d{2}(:\d{2})?)?"),
     re.compile(r"\bLOC\s*\d+\b", re.IGNORECASE),
     re.compile(r"\b\d{4,}\b"),
     re.compile(r"[*#/_\\|]+"),
     re.compile(r"\bIBAN\s*:?\s*[A-Z0-9]{14,34}\b", re.IGNORECASE),
     re.compile(r"\bBIC\s*:?\s*[A-Z0-9]{8,11}\b", re.IGNORECASE),
-    re.compile(r"\bSEPA\s+((DIRECT\s+)?DEBIT|CREDIT\s+TRANSFER|OVERBOEKING)?\b", re.IGNORECASE),
+    re.compile(
+        r"\bSEPA\s+((DIRECT\s+)?DEBIT|CREDIT\s+TRANSFER|OVERBOEKING)?\b", re.IGNORECASE),
     re.compile(r"\bMANDATE(REF)?\s*:?\s*[A-Z0-9-]+\b", re.IGNORECASE),
     re.compile(r"\b(CREDITOR)?(ID|REF)\s*:?\s*[A-Z0-9-]+\b", re.IGNORECASE),
     re.compile(r"\bKENMERK\s*:?\s*[A-Z0-9-]+\b", re.IGNORECASE),

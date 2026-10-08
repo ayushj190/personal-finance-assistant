@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
 import sqlite3
 from typing import Any
 
@@ -17,14 +16,17 @@ def calculate_mortgage_schedule(
     principal_cents: int,
     start_date: date,
     term_months: int,
-    rate_periods: list[dict[str, Any]],  # list of {from_date: date, annual_rate: float, fixed_until: date|None}
-    extra_payments: list[dict[str, Any]],  # list of {paid_date: date, amount_minor: int, recalc: str}
+    # list of {from_date: date, annual_rate: float, fixed_until: date|None}
+    rate_periods: list[dict[str, Any]],
+    # list of {paid_date: date, amount_minor: int, recalc: str}
+    extra_payments: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     schedule: list[dict[str, Any]] = []
     if principal_cents <= 0 or term_months <= 0:
         return schedule
 
-    sorted_rates = sorted(rate_periods, key=lambda x: x["from_date"]) if rate_periods else []
+    sorted_rates = sorted(
+        rate_periods, key=lambda x: x["from_date"]) if rate_periods else []
     current_rate = sorted_rates[0]["annual_rate"] if sorted_rates else 0.0385
 
     extras_by_date = {}
@@ -43,7 +45,8 @@ def calculate_mortgage_schedule(
     r = current_rate / 12.0
     if loan_type == "annuity":
         if r > 0:
-            monthly_payment = balance * r / (1.0 - (1.0 + r) ** (-remaining_months))
+            monthly_payment = balance * r / \
+                (1.0 - (1.0 + r) ** (-remaining_months))
         else:
             monthly_payment = balance / remaining_months
 
@@ -62,7 +65,8 @@ def calculate_mortgage_schedule(
                 current_rate = rp["annual_rate"]
                 r = current_rate / 12.0
                 if loan_type == "annuity" and r > 0 and remaining_months > 0:
-                    monthly_payment = balance * r / (1.0 - (1.0 + r) ** (-remaining_months))
+                    monthly_payment = balance * r / \
+                        (1.0 - (1.0 + r) ** (-remaining_months))
 
         r = current_rate / 12.0
         interest = balance * r
@@ -99,7 +103,8 @@ def calculate_mortgage_schedule(
                 if recalc_mode == "lower_payment" and loan_type == "annuity" and remaining_months > 1:
                     r = current_rate / 12.0
                     if r > 0:
-                        monthly_payment = balance * r / (1.0 - (1.0 + r) ** (-(remaining_months - 1)))
+                        monthly_payment = balance * r / \
+                            (1.0 - (1.0 + r) ** (-(remaining_months - 1)))
                     else:
                         monthly_payment = balance / (remaining_months - 1)
 
@@ -127,7 +132,8 @@ def calculate_mortgage_schedule(
 
 
 def sync_liability_schedule(conn: sqlite3.Connection, liability_id: int) -> None:
-    lib_row = conn.execute("SELECT * FROM liabilities WHERE id = ?", (liability_id,)).fetchone()
+    lib_row = conn.execute(
+        "SELECT * FROM liabilities WHERE id = ?", (liability_id,)).fetchone()
     if not lib_row:
         return
 
@@ -163,7 +169,8 @@ def sync_liability_schedule(conn: sqlite3.Connection, liability_id: int) -> None
     )
 
     with conn:
-        conn.execute("DELETE FROM liability_schedule WHERE liability_id = ?", (liability_id,))
+        conn.execute(
+            "DELETE FROM liability_schedule WHERE liability_id = ?", (liability_id,))
         for s in sched:
             conn.execute(
                 """

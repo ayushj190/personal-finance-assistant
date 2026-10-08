@@ -25,10 +25,19 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
         with open(SEED_FILE, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
         # Migration: ensure apy column exists on accounts
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+        cols = [r["name"]
+                for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
         if "apy" not in cols:
-            conn.execute("ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
-        row = conn.execute("SELECT version FROM schema_version LIMIT 1;").fetchone()
+            conn.execute(
+                "ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
+        # Migration: ensure home_value_minor column exists on liabilities
+        lib_cols = [r["name"] for r in conn.execute(
+            "PRAGMA table_info(liabilities)").fetchall()]
+        if "home_value_minor" not in lib_cols:
+            conn.execute(
+                "ALTER TABLE liabilities ADD COLUMN home_value_minor INTEGER DEFAULT NULL;")
+        row = conn.execute(
+            "SELECT version FROM schema_version LIMIT 1;").fetchone()
         if not row:
             conn.execute("INSERT INTO schema_version (version) VALUES (1);")
     conn.close()
@@ -180,11 +189,13 @@ def upsert_category_rule(
         hit_count = merchant_category_rules.hit_count + 1;
     """
     with conn:
-        conn.execute(query, (merchant_normalized, category_id, source, confidence))
+        conn.execute(query, (merchant_normalized,
+                     category_id, source, confidence))
 
 
 def get_rules_cache(conn: sqlite3.Connection) -> dict[str, int]:
-    rows = conn.execute("SELECT merchant_normalized, category_id FROM merchant_category_rules").fetchall()
+    rows = conn.execute(
+        "SELECT merchant_normalized, category_id FROM merchant_category_rules").fetchall()
     return {r["merchant_normalized"]: r["category_id"] for r in rows}
 
 
@@ -194,7 +205,8 @@ def get_category_map(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def get_own_ibans(conn: sqlite3.Connection) -> set[str]:
-    rows = conn.execute("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''").fetchall()
+    rows = conn.execute(
+        "SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''").fetchall()
     return {r["iban"].replace(" ", "").upper() for r in rows}
 
 
@@ -239,4 +251,3 @@ def get_latest_risk_profile(conn: sqlite3.Connection) -> dict[str, Any] | None:
     ).fetchall()
     res["answers"] = {a["question"]: a["answer"] for a in answers}
     return res
-

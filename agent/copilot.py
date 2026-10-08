@@ -1,12 +1,9 @@
 from datetime import date
 import json
-import re
 from typing import Any
-import httpx
-import pandas as pd
 
 from agent import tools
-from services.llm_client import get_llm_config
+from services.llm_client import generate_json
 
 COPILOT_SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app (like Copilot 365).
 You run locally and privately on the user's machine.
@@ -35,7 +32,13 @@ Your capabilities:
 
 5. FINANCIAL ANALYSIS & VISUALIZATION:
    - Generate safe SQLite queries on views (`v_transactions`, `v_net_worth_daily`, `v_holdings`, `v_monthly_cashflow`, `v_mortgage_payments`) and interactive Plotly charts.
-   - For spending queries, always filter `WHERE is_internal_transfer = 0` and use `-amount_eur` so expenses appear positive.
+   - Database Schema for Views:
+     - v_net_worth_daily (date, asset_class, value_eur)
+     - v_transactions (id, booking_date, institution, account, amount_eur, currency, merchant, category, parent_category, category_kind, is_internal_transfer, liability_id, liability_name)
+     - v_holdings (id, institution, account, ticker, isin, name, asset_type, region, sector, quantity, cost_basis, cost_basis_native, currency, latest_close, prev_close, value_eur, unrealized_pnl_eur)
+     - v_monthly_cashflow (month, income_eur, fixed_eur, discretionary_eur, savings_eur)
+     - v_mortgage_payments (loan_name, lender, month_idx, due_date, payment_eur, interest_eur, principal_eur, extra_eur, balance_eur)
+   - For spending queries on v_transactions, always filter `WHERE is_internal_transfer = 0` and use `-amount_eur` so expenses appear positive.
 
 OUTPUT FORMAT:
 You MUST respond with a JSON object.
@@ -66,56 +69,17 @@ Available Tools:
 - get_portfolio_and_risk_summary()
 - categorize_expenses(limit: number)
 - query_financial_data(sql: string, chart_spec: object | null, summary_template: string)
+- search_web(query: string)
+- analyze_market_data(ticker: string)
+- execute_python(code: string)
 
 Example chart_spec:
-{"type": "bar" | "line" | "area" | "pie", "x": "col1", "y": "col2", "title": "Chart Title"}
+{"type": "bar" | "line" | "area" | "pie" | "scatter" | "waterfall" | "sunburst", "x": "col1", "y": "col2", "title": "Chart Title"}
+
+Note: Use execute_python for complex, multi-step data analysis where basic SQL is insufficient (e.g. comparing spending across age brackets, moving averages, etc.). `pd`, `np`, and `sqlite3` are available in the python environment. You can access the db via `sqlite3.connect(DB_PATH)`. You must print the final result to stdout.
 
 Today's date is: {today}.
 """
-
-
-def _clean_json_response(content: str) -> dict[str, Any] | None:
-    content = content.strip()
-    if content.startswith("```json"):
-        content = content[7:]
-    elif content.startswith("```"):
-        content = content[3:]
-    if content.endswith("```"):
-        content = content[:-3]
-    content = content.strip()
-
-    try:
-        return json.loads(content)
-    except Exception:
-        # Fallback: find first { and last }
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except Exception:
-                pass
-    return None
-
-
-def _call_ollama(messages: list[dict[str, str]]) -> dict[str, Any] | None:
-    endpoint, model = get_llm_config()
-    url = f"{endpoint}/v1/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": 0.1,
-        "messages": messages,
-        "response_format": {"type": "json_object"},
-    }
-    try:
-        with httpx.Client(timeout=45.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            raw_content = data["choices"][0]["message"]["content"]
-            return _clean_json_response(raw_content)
-    except Exception:
-        return None
 
 
 def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -130,6 +94,9 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         "get_portfolio_and_risk_summary": tools.tool_get_portfolio_and_risk_summary,
         "categorize_expenses": tools.tool_categorize_expenses,
         "query_financial_data": tools.tool_query_financial_data,
+        "search_web": tools.tool_search_web,
+        "analyze_market_data": tools.tool_analyze_market_data,
+        "execute_python": tools.tool_execute_python,
     }
 
     fn = tool_map.get(tool_name)
@@ -148,7 +115,8 @@ def run_copilot(
     uploaded_files: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run full Copilot conversational loop with tool calling and file handling."""
-    system_prompt = COPILOT_SYSTEM_PROMPT.replace("{today}", date.today().isoformat())
+    system_prompt = COPILOT_SYSTEM_PROMPT.replace(
+        "{today}", date.today().isoformat())
 
     # Check if files were uploaded directly
     if uploaded_files:
@@ -161,7 +129,8 @@ def run_copilot(
             )
             file_results.append(res.get("message", f"Processed {uf['name']}"))
 
-        combined_msg = "### 📥 Statement Import Results:\n" + "\n".join(f"- {m}" for m in file_results)
+        combined_msg = "### 📥 Statement Import Results:\n" + \
+            "\n".join(f"- {m}" for m in file_results)
         return {
             "role": "assistant",
             "content": combined_msg,
@@ -181,7 +150,7 @@ def run_copilot(
 
     messages.append({"role": "user", "content": user_message})
 
-    resp_json = _call_ollama(messages)
+    resp_json = generate_json(messages)
 
     if not resp_json:
         # Heuristic fallback for common direct actions if Ollama is offline/starting
@@ -203,10 +172,12 @@ def run_copilot(
             classes = res.get("asset_classes_eur", {})
             profile = res.get("active_allocation_profile") or {}
             prof_name = profile.get("name", "None")
-            lines = [f"**Portfolio & Drift Overview:**", f"- Active Allocation Profile: `{prof_name}`"]
+            lines = [f"**Portfolio & Drift Overview:**",
+                     f"- Active Allocation Profile: `{prof_name}`"]
             for ac, val in classes.items():
                 lines.append(f"- **{ac.capitalize()}**: €{val:,.2f}")
-            lines.append("\n*Tip: Start Ollama (`ollama serve`) for full interactive reasoning and automated rebalancing recommendations.*")
+            lines.append(
+                "\n*Tip: Start Ollama (`ollama serve`) for full interactive reasoning and automated rebalancing recommendations.*")
             return {"role": "assistant", "content": "\n".join(lines), "figure": None, "df": None, "sql": None}
         if "risk" in msg_l:
             rp = tools.tool_get_risk_profile()
@@ -235,7 +206,6 @@ def run_copilot(
             "sql": None,
         }
 
-
     tool_call = resp_json.get("tool_call")
     if not tool_call or not isinstance(tool_call, dict) or not tool_call.get("name"):
         # Pure conversation response
@@ -258,7 +228,8 @@ def run_copilot(
 
     # If it was a query or data tool, format response nicely
     if t_name == "query_financial_data":
-        ans = tool_result.get("answer", resp_json.get("message", "Query executed successfully."))
+        ans = tool_result.get("answer", resp_json.get(
+            "message", "Query executed successfully."))
         return {
             "role": "assistant",
             "content": ans,
@@ -270,7 +241,8 @@ def run_copilot(
     # For action tools (settings, mortgage, savings, risk profile)
     status_msg = tool_result.get("message", "")
     lead_msg = resp_json.get("message", "")
-    full_content = f"{lead_msg}\n\n✅ {status_msg}".strip() if lead_msg else f"✅ {status_msg}"
+    full_content = f"{lead_msg}\n\n✅ {status_msg}".strip(
+    ) if lead_msg else f"✅ {status_msg}"
 
     if t_name == "get_portfolio_and_risk_summary":
         # Second call to LLM to summarize portfolio balance vs risk profile
@@ -280,9 +252,10 @@ def run_copilot(
             "Summarize the user's asset allocation, current drift, and how it aligns with their risk tolerance. "
             "Remind them of their risk tolerance and portfolio targets. Do NOT give financial advice or suggest specific assets."
         )
-        messages.append({"role": "assistant", "content": json.dumps(resp_json)})
+        messages.append(
+            {"role": "assistant", "content": json.dumps(resp_json)})
         messages.append({"role": "user", "content": summary_prompt})
-        second_resp = _call_ollama(messages)
+        second_resp = generate_json(messages)
         if second_resp and second_resp.get("message"):
             full_content = second_resp["message"]
 

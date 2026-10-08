@@ -40,18 +40,21 @@ class TestNormalization(unittest.TestCase):
 
         for raw, expected in cases:
             cleaned = clean_merchant(raw)
-            self.assertEqual(cleaned, expected, f"Failed for '{raw}': got '{cleaned}', expected '{expected}'")
+            self.assertEqual(
+                cleaned, expected, f"Failed for '{raw}': got '{cleaned}', expected '{expected}'")
 
     def test_detect_internal_transfer(self):
         own_ibans = {"NL91ABNA0417164300", "NL02REVO7291820000"}
 
         # Matched own IBAN
-        self.assertTrue(detect_internal_transfer("Overboeking", counterparty_iban="NL91ABNA0417164300", own_ibans=own_ibans))
+        self.assertTrue(detect_internal_transfer(
+            "Overboeking", counterparty_iban="NL91ABNA0417164300", own_ibans=own_ibans))
         # Keyword matches
         self.assertTrue(detect_internal_transfer("eToro Trading Platform WDL"))
         self.assertTrue(detect_internal_transfer("Trade Republic Top-Up"))
         self.assertTrue(detect_internal_transfer("Top-Up Revolut"))
-        self.assertTrue(detect_internal_transfer("Overboeking naar spaarrekening"))
+        self.assertTrue(detect_internal_transfer(
+            "Overboeking naar spaarrekening"))
 
         # Ordinary merchant should NOT be transfer
         self.assertFalse(detect_internal_transfer("Albert Heijn Supermarket"))

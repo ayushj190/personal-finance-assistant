@@ -1,7 +1,6 @@
-from datetime import date, datetime
+from datetime import datetime
 import io
 import re
-from typing import Any
 from pypdf import PdfReader
 
 from connectors.base import RawHolding, RawTransaction
@@ -32,11 +31,13 @@ def parse_trade_republic_pdf(
 
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    is_statement = any(k in text.upper() for k in ("KONTOAUSZUG", "REKENINGAFSCHRIFT", "EINDSALDO", "BEGINSALDO", "ACCOUNT STATEMENT"))
+    is_statement = any(k in text.upper() for k in (
+        "KONTOAUSZUG", "REKENINGAFSCHRIFT", "EINDSALDO", "BEGINSALDO", "ACCOUNT STATEMENT"))
     if not is_statement and ("WERTPAPIERABRECHNUNG" in text.upper() or "ABRECHNUNG" in text.upper()):
         isin_match = re.search(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b", text)
         date_match = re.search(r"(\d{2}\.\d{2}\.\d{4})", text)
-        qty_match = re.search(r"(\d+(?:[,\.]\d+)?)\s*(?:Stk|Stück|St\b)", text, re.IGNORECASE)
+        qty_match = re.search(
+            r"(\d+(?:[,\.]\d+)?)\s*(?:Stk|Stück|St\b)", text, re.IGNORECASE)
         total_match = re.search(
             r"(?:Gesamtbetrag|Gesamt|Ausmachender Betrag|Total)\s*[:\s]*([+-]?\s*[\d\.,]+)\s*(?:€|EUR)",
             text,
@@ -47,7 +48,8 @@ def parse_trade_republic_pdf(
         b_date = None
         if date_match:
             try:
-                b_date = datetime.strptime(date_match.group(1), "%d.%m.%Y").date()
+                b_date = datetime.strptime(
+                    date_match.group(1), "%d.%m.%Y").date()
             except ValueError:
                 pass
 
@@ -81,7 +83,8 @@ def parse_trade_republic_pdf(
                         name=isin,
                         asset_type="stock",
                         quantity=qty,
-                        cost_basis_minor=abs(to_minor(total_match.group(1))) if total_match else 0,
+                        cost_basis_minor=abs(
+                            to_minor(total_match.group(1))) if total_match else 0,
                         currency="EUR",
                     )
                 )
@@ -94,40 +97,46 @@ def parse_trade_republic_pdf(
     # 2. Check for Kontoauszug (Account statement table)
     # Line pattern: DD.MM.YYYY Description [+-]Amount [EUR|€]
     # And handle Dutch dates: DD MMM YYYY (e.g. 01 sep 2026)
-    date_regex = re.compile(r"^(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{2}\s+[a-z]{3}\.?\s+\d{4})", re.IGNORECASE)
-    nl_months = {"jan": "01", "feb": "02", "maa": "03", "apr": "04", "mei": "05", "jun": "06", 
+    date_regex = re.compile(
+        r"^(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{2}\s+[a-z]{3}\.?\s+\d{4})", re.IGNORECASE)
+    nl_months = {"jan": "01", "feb": "02", "maa": "03", "apr": "04", "mei": "05", "jun": "06",
                  "jul": "07", "aug": "08", "sep": "09", "okt": "10", "nov": "11", "dec": "12"}
 
     for line in lines:
-        line = line.replace("\xa0", " ") # Clean up non-breaking spaces
+        line = line.replace("\xa0", " ")  # Clean up non-breaking spaces
         d_match = date_regex.match(line)
         if not d_match:
             continue
 
-        date_str = d_match.group(1).replace(".", "")
+        _date_str = d_match.group(1).replace(".", "")
         try:
             if "." in d_match.group(1):
-                booking_date = datetime.strptime(d_match.group(1), "%d.%m.%Y").date()
+                booking_date = datetime.strptime(
+                    d_match.group(1), "%d.%m.%Y").date()
             elif "-" in d_match.group(1):
-                booking_date = datetime.strptime(d_match.group(1), "%Y-%m-%d").date()
+                booking_date = datetime.strptime(
+                    d_match.group(1), "%Y-%m-%d").date()
             else:
                 parts = d_match.group(1).lower().replace(".", "").split()
                 d, m, y = parts[0], parts[1], parts[2]
                 m_num = nl_months.get(m, "01")
-                booking_date = datetime.strptime(f"{d}.{m_num}.{y}", "%d.%m.%Y").date()
+                booking_date = datetime.strptime(
+                    f"{d}.{m_num}.{y}", "%d.%m.%Y").date()
         except ValueError:
             continue
 
-        rest = line[len(d_match.group(1)) :].strip()
+        rest = line[len(d_match.group(1)):].strip()
         # Find all amounts at the end or embedded
-        amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", rest)
+        amounts = re.findall(
+            r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", rest)
         if not amounts:
             continue
-            
+
         # The transaction amount is usually the first amount before the balance, or just the amount if no balance
-        raw_amt_str = amounts[-2].replace(" ", "") if len(amounts) >= 2 else amounts[-1].replace(" ", "")
+        raw_amt_str = amounts[-2].replace(" ", "") if len(
+            amounts) >= 2 else amounts[-1].replace(" ", "")
         amt_minor = to_minor(raw_amt_str)
-        
+
         desc_lower = rest.lower()
         if "withdrawal" in desc_lower or "opname" in desc_lower or "af" in desc_lower.split():
             amt_minor = -abs(amt_minor)
@@ -162,7 +171,7 @@ def parse_trade_republic_pdf(
             continue
         isin = isin_m.group(1)
         # Search for quantities and prices after ISIN
-        after_isin = line[isin_m.end() :].strip()
+        after_isin = line[isin_m.end():].strip()
         numbers = re.findall(r"[\d\.,]+", after_isin)
         if len(numbers) >= 2:
             try:
@@ -175,7 +184,8 @@ def parse_trade_republic_pdf(
                             ticker=isin,
                             isin=isin,
                             name=isin,
-                            asset_type="etf" if isin.startswith(("IE", "LU", "FR")) else "stock",
+                            asset_type="etf" if isin.startswith(
+                                ("IE", "LU", "FR")) else "stock",
                             quantity=qty,
                             cost_basis_minor=val_cents,
                             currency="EUR",
@@ -194,7 +204,8 @@ def parse_trade_republic_pdf(
     )
     if eindsaldo_match:
         try:
-            final_balance_minor = to_minor(eindsaldo_match.group(1).replace(" ", ""))
+            final_balance_minor = to_minor(
+                eindsaldo_match.group(1).replace(" ", ""))
         except Exception:
             pass
 
@@ -203,18 +214,22 @@ def parse_trade_republic_pdf(
         for idx, line in enumerate(lines):
             line_u = line.upper()
             if any(k in line_u for k in ("DEUTSCHE BANK", "BETAALREKENING", "ESCROW-REKENINGEN SALDO", "EINDSALDO", "ENDSALDO")):
-                amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", line)
+                amounts = re.findall(
+                    r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", line)
                 if amounts:
                     try:
-                        final_balance_minor = to_minor(amounts[-1].replace(" ", ""))
+                        final_balance_minor = to_minor(
+                            amounts[-1].replace(" ", ""))
                         break
                     except Exception:
                         pass
                 if idx + 1 < len(lines):
-                    next_amounts = re.findall(r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", lines[idx + 1])
+                    next_amounts = re.findall(
+                        r"([+-]?\s*[\d\.]+,\d{2}|[+-]?\s*[\d,]+\.\d{2})", lines[idx + 1])
                     if next_amounts:
                         try:
-                            final_balance_minor = to_minor(next_amounts[-1].replace(" ", ""))
+                            final_balance_minor = to_minor(
+                                next_amounts[-1].replace(" ", ""))
                             break
                         except Exception:
                             pass

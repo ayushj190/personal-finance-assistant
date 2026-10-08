@@ -11,7 +11,17 @@ SKY = "#38BDF8"
 EMERALD = "#34D399"
 SLATE = "#94A3B8"
 
-COLOR_PALETTE = [TEAL, VIOLET, AMBER, ROSE, SKY, EMERALD, "#F472B6", "#818CF8", "#A3E635", SLATE]
+COLOR_PALETTE = [TEAL, VIOLET, AMBER, ROSE, SKY,
+                 EMERALD, "#F472B6", "#818CF8", "#A3E635", SLATE]
+
+COLOR_INCOME = EMERALD
+COLOR_FIXED = ROSE
+COLOR_DISCRETIONARY = AMBER
+COLOR_SAVINGS = TEAL
+COLOR_CASH = TEAL
+COLOR_INVESTMENT = SKY
+COLOR_LIABILITY = ROSE
+COLOR_UNCATEGORIZED = SLATE
 
 
 def _patch_plotly_chart() -> None:
@@ -25,6 +35,9 @@ def _patch_plotly_chart() -> None:
             kwargs["theme"] = None
         if "use_container_width" not in kwargs:
             kwargs["use_container_width"] = True
+        if "config" not in kwargs:
+            kwargs["config"] = {}
+        kwargs["config"]["displayModeBar"] = False
 
         if hasattr(figure_or_data, "layout"):
             if not figure_or_data.layout.paper_bgcolor:
@@ -41,14 +54,16 @@ def _patch_plotly_chart() -> None:
 
 
 def register_plotly_theme() -> None:
-    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
+    current_theme = st.session_state.get(
+        "theme", "dark") if hasattr(st, "session_state") else "dark"
     template = go.layout.Template()
     template.layout.paper_bgcolor = "rgba(0,0,0,0)"
     template.layout.plot_bgcolor = "rgba(0,0,0,0)"
     template.layout.colorway = COLOR_PALETTE
 
     if current_theme == "light":
-        template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#0F172A", size=13)
+        template.layout.font = dict(
+            family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#0F172A", size=13)
         template.layout.xaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.25)",
             zerolinecolor="rgba(148, 163, 184, 0.35)",
@@ -70,7 +85,8 @@ def register_plotly_theme() -> None:
             borderwidth=1,
         )
     else:
-        template.layout.font = dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#F8FAFC", size=13)
+        template.layout.font = dict(
+            family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", color="#F8FAFC", size=13)
         template.layout.xaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.12)",
             zerolinecolor="rgba(148, 163, 184, 0.2)",
@@ -98,7 +114,8 @@ def register_plotly_theme() -> None:
 
 
 def inject_custom_css() -> None:
-    current_theme = st.session_state.get("theme", "dark") if hasattr(st, "session_state") else "dark"
+    current_theme = st.session_state.get(
+        "theme", "dark") if hasattr(st, "session_state") else "dark"
     if current_theme == "light":
         css_theme = """
         :root, .stApp {
@@ -106,16 +123,23 @@ def inject_custom_css() -> None:
             --secondary-background-color: #FFFFFF !important;
             --text-color: #0F172A !important;
             --primary-color: #0D9488 !important;
+            --tab-border: #E2E8F0 !important;
+            --tab-inactive-bg: #F1F5F9 !important;
+            --button-border: #CBD5E1 !important;
+            --button-bg: #FFFFFF !important;
+            --text-muted: #334155 !important;
             background-color: #F8FAFC !important;
             color: #0F172A !important;
         }
 
         /* Sidebar in Light Mode */
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid #E2E8F0 !important;
+        }
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
         div[data-testid="stSidebarUserContent"] {
             background-color: #FFFFFF !important;
-            border-right: 1px solid #E2E8F0 !important;
             color: #0F172A !important;
         }
         section[data-testid="stSidebar"] * {
@@ -125,7 +149,7 @@ def inject_custom_css() -> None:
         section[data-testid="stSidebar"] .stMarkdown span,
         section[data-testid="stSidebar"] .stCaption,
         section[data-testid="stSidebar"] .stCaption * {
-            color: #64748B !important;
+            color: #334155 !important;
         }
         section[data-testid="stSidebar"] h1,
         section[data-testid="stSidebar"] h2,
@@ -163,8 +187,8 @@ def inject_custom_css() -> None:
             font-weight: 600 !important;
         }
         [data-testid="stMetricLabel"] svg {
-            fill: #64748B !important;
-            color: #64748B !important;
+            fill: #334155 !important;
+            color: #334155 !important;
             opacity: 0.9 !important;
         }
         [data-testid="stMetricValue"],
@@ -194,7 +218,7 @@ def inject_custom_css() -> None:
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
         div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
-            color: #64748B !important;
+            color: #334155 !important;
         }
 
         /* Tabs in Light Mode */
@@ -330,16 +354,23 @@ def inject_custom_css() -> None:
             --secondary-background-color: #1E293B !important;
             --text-color: #F8FAFC !important;
             --primary-color: #2DD4BF !important;
+            --tab-border: rgba(148, 163, 184, 0.25) !important;
+            --tab-inactive-bg: #0F172A !important;
+            --button-border: rgba(148, 163, 184, 0.25) !important;
+            --button-bg: rgba(30, 41, 59, 0.5) !important;
+            --text-muted: #94A3B8 !important;
             background-color: #0B1120 !important;
             color: #F8FAFC !important;
         }
 
         /* Sidebar in Dark Mode */
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid rgba(148, 163, 184, 0.15) !important;
+        }
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
         div[data-testid="stSidebarUserContent"] {
             background-color: #0B1120 !important;
-            border-right: 1px solid rgba(148, 163, 184, 0.15) !important;
             color: #F8FAFC !important;
         }
         section[data-testid="stSidebar"] * {
@@ -533,82 +564,45 @@ def inject_custom_css() -> None:
         <style>
         __CSS_THEME__
 
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+        }
+
+        /* Move main h1 titles into the top gap */
+        .block-container h1 {
+            margin-top: -1.5rem !important;
+            padding-top: 0 !important;
+        }
+        /* Push sidebar content up slightly to fill gap */
+        [data-testid="stSidebarContent"] {
+            padding-top: 0rem !important;
+        }
+
         header[data-testid="stHeader"] {
             background-color: transparent !important;
+            pointer-events: none !important;
         }
-
-        /* --- VSCode-style Double Sidebar Layout --- */
-        div[data-testid="stSidebarContent"] {
-            display: flex !important;
-            flex-direction: row !important;
-            padding: 0 !important;
+        header[data-testid="stHeader"] * {
+            pointer-events: auto !important;
         }
-
-        /* Nav Menu (Icons column) */
-        div[data-testid="stSidebarNav"] {
-            width: 68px !important;
-            min-width: 68px !important;
-            height: 100vh !important;
-            display: flex !important;
-            flex-direction: column !important;
-            border-right: 1px solid rgba(148, 163, 184, 0.25) !important;
-            padding-top: 15px !important;
-            padding-bottom: 20px !important;
-            background-color: transparent !important;
+        
+        /* Ensure the sidebar button can be seen outside, but keep inner contents clipped */
+        [data-testid="stSidebar"] {
+            overflow: visible !important;
         }
-
-        div[data-testid="stSidebarNavItems"] {
-            display: flex !important;
-            flex-direction: column !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
+        [data-testid="stSidebarUserContent"] {
+            overflow-x: hidden !important;
+            overflow-y: hidden !important;
         }
-
-        div[data-testid="stSidebarNavSeparator"] {
+        
+        /* Hide sidebar collapse button so it cannot be closed */
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="collapsedControl"] {
             display: none !important;
         }
 
-        /* Main Sidebar Panel (User Content / Copilot) */
-        div[data-testid="stSidebarUserContent"] {
-            flex: 1 !important;
-            height: 100vh !important;
-            overflow-y: auto !important;
-            padding: 1.5rem 1rem !important;
-            width: 100% !important;
-        }
 
-        /* Center icons and hide text */
-        [data-testid="stSidebarNavLinkContainer"] {
-            width: 100% !important;
-        }
-        [data-testid="stSidebarNavLink"] {
-            display: flex !important;
-            justify-content: center !important;
-            padding: 12px 0 !important;
-            margin: 0 !important;
-        }
-        [data-testid="stSidebarNavLink"] > span[label] {
-            display: none !important;
-        }
-        [data-testid="stSidebarNavLink"] > span:first-child {
-            margin: 0 !important;
-            font-size: 1.4rem !important;
-        }
-
-        /* Push Settings to the bottom */
-        div[data-testid="stSidebarNavItems"] > li:last-child {
-            margin-top: auto !important;
-        }
-
-        /* Fix Header/Collapse Button position */
-        [data-testid="stSidebarHeader"] {
-            position: absolute !important;
-            right: 0;
-            top: 0;
-            padding: 10px !important;
-            z-index: 100;
-        }
         /* ------------------------------------------ */
 
         [data-testid="stMetricLabel"] {
@@ -707,6 +701,42 @@ def inject_custom_css() -> None:
             color: #94A3B8;
             border-color: rgba(148, 163, 184, 0.28);
         }
+
+        /* Status Dots */
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot-success { background-color: #34D399; box-shadow: 0 0 8px #34D399; }
+        .status-dot-warning { background-color: #FBBF24; box-shadow: 0 0 8px #FBBF24; }
+        .status-dot-danger { background-color: #FB7185; box-shadow: 0 0 8px #FB7185; }
+        .status-dot-neutral { background-color: #94A3B8; box-shadow: 0 0 4px #94A3B8; }
+
+
+
+        /* Hide Top Right Default Elements & Header */
+        [data-testid="stToolbar"] { display: none !important; }
+        .stDeployButton { display: none !important; }
+        [data-testid="stAppMetaInfo"] { display: none !important; }
+
+
+
+
+
+
+
+        /* Hide Scrollbars */
+        ::-webkit-scrollbar {
+            width: 0px !important;
+            background: transparent !important;
+        }
+        * {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+        }
+
         </style>
         """
 
@@ -714,5 +744,3 @@ def inject_custom_css() -> None:
         dedent(raw_css.replace("__CSS_THEME__", css_theme)).strip(),
         unsafe_allow_html=True,
     )
-
-

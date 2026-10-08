@@ -1,15 +1,32 @@
 import json
 from typing import Any
 import httpx
+from ollama import Client
 
 from config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from services import secrets_vault
 
 
-def get_llm_config() -> tuple[str, str]:
+def get_ollama_client() -> tuple[Client, str]:
     endpoint = secrets_vault.get("ollama_endpoint") or DEFAULT_OLLAMA_URL
     model = secrets_vault.get("ollama_model") or DEFAULT_MODEL
-    return endpoint.rstrip("/"), model
+    return Client(host=endpoint), model
+
+
+def generate_json(messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    client, model = get_ollama_client()
+    try:
+        response = client.chat(
+            model=model,
+            messages=messages,
+            format=schema if schema else 'json',
+            options={"temperature": 0.0}
+        )
+        content = response['message']['content']
+        return json.loads(content)
+    except Exception as e:
+        print(f"Ollama generation error: {e}")
+        return None
 
 
 def search_brave(query: str) -> str:
@@ -21,13 +38,15 @@ def search_brave(query: str) -> str:
         with httpx.Client(timeout=8.0) as client:
             resp = client.get(
                 "https://api.search.brave.com/res/v1/web/search",
-                headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+                headers={"Accept": "application/json",
+                         "X-Subscription-Token": api_key},
                 params={"q": f"{query} company business", "count": 2},
             )
             if resp.status_code == 200:
                 data = resp.json()
                 results = data.get("web", {}).get("results", [])
-                snippets = [r.get("description") or r.get("title", "") for r in results if r.get("description") or r.get("title")]
+                snippets = [r.get("description") or r.get("title", "")
+                            for r in results if r.get("description") or r.get("title")]
                 return " ".join(snippets[:2])
     except Exception:
         pass
@@ -37,18 +56,11 @@ def search_brave(query: str) -> str:
 def classify_merchants(
     merchants: list[str],
     categories: list[str],
-    endpoint: str | None = None,
-    model: str | None = None,
     use_web_search: bool = True,
 ) -> list[tuple[str, str, float]]:
     if not merchants or not categories:
         return []
 
-    ep, mdl = get_llm_config()
-    endpoint = endpoint or ep
-    model = model or mdl
-
-    # If Brave API key is available and web search is enabled, fetch context for unknown merchants
     brave_ctx_lines = []
     if use_web_search and secrets_vault.get("brave_api_key"):
         for m in merchants:
@@ -58,14 +70,15 @@ def classify_merchants(
 
     web_ctx_str = ""
     if brave_ctx_lines:
-        web_ctx_str = "\nWeb Search Context for merchants:\n" + "\n".join(brave_ctx_lines) + "\n"
+        web_ctx_str = "\nWeb Search Context for merchants:\n" + \
+            "\n".join(brave_ctx_lines) + "\n"
 
     prompt = (
         "Classify the following merchant/transaction names into one of the allowed categories.\n"
         f"Allowed categories: {json.dumps(categories)}\n"
         f"{web_ctx_str}"
         f"Merchants: {json.dumps(merchants)}\n"
-        "Return a JSON object with a list of classifications containing: merchant, category, confidence (0.0 to 1.0)."
+        "Return a JSON object with a list of classifications."
     )
 
     schema = {
@@ -87,34 +100,17 @@ def classify_merchants(
         "required": ["classifications"],
     }
 
-    url = f"{endpoint}/v1/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": 0.0,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a financial classification system. Output strict JSON only.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {"name": "merchant_classification", "schema": schema, "strict": True},
-        },
-    }
+    messages = [
+        {"role": "system", "content": "You are a financial classification system. Output strict JSON only."},
+        {"role": "user", "content": prompt},
+    ]
 
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code != 200:
-                return []
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            results = []
-            for item in parsed.get("classifications", []):
-                results.append((item["merchant"], item["category"], float(item.get("confidence", 0.8))))
-            return results
-    except Exception:
+    parsed = generate_json(messages, schema=schema)
+    if not parsed:
         return []
+
+    results = []
+    for item in parsed.get("classifications", []):
+        results.append((item["merchant"], item["category"],
+                       float(item.get("confidence", 0.8))))
+    return results

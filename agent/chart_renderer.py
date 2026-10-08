@@ -22,27 +22,60 @@ def render_chart(df: pd.DataFrame, chart_spec: dict[str, Any] | None) -> go.Figu
         if chart_type == "bar":
             if x in cols and y in cols:
                 color_col = color if color in cols else None
-                fig = px.bar(df, x=x, y=y, color=color_col, title=title, template="pfa_theme")
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                fig = px.bar(df, x=x, y=y, color=color_col,
+                             title=title, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
                 return fig
         elif chart_type == "line":
             if x in cols and y in cols:
                 color_col = color if color in cols else None
-                fig = px.line(df, x=x, y=y, color=color_col, title=title, markers=True, template="pfa_theme")
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                fig = px.line(df, x=x, y=y, color=color_col,
+                              title=title, markers=True, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
                 return fig
         elif chart_type == "area":
             if x in cols and y in cols:
                 color_col = color if color in cols else None
-                fig = px.area(df, x=x, y=y, color=color_col, title=title, template="pfa_theme")
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                fig = px.area(df, x=x, y=y, color=color_col,
+                              title=title, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
+                return fig
+        elif chart_type == "scatter":
+            if x in cols and y in cols:
+                color_col = color if color in cols else None
+                fig = px.scatter(df, x=x, y=y, color=color_col,
+                                 title=title, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
+                return fig
+        elif chart_type == "waterfall":
+            if x in cols and y in cols:
+                measure = ["relative"] * len(df)
+                fig = go.Figure(go.Waterfall(
+                    name="Cashflow", orientation="v", measure=measure, x=df[x], y=df[y]))
+                fig.update_layout(title=title, template="pfa_theme",
+                                  paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                return fig
+        elif chart_type == "sunburst":
+            name_col = names or x
+            val_col = values or y
+            if name_col in cols and val_col in cols:
+                fig = px.sunburst(
+                    df, path=[name_col], values=val_col, title=title, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
                 return fig
         elif chart_type == "pie":
             name_col = names or x
             val_col = values or y
             if name_col in cols and val_col in cols:
-                fig = px.pie(df, names=name_col, values=val_col, title=title, hole=0.4, template="pfa_theme")
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                fig = px.pie(df, names=name_col, values=val_col,
+                             title=title, hole=0.4, template="pfa_theme")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
                 return fig
     except Exception:
         pass

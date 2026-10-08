@@ -1,5 +1,4 @@
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 import time
 from typing import Any
 import uuid
@@ -18,7 +17,8 @@ BASE_URL = "https://api.enablebanking.com"
 
 def generate_rsa_keypair() -> tuple[str, str]:
     """Generates a 2048-bit RSA private and public key pair in PEM format."""
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048)
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
@@ -44,7 +44,8 @@ class EnableBankingService:
         app_id = secrets_vault.get("eb_app_id")
         key_pem = secrets_vault.get("eb_key_pem")
         if not app_id or not key_pem:
-            raise ValueError("Enable Banking app_id or private key not configured.")
+            raise ValueError(
+                "Enable Banking app_id or private key not configured.")
 
         now = int(time.time())
         payload = {
@@ -63,7 +64,8 @@ class EnableBankingService:
         }
 
     def start_auth(self, aspsp_name: str, country: str = "NL", redirect_url: str = "https://localhost:8501/") -> str:
-        valid_until = (datetime.now(timezone.utc) + timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        valid_until = (datetime.now(timezone.utc) +
+                       timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
         state = str(uuid.uuid4())
         payload = {
             "access": {"valid_until": valid_until},
@@ -73,7 +75,8 @@ class EnableBankingService:
             "psu_type": "personal",
         }
         with httpx.Client(timeout=30.0) as client:
-            resp = client.post(f"{BASE_URL}/auth", json=payload, headers=self._headers())
+            resp = client.post(f"{BASE_URL}/auth",
+                               json=payload, headers=self._headers())
             if resp.status_code >= 400:
                 err_text = resp.text
                 if "WRONG_ASPSP_PROVIDED" in err_text:
@@ -82,29 +85,34 @@ class EnableBankingService:
                         f"In SANDBOX mode, live banks (ABN AMRO, ING, etc.) cannot be accessed directly; "
                         f"use 'Mock ASPSP' or Rabobank for testing. For live accounts, a PRODUCTION app is required."
                     )
-                raise RuntimeError(f"Enable Banking auth start failed: {err_text}")
+                raise RuntimeError(
+                    f"Enable Banking auth start failed: {err_text}")
             data = resp.json()
             return data["url"]
 
     def get_aspsps(self, country: str | None = None) -> list[dict[str, Any]]:
         params = {"country": country} if country else {}
         with httpx.Client(timeout=30.0) as client:
-            resp = client.get(f"{BASE_URL}/aspsps", params=params, headers=self._headers())
+            resp = client.get(f"{BASE_URL}/aspsps",
+                              params=params, headers=self._headers())
             if resp.status_code >= 400:
                 return []
             return resp.json().get("aspsps", [])
 
     def complete_auth(self, code: str) -> dict[str, Any]:
         with httpx.Client(timeout=30.0) as client:
-            resp = client.post(f"{BASE_URL}/sessions", json={"code": code}, headers=self._headers())
+            resp = client.post(f"{BASE_URL}/sessions",
+                               json={"code": code}, headers=self._headers())
             if resp.status_code >= 400:
-                raise RuntimeError(f"Enable Banking complete auth failed: {resp.text}")
+                raise RuntimeError(
+                    f"Enable Banking complete auth failed: {resp.text}")
             data = resp.json()
             session_id = data.get("session_id")
             if session_id:
                 secrets_vault.put(self.session_vault_key, session_id)
                 if "access" in data and "valid_until" in data["access"]:
-                    secrets_vault.put(f"{self.session_vault_key}_valid_until", data["access"]["valid_until"])
+                    secrets_vault.put(
+                        f"{self.session_vault_key}_valid_until", data["access"]["valid_until"])
             return data
 
     def fetch_accounts(self) -> list[RawAccount]:
@@ -113,9 +121,11 @@ class EnableBankingService:
             raise NeedsReauth("No active Enable Banking session found.")
 
         with httpx.Client(timeout=30.0) as client:
-            resp = client.get(f"{BASE_URL}/sessions/{session_id}", headers=self._headers())
+            resp = client.get(
+                f"{BASE_URL}/sessions/{session_id}", headers=self._headers())
             if resp.status_code in (401, 403, 404):
-                raise NeedsReauth(f"Session expired or invalid: {resp.status_code}")
+                raise NeedsReauth(
+                    f"Session expired or invalid: {resp.status_code}")
             if resp.status_code >= 400:
                 raise RuntimeError(f"Failed to fetch accounts: {resp.text}")
 
@@ -141,7 +151,8 @@ class EnableBankingService:
                     uid = acc
                     acc_obj: dict[str, Any] = {}
                     try:
-                        acc_resp = client.get(f"{BASE_URL}/accounts/{uid}", headers=self._headers())
+                        acc_resp = client.get(
+                            f"{BASE_URL}/accounts/{uid}", headers=self._headers())
                         if acc_resp.status_code == 200 and isinstance(acc_resp.json(), dict):
                             acc_obj = acc_resp.json()
                     except Exception:
@@ -156,11 +167,15 @@ class EnableBankingService:
                 iban = acc_obj.get("iban")
 
                 if isinstance(acc_id, dict):
-                    if not uid: uid = acc_id.get("iban")
-                    if not iban: iban = acc_id.get("iban")
+                    if not uid:
+                        uid = acc_id.get("iban")
+                    if not iban:
+                        iban = acc_id.get("iban")
                 elif isinstance(acc_id, str):
-                    if not uid: uid = acc_id
-                    if not iban and acc_id.isalnum() and len(acc_id) > 10: iban = acc_id
+                    if not uid:
+                        uid = acc_id
+                    if not iban and acc_id.isalnum() and len(acc_id) > 10:
+                        iban = acc_id
 
                 if not uid:
                     uid = iban or str(uuid.uuid4())
@@ -178,14 +193,18 @@ class EnableBankingService:
                 # Fetch balances
                 bal_minor = None
                 try:
-                    b_resp = client.get(f"{BASE_URL}/accounts/{uid}/balances", headers=self._headers())
+                    b_resp = client.get(
+                        f"{BASE_URL}/accounts/{uid}/balances", headers=self._headers())
                     if b_resp.status_code == 200:
                         b_data = b_resp.json()
-                        balances = b_data.get("balances", []) if isinstance(b_data, dict) else (b_data if isinstance(b_data, list) else [])
+                        balances = b_data.get("balances", []) if isinstance(
+                            b_data, dict) else (b_data if isinstance(b_data, list) else [])
                         for b in balances:
                             if isinstance(b, dict):
-                                b_amt = b.get("balance_amount") or b.get("amount")
-                                amt = b_amt.get("amount") if isinstance(b_amt, dict) else b_amt
+                                b_amt = b.get(
+                                    "balance_amount") or b.get("amount")
+                                amt = b_amt.get("amount") if isinstance(
+                                    b_amt, dict) else b_amt
                                 if isinstance(b_amt, dict) and b_amt.get("currency") and not currency:
                                     currency = b_amt.get("currency")
                                 if amt is not None:
@@ -222,9 +241,11 @@ class EnableBankingService:
                 url = f"{BASE_URL}/accounts/{acc.external_id}/transactions"
                 params: dict[str, Any] = {"date_from": since.isoformat()}
                 while True:
-                    resp = client.get(url, params=params, headers=self._headers())
+                    resp = client.get(url, params=params,
+                                      headers=self._headers())
                     if resp.status_code in (401, 403):
-                        raise NeedsReauth("Enable Banking session authorization expired.")
+                        raise NeedsReauth(
+                            "Enable Banking session authorization expired.")
                     if resp.status_code >= 400:
                         break
 
@@ -238,26 +259,31 @@ class EnableBankingService:
                     for entry in tx_entries:
                         if not isinstance(entry, dict):
                             continue
-                        amt_info = entry.get("transaction_amount") or entry.get("amount")
+                        amt_info = entry.get(
+                            "transaction_amount") or entry.get("amount")
                         if isinstance(amt_info, dict):
                             amt_val = amt_info.get("amount", "0")
                             curr = amt_info.get("currency", acc.currency)
                         else:
-                            amt_val = str(amt_info) if amt_info is not None else "0"
+                            amt_val = str(
+                                amt_info) if amt_info is not None else "0"
                             curr = acc.currency
-                        
+
                         amt_minor = to_minor(amt_val)
 
-                        indicator = str(entry.get("credit_debit_indicator", "CRDT")).upper()
+                        indicator = str(
+                            entry.get("credit_debit_indicator", "CRDT")).upper()
                         if indicator == "DBIT" and amt_minor > 0:
                             amt_minor = -amt_minor
                         elif indicator == "CRDT" and amt_minor < 0:
                             amt_minor = -amt_minor
 
-                        b_date_str = entry.get("booking_date") or entry.get("value_date")
+                        b_date_str = entry.get(
+                            "booking_date") or entry.get("value_date")
                         if not b_date_str:
                             continue
-                        booking_date = datetime.strptime(str(b_date_str)[:10], "%Y-%m-%d").date()
+                        booking_date = datetime.strptime(
+                            str(b_date_str)[:10], "%Y-%m-%d").date()
 
                         desc_info = entry.get("remittance_information")
                         if isinstance(desc_info, list):
@@ -265,14 +291,17 @@ class EnableBankingService:
                         elif isinstance(desc_info, str):
                             desc = desc_info
                         else:
-                            desc = entry.get("entry_reference", "Transaction") or "Transaction"
+                            desc = entry.get(
+                                "entry_reference", "Transaction") or "Transaction"
 
                         cdtr_info = entry.get("creditor")
-                        cdtr = cdtr_info.get("name") if isinstance(cdtr_info, dict) else (cdtr_info if isinstance(cdtr_info, str) else None)
-                        
+                        cdtr = cdtr_info.get("name") if isinstance(cdtr_info, dict) else (
+                            cdtr_info if isinstance(cdtr_info, str) else None)
+
                         dbtr_info = entry.get("debtor")
-                        dbtr = dbtr_info.get("name") if isinstance(dbtr_info, dict) else (dbtr_info if isinstance(dbtr_info, str) else None)
-                        
+                        dbtr = dbtr_info.get("name") if isinstance(dbtr_info, dict) else (
+                            dbtr_info if isinstance(dbtr_info, str) else None)
+
                         cp_name = cdtr if indicator == "DBIT" else dbtr
 
                         raw_txs.append(
@@ -288,7 +317,8 @@ class EnableBankingService:
                             )
                         )
 
-                    continuation_key = data.get("continuation_key") if isinstance(data, dict) else None
+                    continuation_key = data.get(
+                        "continuation_key") if isinstance(data, dict) else None
                     if continuation_key:
                         params["continuation_key"] = continuation_key
                     else:

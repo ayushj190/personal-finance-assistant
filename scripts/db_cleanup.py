@@ -1,10 +1,10 @@
-import os
 import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "finance.db"
+
 
 def cleanup():
     if not DB_PATH.exists():
@@ -23,15 +23,19 @@ def cleanup():
 
     with conn:
         # 2. Add 'apy' column to accounts if missing
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+        cols = [r["name"]
+                for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
         if "apy" not in cols:
-            conn.execute("ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
+            conn.execute(
+                "ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
             print("Added column 'apy' to accounts.")
 
         # 3. Add 'Interest' category if missing
-        interest_cat = conn.execute("SELECT id FROM categories WHERE name = 'Interest' AND parent_id = 1").fetchone()
+        interest_cat = conn.execute(
+            "SELECT id FROM categories WHERE name = 'Interest' AND parent_id = 1").fetchone()
         if not interest_cat:
-            conn.execute("INSERT OR IGNORE INTO categories (id, name, parent_id, kind) VALUES (6, 'Interest', 1, 'income')")
+            conn.execute(
+                "INSERT OR IGNORE INTO categories (id, name, parent_id, kind) VALUES (6, 'Interest', 1, 'income')")
             print("Added 'Interest' category under Income.")
 
         # 4. Merge account #9 into account #7 (Trade Republic)
@@ -39,14 +43,17 @@ def cleanup():
         acc9 = conn.execute("SELECT id FROM accounts WHERE id = 9").fetchone()
         if acc7:
             # Set default 3.0% APY for Trade Republic
-            conn.execute("UPDATE accounts SET apy = 3.0, provider = 'manual', institution = 'Trade Republic' WHERE id = 7")
+            conn.execute(
+                "UPDATE accounts SET apy = 3.0, provider = 'manual', institution = 'Trade Republic' WHERE id = 7")
             print("Updated Trade Republic account #7 with APY = 3.0%")
 
         if acc9:
             # Reassign any tx or snapshots from 9 to 7
-            conn.execute("UPDATE OR IGNORE transactions SET account_id = 7 WHERE account_id = 9")
+            conn.execute(
+                "UPDATE OR IGNORE transactions SET account_id = 7 WHERE account_id = 9")
             conn.execute("DELETE FROM transactions WHERE account_id = 9")
-            conn.execute("UPDATE OR IGNORE account_snapshots SET account_id = 7 WHERE account_id = 9")
+            conn.execute(
+                "UPDATE OR IGNORE account_snapshots SET account_id = 7 WHERE account_id = 9")
             conn.execute("DELETE FROM account_snapshots WHERE account_id = 9")
             conn.execute("DELETE FROM accounts WHERE id = 9")
             print("Merged and deleted duplicate Trade Republic account #9 into #7.")
@@ -61,14 +68,16 @@ def cleanup():
             print("Deleted empty Trade Republic securities account #8.")
 
         # 6. Delete orphan snapshots
-        deleted_snapshots = conn.execute("DELETE FROM account_snapshots WHERE account_id NOT IN (SELECT id FROM accounts)").rowcount
+        deleted_snapshots = conn.execute(
+            "DELETE FROM account_snapshots WHERE account_id NOT IN (SELECT id FROM accounts)").rowcount
         print(f"Deleted {deleted_snapshots} orphaned snapshots.")
 
         # 7. Check transactions constraint for 'pdf' source
         # In SQLite, recreating table or checking if 'pdf' works:
         try:
             conn.execute("INSERT INTO transactions (account_id, dedup_hash, booking_date, amount_minor, currency, amount_eur_minor, description_raw, source) VALUES (7, '__test_check__', '2026-01-01', 0, 'EUR', 0, 'test', 'pdf')")
-            conn.execute("DELETE FROM transactions WHERE dedup_hash = '__test_check__'")
+            conn.execute(
+                "DELETE FROM transactions WHERE dedup_hash = '__test_check__'")
             print("Transactions table allows 'pdf' source.")
         except sqlite3.IntegrityError:
             print("Recreating transactions table to allow 'pdf' source...")
@@ -98,9 +107,11 @@ def cleanup():
               UNIQUE (account_id, dedup_hash)
             );
             """)
-            conn.execute("INSERT INTO transactions_new SELECT * FROM transactions;")
+            conn.execute(
+                "INSERT INTO transactions_new SELECT * FROM transactions;")
             conn.execute("DROP TABLE transactions;")
-            conn.execute("ALTER TABLE transactions_new RENAME TO transactions;")
+            conn.execute(
+                "ALTER TABLE transactions_new RENAME TO transactions;")
             conn.execute("""
             CREATE VIEW IF NOT EXISTS v_transactions AS
             SELECT t.id, t.booking_date, a.institution, a.name AS account,
@@ -130,6 +141,7 @@ def cleanup():
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.close()
     print("Database cleanup completed successfully.")
+
 
 if __name__ == "__main__":
     cleanup()
