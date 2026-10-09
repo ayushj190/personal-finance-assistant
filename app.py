@@ -116,11 +116,11 @@ pages = [
 all_pages = pages
 nav = st.navigation(all_pages, position="hidden")
 
-# Global sidebar preferences and navigation
-with st.sidebar:
-    st.markdown("<h3 style='margin-top: 0rem; margin-bottom: 1rem;'>Personal Finance Assistant</h3>",
-                unsafe_allow_html=True)
-    with st.expander("🧭 Menu & Settings", expanded=not st.session_state.get("copilot_is_thinking", False)):
+# Global top right menu
+menu_col1, menu_col2 = st.columns([1, 0.1])
+with menu_col2:
+    with st.popover("⚙️", use_container_width=True):
+        st.markdown("**Navigation**")
         for p in pages:
             st.page_link(p, label=p.title, icon=p.icon)
 
@@ -145,6 +145,11 @@ with st.sidebar:
                 c.close()
                 st.rerun()
 
+# Global sidebar preferences and navigation
+with st.sidebar:
+    st.markdown("<h3 style='margin-top: 0rem; margin-bottom: 1rem;'>Personal Finance Assistant</h3>",
+                unsafe_allow_html=True)
+    
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
 

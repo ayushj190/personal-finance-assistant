@@ -60,7 +60,7 @@ The Streamlit interface will launch locally in your browser at `http://localhost
 - **🔒 Global Privacy Mode:** Hide all financial numbers with currency symbols and `****` across the app with a single click. Ideal for screen sharing.
 - **🤖 Background AI Copilot:** Chat with your finances while navigating the app. The AI can execute complex Python analytics and safe SQL queries without blocking your UI.
 - **📊 Dashboard:** 4-KPI ribbon (Net Worth, Liquid Cash, Investments, Runway buffer), accounts grid, net worth trend chart, and upcoming recurring bills.
-- **🛒 Spending:** Month-by-month trends, hierarchical Sunburst visualizers, top merchants ranking, and a subscription leak detector.
+- **🛒 Spending:** Month-by-month trends, interactive category drill-down visuals, top merchants ranking, and a subscription leak detector.
 - **📈 Investments:** Direct holdings table, eToro/Trade Republic tracker, and 3 rebalancing calculators (No-sell injection, Monthly water-filling, Full rebalance) with 5/25 drift alerts.
 - **🏠 Mortgage:** Complete 30-year amortization schedule (Annuity, Linear, Interest-Only) and penalty-free extra repayment simulators (*Boetevrij aflossen*).
 - **📝 Transactions:** Instant category learning. Manual recategorization creates a local rule and re-applies it automatically.

@@ -1,62 +1,15 @@
 from datetime import date
 import json
 from typing import Any
+import pandas as pd
 
 from agent import tools
 from services.llm_client import generate_json
 
-COPILOT_SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app (like Copilot 365).
+ROUTER_SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app.
 You run locally and privately on the user's machine.
 
-Your capabilities:
-1. APP GUIDE & ONBOARDING:
-   - Instruct the user how to use all features: Dashboard, Spending, Investments, Mortgage, Transactions, Import, Settings.
-   - Explain Open Banking (Enable Banking free PSD2 setup), eToro, Trade Republic, CSV/PDF imports.
-
-2. SETTINGS & FINANCIAL UPDATES (via tool calls):
-   - Toggle Privacy Mode (hiding/showing financial values).
-   - Toggle theme ('dark' or 'light').
-   - Switch active target allocation profile.
-   - Update savings account APY interest rates and balances.
-   - Record extra mortgage payments and recalculate amortization schedules.
-
-3. INVESTMENT RISK TOLERANCE & PORTFOLIO BALANCE:
-   - Guide the user through a risk assessment questionnaire (asking questions one or two at a time about: investment time horizon, reaction to a 20% market drop, cash emergency cushion, return objectives).
-   - Compute a risk score (1-10) and category (Conservative [1-3], Moderate [4-6], Growth [7-8], Aggressive [9-10]).
-   - Save the completed profile using the `save_risk_profile` tool.
-   - Review current portfolio holdings and compare against risk tolerance and target allocations.
-   - CRITICAL COMPLIANCE RULE: NEVER give direct financial advice or recommend specific stocks/ETFs to buy or sell. Instead, remind the user of their risk tolerance and help maintain their target portfolio balance.
-
-4. EXPENSE CATEGORIZATION:
-   - Use `categorize_expenses` to trigger AI categorization of uncategorized transactions.
-
-5. FINANCIAL ANALYSIS & VISUALIZATION:
-   - Generate safe SQLite queries on views (`v_transactions`, `v_net_worth_daily`, `v_holdings`, `v_monthly_cashflow`, `v_mortgage_payments`) and interactive Plotly charts.
-   - Database Schema for Views:
-     - v_net_worth_daily (date, asset_class, value_eur)
-     - v_transactions (id, booking_date, institution, account, amount_eur, currency, merchant, category, parent_category, category_kind, is_internal_transfer, liability_id, liability_name)
-     - v_holdings (id, institution, account, ticker, isin, name, asset_type, region, sector, quantity, cost_basis, cost_basis_native, currency, latest_close, prev_close, value_eur, unrealized_pnl_eur)
-     - v_monthly_cashflow (month, income_eur, fixed_eur, discretionary_eur, savings_eur)
-     - v_mortgage_payments (loan_name, lender, month_idx, due_date, payment_eur, interest_eur, principal_eur, extra_eur, balance_eur)
-   - For spending queries on v_transactions, always filter `WHERE is_internal_transfer = 0` and use `-amount_eur` so expenses appear positive.
-
-OUTPUT FORMAT:
-You MUST respond with a JSON object.
-There are two response modes:
-Mode A: Tool Call (When an action, query, or data lookup is needed)
-{
-  "tool_call": {
-    "name": "<tool_name>",
-    "arguments": { ... }
-  },
-  "message": "<Brief message explaining the action taken or context>"
-}
-
-Mode B: Direct Message (For answering questions, discussing risk tolerance, guiding how to use the app, or acknowledging tool results)
-{
-  "tool_call": null,
-  "message": "<Your helpful Markdown-formatted response>"
-}
+Your job is to route the user's request to the appropriate tool, or answer directly if no tool is needed.
 
 Available Tools:
 - toggle_privacy_mode(enable: bool | null)
@@ -68,19 +21,57 @@ Available Tools:
 - get_risk_profile()
 - get_portfolio_and_risk_summary()
 - categorize_expenses(limit: number)
-- query_financial_data(sql: string, chart_spec: object | null, summary_template: string)
+- query_financial_data(question: string)
 - search_web(query: string)
 - analyze_market_data(ticker: string)
 - execute_python(code: string)
 
-Example chart_spec:
-{"type": "bar" | "line" | "area" | "pie" | "scatter" | "waterfall" | "sunburst", "x": "col1", "y": "col2", "title": "Chart Title"}
+CRITICAL RULE: If the user is asking ANY question about their data, spending, net worth, transactions, or requesting a chart, YOU MUST call `query_financial_data` and pass their original question in the `question` argument.
 
-Note: Use execute_python for complex, multi-step data analysis where basic SQL is insufficient (e.g. comparing spending across age brackets, moving averages, etc.). `pd`, `np`, and `sqlite3` are available in the python environment. You can access the db via `sqlite3.connect(DB_PATH)`. You must print the final result to stdout.
+CRITICAL: You MUST output valid JSON only.
 
 Today's date is: {today}.
 """
 
+SQL_GENERATOR_PROMPT = """You are a financial data analyst AI.
+Your task is to write a SQLite query to answer the user's question, and optionally specify a Plotly chart.
+
+Database Schema for Views:
+- v_net_worth_daily (date, asset_class, value_eur)
+- v_transactions (id, booking_date, institution, account, amount_eur, currency, merchant, category, parent_category, category_kind, is_internal_transfer, liability_id, liability_name)
+- v_holdings (id, institution, account, ticker, isin, name, asset_type, region, sector, quantity, cost_basis, cost_basis_native, currency, latest_close, prev_close, value_eur, unrealized_pnl_eur)
+- v_monthly_cashflow (month, income_eur, fixed_eur, discretionary_eur, savings_eur)
+- v_mortgage_payments (loan_name, lender, month_idx, due_date, payment_eur, interest_eur, principal_eur, extra_eur, balance_eur)
+
+For spending queries on v_transactions, always filter `WHERE is_internal_transfer = 0` and use `-amount_eur` so expenses appear positive.
+
+CRITICAL: You MUST output valid JSON only, using this schema for the tool_call:
+{
+  "tool_call": {
+    "name": "query_financial_data",
+    "arguments": {
+      "sql": "<your sqlite query>",
+      "chart_spec": {"type": "bar|line|pie", "x": "col1", "y": "col2", "title": "Chart Title"} // or null
+    }
+  },
+  "message": "<Brief message>"
+}
+"""
+
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tool_call": {
+            "type": ["object", "null"],
+            "properties": {
+                "name": {"type": "string"},
+                "arguments": {"type": "object"}
+            }
+        },
+        "message": {"type": "string"}
+    },
+    "required": ["message"]
+}
 
 def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     tool_map = {
@@ -108,15 +99,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         return {"success": False, "message": f"Tool execution error: {str(e)}"}
 
-
 def run_copilot(
     user_message: str,
     history: list[dict[str, Any]] | None = None,
     uploaded_files: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run full Copilot conversational loop with tool calling and file handling."""
-    system_prompt = COPILOT_SYSTEM_PROMPT.replace(
-        "{today}", date.today().isoformat())
+    router_prompt = ROUTER_SYSTEM_PROMPT.replace("{today}", date.today().isoformat())
 
     # Check if files were uploaded directly
     if uploaded_files:
@@ -129,8 +118,7 @@ def run_copilot(
             )
             file_results.append(res.get("message", f"Processed {uf['name']}"))
 
-        combined_msg = "### 📥 Statement Import Results:\n" + \
-            "\n".join(f"- {m}" for m in file_results)
+        combined_msg = "### 📥 Statement Import Results:\n" + "\n".join(f"- {m}" for m in file_results)
         return {
             "role": "assistant",
             "content": combined_msg,
@@ -139,97 +127,101 @@ def run_copilot(
             "sql": None,
         }
 
-    # Build prompt messages
-    messages = [{"role": "system", "content": system_prompt}]
+    # Build prompt messages for Tier 1 Router
+    messages = [{"role": "system", "content": router_prompt}]
+    
+    # Smart Context Management: keep text, truncate large data from previous turns
     if history:
-        for h in history[-8:]:  # Keep recent context
+        for h in history[-8:]:
             r = h.get("role", "user")
             c = h.get("content", "")
+            
+            # If the previous assistant message contained a huge data dump, truncate it.
+            if r == "assistant" and len(c) > 1000:
+                c = c[:500] + "\n... [Data truncated for context. Use execute_python to analyze further if needed] ..." + c[-200:]
+                
             if r in ("user", "assistant") and c:
                 messages.append({"role": r, "content": c})
 
     messages.append({"role": "user", "content": user_message})
 
-    resp_json = generate_json(messages)
+    # Tier 1: Fast Intent Routing
+    resp_json = generate_json(messages, schema=RESPONSE_SCHEMA)
 
     if not resp_json:
-        # Heuristic fallback for common direct actions if Ollama is offline/starting
-        msg_l = user_message.lower()
-        if "privacy" in msg_l:
-            res = tools.tool_toggle_privacy_mode()
-            return {"role": "assistant", "content": f"✅ {res['message']} *(Executed via local fallback)*", "figure": None, "df": None, "sql": None}
-        if "light" in msg_l and ("mode" in msg_l or "theme" in msg_l):
-            res = tools.tool_set_theme("light")
-            return {"role": "assistant", "content": f"✅ {res['message']} *(Executed via local fallback)*", "figure": None, "df": None, "sql": None}
-        if "dark" in msg_l and ("mode" in msg_l or "theme" in msg_l):
-            res = tools.tool_set_theme("dark")
-            return {"role": "assistant", "content": f"✅ {res['message']} *(Executed via local fallback)*", "figure": None, "df": None, "sql": None}
-        if "categoriz" in msg_l:
-            res = tools.tool_categorize_expenses()
-            return {"role": "assistant", "content": f"🏷️ {res['message']} *(Executed via local fallback)*", "figure": None, "df": None, "sql": None}
-        if "drift" in msg_l or ("portfolio" in msg_l and "target" in msg_l):
-            res = tools.tool_get_portfolio_and_risk_summary()
-            classes = res.get("asset_classes_eur", {})
-            profile = res.get("active_allocation_profile") or {}
-            prof_name = profile.get("name", "None")
-            lines = [f"**Portfolio & Drift Overview:**",
-                     f"- Active Allocation Profile: `{prof_name}`"]
-            for ac, val in classes.items():
-                lines.append(f"- **{ac.capitalize()}**: €{val:,.2f}")
-            lines.append(
-                "\n*Tip: Start Ollama (`ollama serve`) for full interactive reasoning and automated rebalancing recommendations.*")
-            return {"role": "assistant", "content": "\n".join(lines), "figure": None, "df": None, "sql": None}
-        if "risk" in msg_l:
-            rp = tools.tool_get_risk_profile()
-            if rp.get("success") and rp.get("profile"):
-                p = rp["profile"]
-                return {
-                    "role": "assistant",
-                    "content": f"### 🎯 Current Risk Profile:\n- **Tolerance Tier:** `{p['risk_tolerance']}`\n- **Score:** `{p['risk_score']}/10`\n- **Assessed Date:** {p.get('assessed_date', '')[:10]}\n\nTo update your profile, start Ollama (`ollama serve`) or provide your investment horizon and drawdown preference here.",
-                    "figure": None,
-                    "df": None,
-                    "sql": None,
-                }
-            return {
-                "role": "assistant",
-                "content": "### 🎯 Investment Risk Questionnaire:\n1. **Investment Horizon**: How long do you plan to keep your money invested before withdrawing? (e.g. <3 years, 3-7 years, 10+ years)\n2. **Drawdown Comfort**: If your portfolio drops 20% during a market correction, would you sell to prevent further loss, hold steady, or invest more?\n3. **Financial Cushion**: Do you have at least 3-6 months of emergency living expenses stored in safe cash?\n\nAnswer these questions to calibrate your risk profile.",
-                "figure": None,
-                "df": None,
-                "sql": None,
-            }
-
+        # Fallback if Ollama fails
         return {
             "role": "assistant",
-            "content": "⚠️ Could not connect to local Ollama. Please ensure Ollama is running (`ollama serve`) and the configured model is installed.\n\nYou can still use direct quick actions: upload files, toggle privacy/theme, or review risk profiles.",
-            "figure": None,
-            "df": None,
-            "sql": None,
+            "content": "⚠️ Could not connect to local Ollama. Please ensure Ollama is running (`ollama serve`).",
+            "figure": None, "df": None, "sql": None,
         }
 
     tool_call = resp_json.get("tool_call")
     if not tool_call or not isinstance(tool_call, dict) or not tool_call.get("name"):
-        # Pure conversation response
         return {
             "role": "assistant",
             "content": resp_json.get("message", "Done."),
-            "figure": None,
-            "df": None,
-            "sql": None,
+            "figure": None, "df": None, "sql": None,
         }
 
-    # Execute tool call
     t_name = tool_call.get("name")
     t_args = tool_call.get("arguments", {})
+
+    # Tier 2: Specialized Data Query Routing
+    if t_name == "query_financial_data":
+        question = t_args.get("question", user_message)
+        sql_prompt = SQL_GENERATOR_PROMPT
+        sql_messages = [
+            {"role": "system", "content": sql_prompt},
+            {"role": "user", "content": f"Write a query for: {question}"}
+        ]
+        
+        # Explicit schema for SQL generator
+        sql_schema = {
+            "type": "object",
+            "properties": {
+                "tool_call": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "arguments": {
+                            "type": "object",
+                            "properties": {
+                                "sql": {"type": "string"},
+                                "chart_spec": {"type": ["object", "null"]},
+                                "summary_template": {"type": "string"}
+                            },
+                            "required": ["sql"]
+                        }
+                    },
+                    "required": ["name", "arguments"]
+                },
+                "message": {"type": "string"}
+            },
+            "required": ["tool_call", "message"]
+        }
+        
+        sql_resp = generate_json(sql_messages, schema=sql_schema)
+        if not sql_resp or not sql_resp.get("tool_call"):
+            return {
+                "role": "assistant",
+                "content": "❌ Failed to generate a valid data query.",
+                "figure": None, "df": None, "sql": None,
+            }
+        
+        t_args = sql_resp["tool_call"].get("arguments", {})
+
+    # Execute tool call
     tool_result = execute_tool(t_name, t_args)
 
     figure = tool_result.get("figure")
     df = tool_result.get("df")
     sql = tool_result.get("sql")
 
-    # If it was a query or data tool, format response nicely
+    # Format response
     if t_name == "query_financial_data":
-        ans = tool_result.get("answer", resp_json.get(
-            "message", "Query executed successfully."))
+        # In Tier 2, we might not have a message from resp_json.
+        ans = tool_result.get("answer", sql_resp.get("message", "Query executed successfully."))
         return {
             "role": "assistant",
             "content": ans,
@@ -238,24 +230,20 @@ def run_copilot(
             "sql": sql,
         }
 
-    # For action tools (settings, mortgage, savings, risk profile)
+    # For action tools
     status_msg = tool_result.get("message", "")
     lead_msg = resp_json.get("message", "")
-    full_content = f"{lead_msg}\n\n✅ {status_msg}".strip(
-    ) if lead_msg else f"✅ {status_msg}"
+    full_content = f"{lead_msg}\n\n✅ {status_msg}".strip() if lead_msg else f"✅ {status_msg}"
 
     if t_name == "get_portfolio_and_risk_summary":
-        # Second call to LLM to summarize portfolio balance vs risk profile
         summary_prompt = (
             f"The user asked: {user_message}\n"
             f"Here is the portfolio and risk summary data:\n{json.dumps(tool_result, default=str)}\n"
-            "Summarize the user's asset allocation, current drift, and how it aligns with their risk tolerance. "
-            "Remind them of their risk tolerance and portfolio targets. Do NOT give financial advice or suggest specific assets."
+            "Summarize the user's asset allocation, current drift, and how it aligns with their risk tolerance."
         )
-        messages.append(
-            {"role": "assistant", "content": json.dumps(resp_json)})
+        messages.append({"role": "assistant", "content": json.dumps(resp_json)})
         messages.append({"role": "user", "content": summary_prompt})
-        second_resp = generate_json(messages)
+        second_resp = generate_json(messages, schema=RESPONSE_SCHEMA)
         if second_resp and second_resp.get("message"):
             full_content = second_resp["message"]
 

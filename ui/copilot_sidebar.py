@@ -42,7 +42,8 @@ def render_copilot_sidebar() -> None:
                     "Local AI assistant for queries, risk profiling, file parsing & app control.")
             for msg in st.session_state.copilot_history:
                 role = msg.get("role", "assistant")
-                with st.chat_message(role):
+                avatar_map = {"user": "👤", "assistant": "🤖"}
+                with st.chat_message(role, avatar=avatar_map.get(role)):
                     st.markdown(msg.get("content", ""))
                     if msg.get("figure"):
                         st.plotly_chart(
@@ -55,7 +56,7 @@ def render_copilot_sidebar() -> None:
                             st.code(msg["sql"], language="sql")
 
             if st.session_state.get("copilot_is_thinking"):
-                with st.chat_message("assistant"):
+                with st.chat_message("assistant", avatar="🤖"):
                     st.markdown("Thinking... ⏳")
 
     st.markdown("### 🤖 Assistant")
