@@ -4,7 +4,7 @@ import streamlit as st
 from config import DB_PATH
 from db import database
 from services.analytics import detect_recurring_charges
-from ui.charts import build_monthly_spending_bar, build_spending_donut, build_spending_sunburst
+from ui.charts import build_monthly_spending_bar, build_spending_donut
 from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.filters import build_where_clause, render_sidebar_filters
 
@@ -142,14 +142,7 @@ def render():
     section_header(f"Expense Breakdown ({selected_scope})",
                    "Hierarchical spending across categories and merchants")
     if not display_df.empty:
-        view_type = st.radio("Chart Type", options=[
-                             "Sunburst", "Donut"], horizontal=True)
-        if view_type == "Sunburst":
-            st.plotly_chart(build_spending_sunburst(display_df),
-                            use_container_width=True, theme=None)
-        else:
-            st.plotly_chart(build_spending_donut(
-                display_df, group_col="category"), use_container_width=True, theme=None)
+        st.plotly_chart(build_spending_donut(display_df), use_container_width=True, theme=None)
 
         col_left, col_right = st.columns([1, 1])
         with col_left:

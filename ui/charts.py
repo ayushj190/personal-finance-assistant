@@ -93,36 +93,40 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def build_spending_sunburst(df: pd.DataFrame) -> go.Figure:
+
+
+def build_spending_donut(df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return go.Figure()
 
     fig = px.sunburst(
         df,
-        path=["parent_category", "category", "merchant"],
+        path=["category", "merchant"],
         values="amount_eur",
-        color="parent_category",
+        color="category",
         color_discrete_sequence=COLOR_PALETTE,
+        custom_data=["amount_eur"]
     )
-    fig.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=10))
-    return fig
-
-
-def build_spending_donut(df: pd.DataFrame, group_col: str = "category") -> go.Figure:
-    if df.empty:
-        return go.Figure()
-
-    grouped = df.groupby(group_col)["amount_eur"].sum().reset_index()
-    fig = px.pie(
-        grouped,
-        names=group_col,
-        values="amount_eur",
-        hole=0.55,
-        color_discrete_sequence=COLOR_PALETTE,
+    
+    fig.update_traces(
+        maxdepth=2,
+        textinfo="label+percent parent",
+        hovertemplate=(
+            "<b>%{label}</b><br>"
+            "Spent: €%{customdata[0]:,.2f}<br>"
+            "Share of Total: %{percentRoot:.1%}<br>"
+            "Share of Category: %{percentParent:.1%}<extra></extra>"
+        ),
+        insidetextorientation='radial',
+        marker=dict(line=dict(color='#1E293B', width=1.5))
     )
-    fig.update_traces(textposition="inside", textinfo="percent+label")
-    fig.update_layout(height=350, margin=dict(
-        l=0, r=0, t=10, b=10), showlegend=False)
+    
+    fig.update_layout(
+        height=350, 
+        margin=dict(l=0, r=0, t=10, b=10),
+        showlegend=False,
+        transition=dict(duration=500, easing="cubic-in-out")
+    )
     return fig
 
 

@@ -59,15 +59,7 @@ def render_chart(df: pd.DataFrame, chart_spec: dict[str, Any] | None) -> go.Figu
                 fig.update_layout(title=title, template="pfa_theme",
                                   paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 return fig
-        elif chart_type == "sunburst":
-            name_col = names or x
-            val_col = values or y
-            if name_col in cols and val_col in cols:
-                fig = px.sunburst(
-                    df, path=[name_col], values=val_col, title=title, template="pfa_theme")
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",
-                                  plot_bgcolor="rgba(0,0,0,0)")
-                return fig
+
         elif chart_type == "pie":
             name_col = names or x
             val_col = values or y

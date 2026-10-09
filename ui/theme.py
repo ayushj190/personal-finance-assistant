@@ -350,50 +350,50 @@ def inject_custom_css() -> None:
     else:
         css_theme = """
         :root, .stApp {
-            --background-color: #0B1120 !important;
-            --secondary-background-color: #1E293B !important;
-            --text-color: #F8FAFC !important;
-            --primary-color: #2DD4BF !important;
-            --tab-border: rgba(148, 163, 184, 0.25) !important;
-            --tab-inactive-bg: #0F172A !important;
-            --button-border: rgba(148, 163, 184, 0.25) !important;
-            --button-bg: rgba(30, 41, 59, 0.5) !important;
-            --text-muted: #94A3B8 !important;
-            background-color: #0B1120 !important;
-            color: #F8FAFC !important;
+            --background-color: #1E1E1E !important;
+            --secondary-background-color: #252526 !important;
+            --text-color: #D4D4D4 !important;
+            --primary-color: #007ACC !important;
+            --tab-border: #3C3C3C !important;
+            --tab-inactive-bg: #2D2D2D !important;
+            --button-border: #3C3C3C !important;
+            --button-bg: #333333 !important;
+            --text-muted: #858585 !important;
+            background-color: #1E1E1E !important;
+            color: #D4D4D4 !important;
         }
 
         /* Sidebar in Dark Mode */
         section[data-testid="stSidebar"] {
-            border-right: 1px solid rgba(148, 163, 184, 0.15) !important;
+            border-right: 1px solid #3C3C3C !important;
         }
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
         div[data-testid="stSidebarUserContent"] {
-            background-color: #0B1120 !important;
-            color: #F8FAFC !important;
+            background-color: #252526 !important;
+            color: #D4D4D4 !important;
         }
         section[data-testid="stSidebar"] * {
-            color: #F8FAFC;
+            color: #D4D4D4;
         }
         section[data-testid="stSidebar"] .stMarkdown p,
         section[data-testid="stSidebar"] .stMarkdown span,
         section[data-testid="stSidebar"] .stCaption,
         section[data-testid="stSidebar"] .stCaption * {
-            color: #94A3B8 !important;
+            color: #858585 !important;
         }
         section[data-testid="stSidebar"] hr {
-            border-color: rgba(148, 163, 184, 0.15) !important;
+            border-color: #3C3C3C !important;
         }
 
         /* Metric Cards & Glass Cards */
         .glass-card, div[data-testid="stMetric"] {
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
-            backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(148, 163, 184, 0.15) !important;
-            border-radius: 14px !important;
+            background: #252526 !important;
+            backdrop-filter: none !important;
+            border: 1px solid #3C3C3C !important;
+            border-radius: 4px !important;
             padding: 16px 20px !important;
-            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25) !important;
+            box-shadow: none !important;
             transition: all 0.2s ease-in-out !important;
             min-height: 115px !important;
             display: flex !important;
@@ -402,9 +402,9 @@ def inject_custom_css() -> None:
             box-sizing: border-box !important;
         }
         .glass-card:hover, div[data-testid="stMetric"]:hover {
-            border-color: rgba(45, 212, 191, 0.4) !important;
+            border-color: #007ACC !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.35) !important;
+            box-shadow: none !important;
         }
         [data-testid="stMetricLabel"],
         [data-testid="stMetricLabel"] * {
@@ -419,18 +419,18 @@ def inject_custom_css() -> None:
 
         /* Bordered Containers */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: rgba(15, 23, 42, 0.45) !important;
-            backdrop-filter: blur(10px) !important;
-            border: 1px solid rgba(148, 163, 184, 0.18) !important;
-            border-radius: 12px !important;
+            background: #252526 !important;
+            backdrop-filter: none !important;
+            border: 1px solid #3C3C3C !important;
+            border-radius: 4px !important;
             padding: 16px !important;
             box-sizing: border-box !important;
-            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25) !important;
+            box-shadow: none !important;
             transition: border-color 0.2s ease, transform 0.2s ease !important;
-            color: #F8FAFC !important;
+            color: #D4D4D4 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
-            border-color: rgba(45, 212, 191, 0.35) !important;
+            border-color: #007ACC !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div * {
             color: #F8FAFC;
@@ -548,11 +548,45 @@ def inject_custom_css() -> None:
             border: 1px solid rgba(148, 163, 184, 0.25) !important;
             color: #F8FAFC !important;
         }
+        /* Chat UI */
         div[data-testid="stChatMessage"] {
-            background-color: rgba(30, 41, 59, 0.5) !important;
-            border: 1px solid rgba(148, 163, 184, 0.15) !important;
-            border-radius: 10px !important;
-            color: #F8FAFC !important;
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            margin-bottom: 1rem !important;
+            display: flex !important;
+        }
+
+        /* User Messages (Right Aligned) */
+        div[data-testid="stChatMessage"]:has([alt="user avatar"]), 
+        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+            flex-direction: row-reverse !important;
+        }
+        div[data-testid="stChatMessage"]:has([alt="user avatar"]) .stMarkdown,
+        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stMarkdown {
+            background-color: #007ACC !important;
+            color: #FFFFFF !important;
+            border-radius: 18px 18px 4px 18px !important;
+            padding: 12px 16px !important;
+            max-width: 80% !important;
+            margin-right: 12px !important;
+            margin-left: auto !important;
+        }
+
+        /* Assistant Messages (Left Aligned) */
+        div[data-testid="stChatMessage"]:has([alt="assistant avatar"]), 
+        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+            flex-direction: row !important;
+        }
+        div[data-testid="stChatMessage"]:has([alt="assistant avatar"]) .stMarkdown,
+        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stMarkdown {
+            background-color: #333333 !important;
+            color: #D4D4D4 !important;
+            border-radius: 18px 18px 18px 4px !important;
+            padding: 12px 16px !important;
+            max-width: 85% !important;
+            margin-left: 12px !important;
+            margin-right: auto !important;
         }
         div[data-testid="stRadio"] label p,
         div[data-testid="stCheckbox"] label p {
@@ -620,23 +654,23 @@ def inject_custom_css() -> None:
 
         /* Standardized Primary Buttons */
         button[kind="primary"], button[data-testid="baseButton-primary"] {
-            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
+            background: #007ACC !important;
             color: #FFFFFF !important;
             border: none !important;
-            font-weight: 600 !important;
-            border-radius: 8px !important;
-            min-height: 38px !important;
-            height: 38px !important;
-            box-shadow: 0 2px 10px rgba(20, 184, 166, 0.25) !important;
-            transition: all 0.2s ease !important;
+            font-weight: 500 !important;
+            border-radius: 2px !important;
+            min-height: 32px !important;
+            height: 32px !important;
+            box-shadow: none !important;
+            transition: background-color 0.2s ease !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
         }
         button[kind="primary"]:hover, button[data-testid="baseButton-primary"]:hover {
-            background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%) !important;
-            box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4) !important;
-            transform: translateY(-1px) !important;
+            background: #005999 !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
         div[data-testid="stPopover"] {
             width: 100% !important;
