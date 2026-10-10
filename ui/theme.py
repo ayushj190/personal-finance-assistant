@@ -230,7 +230,7 @@ def inject_custom_css() -> None:
         div[data-testid="stTabs"] [role="tablist"] {
             background-color: transparent !important;
             border-bottom: 2px solid #E2E8F0 !important;
-            gap: 8px !important;
+            gap: 0px !important;
             justify-content: flex-start !important;
             padding-left: 0 !important;
             margin-left: 0 !important;
@@ -242,9 +242,10 @@ def inject_custom_css() -> None:
         div[data-testid="stTabs"] button,
         div[data-testid="stTabs"] div[role="tab"] {
             background-color: transparent !important;
-            border: none !important;
-            border-radius: 6px 6px 0 0 !important;
-            padding: 8px 16px !important;
+            border: 1px solid transparent !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px 16px !important;
             color: #334155 !important;
             opacity: 1 !important;
             transition: all 0.15s ease-in-out !important;
@@ -458,7 +459,7 @@ def inject_custom_css() -> None:
         div[data-testid="stTabs"] [role="tablist"] {
             background-color: transparent !important;
             border-bottom: 2px solid #1e3325 !important;
-            gap: 8px !important;
+            gap: 0px !important;
             justify-content: flex-start !important;
             padding-left: 0 !important;
             margin-left: 0 !important;
@@ -470,9 +471,10 @@ def inject_custom_css() -> None:
         div[data-testid="stTabs"] button,
         div[data-testid="stTabs"] div[role="tab"] {
             background-color: transparent !important;
-            border: none !important;
-            border-radius: 6px 6px 0 0 !important;
-            padding: 8px 16px !important;
+            border: 1px solid transparent !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px 16px !important;
             transition: all 0.15s ease-in-out !important;
             cursor: pointer !important;
         }
@@ -644,49 +646,51 @@ def inject_custom_css() -> None:
         div.st-key-top_app_bar > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"],
         div.st-key-top_app_bar div[data-testid="stHorizontalBlock"] {
             align-items: center !important;
-            gap: 12px !important;
+            gap: 0px !important;
         }
 
         /* Tabs Row Columns */
         div.st-key-top_app_bar div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"] {
-            align-items: center !important;
-            gap: 6px !important;
+            align-items: flex-end !important;
+            gap: 0px !important;
         }
 
         /* Individual Tab Links */
         div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"] {
-            background-color: var(--tab-inactive-bg) !important;
-            border: 1px solid var(--tab-border) !important;
-            border-radius: 8px !important;
-            padding: 6px 10px !important;
+            background-color: transparent !important;
+            border: 1px solid transparent !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px 16px !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
             text-decoration: none !important;
             color: var(--text-muted) !important;
-            font-size: 0.84rem !important;
+            font-size: 0.9rem !important;
             font-weight: 500 !important;
             white-space: nowrap !important;
             width: 100% !important;
-            min-height: 36px !important;
-            height: 36px !important;
+            min-height: 42px !important;
+            height: 42px !important;
             box-sizing: border-box !important;
             transition: all 0.15s ease-in-out !important;
+            position: relative !important;
+            top: 1px !important; /* to overlap the bottom border */
         }
 
         div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"]:hover {
-            background-color: rgba(16, 185, 129, 0.08) !important;
-            border-color: rgba(16, 185, 129, 0.35) !important;
+            background-color: var(--tab-inactive-bg) !important;
             color: var(--text-color) !important;
-            transform: translateY(-1px) !important;
         }
 
         div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"][aria-current="page"] {
-            background-color: rgba(16, 185, 129, 0.16) !important;
-            border: 1px solid var(--primary-color) !important;
+            background-color: var(--background-color) !important;
+            border: 1px solid var(--tab-border) !important;
+            border-bottom: 1px solid var(--background-color) !important;
             color: var(--primary-color) !important;
             font-weight: 600 !important;
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
+            box-shadow: none !important;
         }
 
         div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"] * {
