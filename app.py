@@ -1,4 +1,5 @@
 from datetime import datetime, date
+import threading
 from ui.pages import (
     dashboard,
     investments,
@@ -6,6 +7,7 @@ from ui.pages import (
     settings,
     spending,
     transactions,
+    tax,
 )
 import importlib
 import streamlit as st
@@ -23,16 +25,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Synchronize theme state before rendering or injecting styles
+# Synchronize theme state
 if "theme" not in st.session_state:
     st.session_state["theme"] = "dark"
 
-if "global_theme_toggle" in st.session_state:
-    st.session_state["theme"] = "light" if st.session_state["global_theme_toggle"] else "dark"
-else:
-    st.session_state["global_theme_toggle"] = (
-        st.session_state["theme"] == "light")
-
+# Privacy / Mask amounts toggle state
 if "hide_amounts" not in st.session_state:
     st.session_state["hide_amounts"] = True
 
@@ -42,10 +39,6 @@ if "global_privacy_toggle" in st.session_state:
 else:
     st.session_state["global_privacy_toggle"] = bool(
         st.session_state["hide_amounts"])
-
-
-def _on_theme_toggle() -> None:
-    st.session_state["theme"] = "light" if st.session_state["global_theme_toggle"] else "dark"
 
 
 def _on_privacy_toggle() -> None:
@@ -58,19 +51,54 @@ database.migrate()
 theme.register_plotly_theme()
 theme.inject_custom_css()
 
+# Background automatic sync on startup and every 10 minutes
+_sync_lock = threading.Lock()
+_is_syncing = False
 
-conn = database.connect(DB_PATH)
-last_sync_row = conn.execute(
-    "SELECT started_at FROM sync_log ORDER BY started_at DESC LIMIT 1").fetchone()
-last_sync_time = ""
-if last_sync_row:
-    started_at = last_sync_row["started_at"]
-    if "T" in started_at:
-        last_sync_time = f" ({started_at.split('T')[1][:5]})"
-    elif " " in started_at:
-        last_sync_time = f" ({started_at.split(' ')[1][:5]})"
+
+def _run_bg_sync() -> None:
+    global _is_syncing
+    if _is_syncing:
+        return
+    with _sync_lock:
+        _is_syncing = True
+        try:
+            from services.sync_service import sync_all
+            bg_conn = database.connect(DB_PATH)
+            sync_all(bg_conn)
+            bg_conn.close()
+        except Exception:
+            pass
+        finally:
+            _is_syncing = False
+
+
+def _trigger_auto_sync() -> None:
+    threading.Thread(target=_run_bg_sync, daemon=True).start()
+
+
+now = datetime.now()
+if "_last_auto_sync" not in st.session_state:
+    st.session_state["_last_auto_sync"] = now
+    _trigger_auto_sync()
+elif (now - st.session_state["_last_auto_sync"]).total_seconds() >= 600:
+    st.session_state["_last_auto_sync"] = now
+    _trigger_auto_sync()
+
+
+@st.fragment(run_every=600)
+def _auto_sync_scheduler() -> None:
+    current_time = datetime.now()
+    last = st.session_state.get("_last_auto_sync")
+    if last is None or (current_time - last).total_seconds() >= 600:
+        st.session_state["_last_auto_sync"] = current_time
+        _trigger_auto_sync()
+
+
+_auto_sync_scheduler()
 
 # Check for manual accounts reminder
+conn = database.connect(DB_PATH)
 manual_stale = conn.execute("""
     SELECT a.name, MAX(s.snapshot_date) as last_snap
     FROM accounts a
@@ -98,9 +126,7 @@ if stale_accounts and "stale_notified" not in st.session_state:
         f"Reminder: Update your manual accounts ({', '.join(stale_accounts)}).", icon="📝")
     st.session_state["stale_notified"] = True
 
-# Navigation definition
-settings_page = st.Page(settings.render, title="Settings",
-                        icon="⚙️", url_path="settings")
+# Navigation definition: all 7 pages with Settings as the last tab
 pages = [
     st.Page(dashboard.render, title="Dashboard",
             icon="📊", url_path="dashboard", default=True),
@@ -110,47 +136,29 @@ pages = [
     st.Page(mortgage.render, title="Mortgage", icon="🏠", url_path="mortgage"),
     st.Page(transactions.render, title="Transactions",
             icon="📝", url_path="transactions"),
-    settings_page,
+    st.Page(tax.render, title="Tax Analysis", icon="💶", url_path="tax"),
+    st.Page(settings.render, title="Settings", icon="⚙️", url_path="settings"),
 ]
+active_page = st.navigation(pages, position="hidden")
 
-all_pages = pages
-nav = st.navigation(all_pages, position="hidden")
-
-# Global top right menu
-menu_col1, menu_col2 = st.columns([1, 0.1])
-with menu_col2:
-    with st.popover("⚙️", use_container_width=True):
-        st.markdown("**Navigation**")
-        for p in pages:
-            st.page_link(p, label=p.title, icon=p.icon)
-
-        st.divider()
+# Global top app bar
+with st.container(key="top_app_bar"):
+    tabs_col, toggle_col = st.columns([0.84, 0.16])
+    with tabs_col:
+        tab_cols = st.columns(len(pages))
+        for i, p in enumerate(pages):
+            with tab_cols[i]:
+                st.page_link(p, label=p.title, icon=p.icon)
+    with toggle_col:
         st.toggle(
-            "🔒 Hide Values",
+            "Hide values",
             key="global_privacy_toggle",
             on_change=_on_privacy_toggle,
-            help="Globally hide financial numbers with currency symbol and ****",
         )
-        st.toggle(
-            "☀️ Light Mode",
-            key="global_theme_toggle",
-            on_change=_on_theme_toggle,
-            help="Switch between Dark and Light mode",
-        )
-        if st.button(f"🔄 Sync{last_sync_time}", help="Sync all banks and brokers", use_container_width=True):
-            with st.spinner("Syncing..."):
-                from services.sync_service import sync_all
-                c = database.connect(DB_PATH)
-                sync_all(c)
-                c.close()
-                st.rerun()
 
-# Global sidebar preferences and navigation
+# Global sidebar
 with st.sidebar:
-    st.markdown("<h3 style='margin-top: 0rem; margin-bottom: 1rem;'>Personal Finance Assistant</h3>",
-                unsafe_allow_html=True)
-    
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
 
-nav.run()
+active_page.run()

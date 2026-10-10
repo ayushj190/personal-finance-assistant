@@ -12,12 +12,8 @@ from connectors.file_import.csv_profiles import (
     parse_etoro_statement_holdings,
     parse_etoro_statement_transactions,
     parse_revolut_csv,
-    parse_trade_republic_csv,
 )
 from connectors.file_import.mt940 import parse_mt940
-
-
-from connectors.file_import.trade_republic_pdf import extract_text_from_pdf, parse_trade_republic_pdf
 
 
 class FileFormat(str, Enum):
@@ -25,8 +21,6 @@ class FileFormat(str, Enum):
     ETORO_STATEMENT_CSV = "etoro_statement_csv"
     REVOLUT_CSV = "revolut_csv"
     ABN_AMRO_TAB = "abn_amro_tab"
-    TRADE_REPUBLIC_CSV = "trade_republic_csv"
-    TRADE_REPUBLIC_PDF = "trade_republic_pdf"
     MT940 = "mt940"
     CAMT053 = "camt053"
     UNKNOWN = "unknown"
@@ -35,19 +29,6 @@ class FileFormat(str, Enum):
 def detect_format(content: str | bytes) -> FileFormat:
     if isinstance(content, bytes):
         if content.startswith(b"%PDF"):
-            try:
-                pdf_text = extract_text_from_pdf(content)
-                snip_pdf = pdf_text[:4000].lower()
-                if (
-                    "trade republic" in snip_pdf
-                    or "kontoauszug" in snip_pdf
-                    or "account statement" in snip_pdf
-                    or "rekeningafschrift" in snip_pdf
-                    or "eindsaldo" in snip_pdf
-                ):
-                    return FileFormat.TRADE_REPUBLIC_PDF
-            except Exception:
-                pass
             return FileFormat.UNKNOWN
         try:
             content = content.decode("utf-8", errors="replace")
@@ -87,9 +68,7 @@ def detect_format(content: str | bytes) -> FileFormat:
         if re.match(r"^NL\d{2}[A-Z]{4}\d{10}", line):
             return FileFormat.ABN_AMRO_TAB
 
-    # Check Trade Republic CSV
-    if "trade republic" in snippet.lower() or (("date" in snippet.lower() or "datum" in snippet.lower()) and ("amount" in snippet.lower() or "betrag" in snippet.lower()) and (";" in snippet or "," in snippet)):
-        return FileFormat.TRADE_REPUBLIC_CSV
+
 
     return FileFormat.UNKNOWN
 
@@ -104,8 +83,7 @@ def get_parser(fmt: FileFormat) -> Callable[[str, str], list[RawTransaction]] | 
             return parse_revolut_csv
         case FileFormat.ABN_AMRO_TAB:
             return parse_abn_amro_tab
-        case FileFormat.TRADE_REPUBLIC_CSV:
-            return parse_trade_republic_csv
+
         case FileFormat.MT940:
             return parse_mt940
         case FileFormat.CAMT053:
@@ -116,9 +94,6 @@ def get_parser(fmt: FileFormat) -> Callable[[str, str], list[RawTransaction]] | 
 
 def parse_statement(content: str | bytes, default_account_id: str = "imported_account") -> tuple[FileFormat, list[RawTransaction]]:
     fmt = detect_format(content)
-    if fmt == FileFormat.TRADE_REPUBLIC_PDF:
-        txs, _, _ = parse_trade_republic_pdf(content, default_account_id)
-        return fmt, txs
 
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
@@ -186,9 +161,6 @@ def parse_statement_with_llm(content: str | bytes, default_account_id: str) -> l
 
 def parse_statement_holdings(content: str | bytes, default_account_id: str = "imported_account") -> list[RawHolding]:
     fmt = detect_format(content)
-    if fmt == FileFormat.TRADE_REPUBLIC_PDF:
-        _, holdings, _ = parse_trade_republic_pdf(content, default_account_id)
-        return holdings
     if fmt == FileFormat.ETORO_STATEMENT_CSV:
         if isinstance(content, bytes):
             content = content.decode("utf-8", errors="replace")
@@ -198,7 +170,4 @@ def parse_statement_holdings(content: str | bytes, default_account_id: str = "im
 
 def parse_statement_balance(content: str | bytes, default_account_id: str = "imported_account") -> int | None:
     fmt = detect_format(content)
-    if fmt == FileFormat.TRADE_REPUBLIC_PDF:
-        _, _, balance = parse_trade_republic_pdf(content, default_account_id)
-        return balance
     return None

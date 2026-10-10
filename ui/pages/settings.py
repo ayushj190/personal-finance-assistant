@@ -13,13 +13,12 @@ from ui.components import section_header
 
 
 def render():
-    st.title("Settings & Integrations")
 
     conn = database.connect(DB_PATH)
 
-    tab_conn, tab_mortgage, tab_alloc, tab_llm, tab_system = st.tabs(
+    tab_conn, tab_mortgage, tab_alloc, tab_llm, tab_appearance, tab_system = st.tabs(
         ["Bank & Broker Integrations", "Mortgage & Liabilities",
-            "Target Allocations", "AI Model (Ollama)", "Database & Backup"]
+            "Target Allocations", "AI Model (Ollama)", "Appearance", "Database & Backup"]
     )
 
     # 1. Integrations Tab
@@ -35,7 +34,21 @@ def render():
         # Top Sync Actions
         col_sync_act, col_sync_info = st.columns([1, 2])
         with col_sync_act:
-            st.write("")
+            last_sync_row = conn.execute(
+                "SELECT started_at FROM sync_log ORDER BY started_at DESC LIMIT 1").fetchone()
+            last_sync_text = ""
+            if last_sync_row and last_sync_row["started_at"]:
+                last_time_str = last_sync_row["started_at"].replace("T", " ")[:16]
+                last_sync_text = f"Last synced: {last_time_str}"
+            
+            if st.button("🔄 Sync All Banks & Brokers", type="primary", use_container_width=True, help="Trigger manual sync across all active connectors and market data"):
+                with st.spinner("Syncing bank & broker data..."):
+                    from services.sync_service import sync_all
+                    sync_all(conn)
+                    st.success("Sync completed successfully!")
+                    st.rerun()
+            if last_sync_text:
+                st.caption(last_sync_text)
         with col_sync_info:
             if is_eb_configured:
                 st.success("✅ Open Banking service is configured and active.")
@@ -50,7 +63,7 @@ def render():
         def get_bank_options() -> list:
             if is_eb_configured:
                 try:
-                    return eb_service.get_aspsps(country="NL")
+                    return eb_service.get_aspsps()
                 except Exception:
                     pass
             return []
@@ -61,20 +74,39 @@ def render():
         else:
             aspsps = get_bank_options()
             if aspsps:
-                bank_opts = {b.get("name", "Unknown"): b for b in aspsps}
-                selected_bank_name = st.selectbox(
-                    "Select your Bank to Connect", options=sorted(bank_opts.keys()))
+                featured_opts = {}
+                other_opts = {}
+                
+                for b in aspsps:
+                    name = b.get("name", "Unknown")
+                    country = b.get("country", "Unknown")
+                    label = f"{name} ({country})"
+                    
+                    if country == "NL" or "trade republic" in name.lower() or "revolut" in name.lower():
+                        featured_opts[label] = b
+                    else:
+                        other_opts[label] = b
+
+                show_all = st.toggle("Show all European banks (Advanced)")
+                active_opts = {**featured_opts, **other_opts} if show_all else featured_opts
+
+                selected_bank_key = st.selectbox(
+                    "Select your Bank to Connect", options=sorted(active_opts.keys()))
 
                 c_connect, c_status = st.columns([1, 2])
                 with c_connect:
                     if st.button("Connect Selected Bank", type="primary", use_container_width=True):
-                        bank_data = bank_opts[selected_bank_name]
-                        bank_slug = selected_bank_name.lower().replace(" ", "_").replace("-", "_")
+                        bank_data = active_opts[selected_bank_key]
+                        bank_name = bank_data.get("name", "Unknown")
+                        bank_country = bank_data.get("country", "NL")
+                        bank_slug = bank_name.lower().replace(" ", "_").replace("-", "_")
                         st.session_state["connect_bank"] = (
-                            bank_data["name"], "NL", bank_slug)
+                            bank_name, bank_country, bank_slug)
                 with c_status:
-                    if selected_bank_name:
-                        bank_slug_preview = selected_bank_name.lower().replace(" ", "_").replace("-", "_")
+                    if selected_bank_key:
+                        bank_data = active_opts[selected_bank_key]
+                        bank_name = bank_data.get("name", "Unknown")
+                        bank_slug_preview = bank_name.lower().replace(" ", "_").replace("-", "_")
                         session_key = f"eb_session_{bank_slug_preview}"
                         if secrets_vault.get(session_key) or (bank_slug_preview == "abn_amro" and secrets_vault.get("eb_session_id")):
                             valid_until = secrets_vault.get(
@@ -340,125 +372,9 @@ def render():
             existing_rp = conn.execute(
                 "SELECT * FROM liability_rate_periods WHERE liability_id = ? ORDER BY from_date ASC LIMIT 1", (existing_lib["id"],)).fetchone()
 
-        with st.form("mortgage_form"):
-            col_m1, col_m2 = st.columns(2)
-            with col_m1:
-                loan_name = st.text_input(
-                    "Loan Name", value=existing_lib["name"] if existing_lib else "Leningdeel 1")
-                lender = st.text_input(
-                    "Lender", value=existing_lib["lender"] if existing_lib else "ABN AMRO")
-                loan_type = st.selectbox(
-                    "Loan Type",
-                    options=["annuity", "linear", "interest_only"],
-                    index=0 if not existing_lib else [
-                        "annuity", "linear", "interest_only"].index(existing_lib["loan_type"]),
-                )
-                orig_principal = st.number_input(
-                    "Original Principal (€)",
-                    value=float(
-                        existing_lib["original_principal_minor"] / 100.0) if existing_lib else 400000.0,
-                    step=5000.0,
-                )
-                default_home_val = float(existing_lib["home_value_minor"] / 100.0) if (existing_lib and existing_lib["home_value_minor"] is not None) else (
-                    float(existing_lib["original_principal_minor"] / 100.0) if existing_lib else 450000.0)
-                home_value = st.number_input(
-                    "Property / Home Value (€)",
-                    value=float(default_home_val),
-                    step=5000.0,
-                    min_value=0.0,
-                    help="Current estimated market or WOZ value of the property.",
-                )
-            with col_m2:
-                term_months = st.number_input(
-                    "Term (Months)",
-                    value=int(existing_lib["term_months"]
-                              ) if existing_lib else 360,
-                    step=12,
-                )
-                start_date = st.date_input(
-                    "Start Date",
-                    value=datetime.strptime(
-                        existing_lib["start_date"][:10], "%Y-%m-%d").date() if existing_lib else date(2024, 1, 1),
-                )
-                saved_rate = (existing_rp["annual_rate"]
-                              * 100.0) if existing_rp else 3.85
-                annual_rate_pct = st.number_input(
-                    "Initial Interest Rate (%)",
-                    value=float(saved_rate),
-                    step=0.05,
-                    format="%.2f",
-                )
-                fixed_years = st.number_input(
-                    "Rate Fixed Period (Years)", value=10, step=1)
-
-            st.markdown("##### Manual Balance Override (Optional)")
-            st.caption(
-                "If your annual mortgage statement balance differs from calculated schedule, enter it here.")
-            col_ov1, col_ov2 = st.columns(2)
-            with col_ov1:
-                override_val = float(existing_lib["balance_override_minor"] / 100.0) if (
-                    existing_lib and existing_lib["balance_override_minor"]) else 0.0
-                bal_override = st.number_input(
-                    "Statement Balance Override (€)", value=override_val, step=1000.0, min_value=0.0)
-            with col_ov2:
-                bal_override_dt = st.date_input(
-                    "Override Date",
-                    value=datetime.strptime(existing_lib["balance_override_date"][:10], "%Y-%m-%d").date(
-                    ) if (existing_lib and existing_lib["balance_override_date"]) else date.today(),
-                )
-
-            submit_mortgage = st.form_submit_button(
-                "Save Mortgage Configuration", type="primary")
-            if submit_mortgage:
-                principal_minor = int(round(orig_principal * 100))
-                home_val_minor = int(round(home_value * 100)
-                                     ) if home_value > 0 else None
-                override_minor = int(
-                    round(bal_override * 100)) if bal_override > 0 else None
-                override_date_str = bal_override_dt.isoformat() if bal_override > 0 else None
-                with conn:
-                    if existing_lib:
-                        conn.execute(
-                            """
-                            UPDATE liabilities SET
-                                name = ?, lender = ?, loan_type = ?, original_principal_minor = ?,
-                                home_value_minor = ?, term_months = ?, start_date = ?,
-                                balance_override_minor = ?, balance_override_date = ?
-                            WHERE id = ?
-                            """,
-                            (loan_name, lender, loan_type, principal_minor, home_val_minor, term_months,
-                             start_date.isoformat(), override_minor, override_date_str, existing_lib["id"]),
-                        )
-                        lib_id = existing_lib["id"]
-                    else:
-                        cur = conn.execute(
-                            """
-                            INSERT INTO liabilities (name, lender, loan_type, original_principal_minor, home_value_minor, term_months, start_date, balance_override_minor, balance_override_date)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (loan_name, lender, loan_type, principal_minor, home_val_minor,
-                             term_months, start_date.isoformat(), override_minor, override_date_str),
-                        )
-                        lib_id = cur.lastrowid
-
-                    # Save rate period
-                    fixed_until = date(
-                        start_date.year + int(fixed_years), start_date.month, start_date.day)
-                    conn.execute(
-                        "DELETE FROM liability_rate_periods WHERE liability_id = ?", (lib_id,))
-                    conn.execute(
-                        """
-                        INSERT INTO liability_rate_periods (liability_id, from_date, annual_rate, fixed_until)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (lib_id, start_date.isoformat(),
-                         annual_rate_pct / 100.0, fixed_until.isoformat()),
-                    )
-
-                sync_liability_schedule(conn, lib_id)
-                st.success(
-                    "Mortgage configured and amortization schedule generated!")
-                st.rerun()
+        from ui.dialogs import mortgage_config_dialog
+        if st.button("⚙️ Configure Mortgage / Loan", type="primary"):
+            mortgage_config_dialog(existing_lib["id"] if existing_lib else None)
 
     # 3. Target Allocations Tab
     with tab_alloc:
@@ -521,7 +437,27 @@ def render():
                 except Exception as e:
                     st.error(f"Connection failed: {str(e)}")
 
-    # 5. Database & Backup Tab
+    # 5. Appearance & Theme Tab
+    with tab_appearance:
+        section_header("Appearance & Display", "Configure theme and visual preferences")
+        current_theme = st.session_state.get("theme", "dark")
+        is_dark = current_theme == "dark"
+
+        c_toggle, c_info = st.columns([1, 2])
+        with c_toggle:
+            dark_mode = st.toggle(
+                "🌙 Dark Mode",
+                value=is_dark,
+                key="settings_dark_mode_toggle",
+                help="Switch between Dark and Light mode",
+            )
+            if dark_mode != is_dark:
+                st.session_state["theme"] = "dark" if dark_mode else "light"
+                st.rerun()
+        with c_info:
+            st.caption(f"Currently active: **{'Dark' if is_dark else 'Light'} Mode**")
+
+    # 6. Database & Backup Tab
     with tab_system:
         section_header("Database Management", "Local SQLite backups")
         st.write(f"Database Path: `{DB_PATH}`")

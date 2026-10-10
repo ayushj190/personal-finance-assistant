@@ -182,45 +182,6 @@ def parse_abn_amro_tab(text: str, default_account_id: str = "abn_checking") -> l
     return txs
 
 
-def parse_trade_republic_csv(text: str, default_account_id: str = "tr_cash") -> list[RawTransaction]:
-    txs: list[RawTransaction] = []
-    lines = [line for line in text.splitlines() if line.strip()]
-    if not lines:
-        return txs
-
-    sample = "\n".join(lines[:5])
-    delimiter = ";" if sample.count(";") > sample.count(",") else ","
-    reader = csv.DictReader(lines, delimiter=delimiter)
-
-    for row in reader:
-        date_str = row.get("Date") or row.get("Datum")
-        if not date_str:
-            continue
-        try:
-            booking_date = datetime.strptime(
-                date_str.strip()[:10], "%Y-%m-%d").date()
-        except ValueError:
-            try:
-                booking_date = datetime.strptime(
-                    date_str.strip()[:10], "%d.%m.%Y").date()
-            except ValueError:
-                continue
-
-        amount_str = row.get("Amount") or row.get("Betrag") or "0"
-        amount_minor = to_minor(amount_str)
-        desc = row.get("Name") or row.get(
-            "Description") or row.get("Typ") or "Trade Republic"
-
-        txs.append(
-            RawTransaction(
-                account_external_id=default_account_id,
-                booking_date=booking_date,
-                amount_minor=amount_minor,
-                currency="EUR",
-                description=desc.strip(),
-            )
-        )
-    return txs
 
 
 def _extract_sections(text: str) -> dict[str, list[str]]:

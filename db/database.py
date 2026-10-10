@@ -36,6 +36,36 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
         if "home_value_minor" not in lib_cols:
             conn.execute(
                 "ALTER TABLE liabilities ADD COLUMN home_value_minor INTEGER DEFAULT NULL;")
+                
+        # Migration: tax_profile robustness
+        tax_cols = [r["name"] for r in conn.execute("PRAGMA table_info(tax_profile)").fetchall()]
+        if tax_cols: # Only migrate if table exists
+            if "has_30_percent_ruling" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN has_30_percent_ruling INTEGER NOT NULL DEFAULT 0;")
+            if "is_entrepreneur" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN is_entrepreneur INTEGER NOT NULL DEFAULT 0;")
+            if "owns_home" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN owns_home INTEGER NOT NULL DEFAULT 0;")
+            if "birth_year" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN birth_year INTEGER;")
+            if "has_13th_month" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN has_13th_month INTEGER NOT NULL DEFAULT 0;")
+            if "expected_bonus_eur" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN expected_bonus_eur INTEGER NOT NULL DEFAULT 0;")
+            if "pension_contribution_pct" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN pension_contribution_pct REAL NOT NULL DEFAULT 0;")
+            if "employer_pension_match_pct" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN employer_pension_match_pct REAL NOT NULL DEFAULT 0;")
+
+        # Migration: risk_profiles robustness
+        risk_cols = [r["name"] for r in conn.execute("PRAGMA table_info(risk_profiles)").fetchall()]
+        if risk_cols: # Only migrate if table exists
+            if "investment_horizon_years" not in risk_cols:
+                conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_horizon_years INTEGER;")
+            if "liquidity_needs" not in risk_cols:
+                conn.execute("ALTER TABLE risk_profiles ADD COLUMN liquidity_needs TEXT;")
+            if "investment_experience" not in risk_cols:
+                conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_experience TEXT;")
         row = conn.execute(
             "SELECT version FROM schema_version LIMIT 1;").fetchone()
         if not row:
@@ -216,14 +246,17 @@ def save_risk_profile(
     risk_tolerance: str,
     notes: str = "",
     answers: dict[str, str] | None = None,
+    investment_horizon_years: int | None = None,
+    liquidity_needs: str | None = None,
+    investment_experience: str | None = None,
 ) -> int:
     with conn:
         cur = conn.execute(
             """
-            INSERT INTO risk_profiles (risk_score, risk_tolerance, notes)
-            VALUES (?, ?, ?)
+            INSERT INTO risk_profiles (risk_score, risk_tolerance, notes, investment_horizon_years, liquidity_needs, investment_experience)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (risk_score, risk_tolerance, notes),
+            (risk_score, risk_tolerance, notes, investment_horizon_years, liquidity_needs, investment_experience),
         )
         profile_id = cur.lastrowid
         if answers:

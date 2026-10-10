@@ -6,16 +6,15 @@ from config import DB_PATH
 from db import database
 
 
-def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
-    st.sidebar.subheader(f"🔍 {title}")
-
-    # Date range preset
-    date_preset = st.sidebar.selectbox(
-        "Date Range",
-        options=["Last 3 Months", "MTD", "Last Month",
-                 "YTD", "Last 12 Months", "All Time"],
-        index=0,
-    )
+def render_filters(title: str = "Filters") -> dict[str, Any]:
+    with st.popover(f"🔍 {title}"):
+        # Date range preset
+        date_preset = st.selectbox(
+            "Date Range",
+            options=["Last 3 Months", "MTD", "Last Month",
+                     "YTD", "Last 12 Months", "All Time"],
+            index=0,
+        )
 
     today = date.today()
     start_date = None
@@ -47,7 +46,7 @@ def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
     for a in accounts:
         acc_options[a["id"]] = f"{a['institution']} - {a['name']}"
 
-    selected_account_id = st.sidebar.selectbox(
+    selected_account_id = st.selectbox(
         "Account",
         options=list(acc_options.keys()),
         format_func=lambda x: acc_options[x],
@@ -56,7 +55,7 @@ def render_sidebar_filters(title: str = "Filters") -> dict[str, Any]:
     selected_account_ids = None if selected_account_id == 0 else [
         selected_account_id]
 
-    include_transfers = st.sidebar.toggle(
+    include_transfers = st.toggle(
         "Include internal transfers", value=False)
 
     return {

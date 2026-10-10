@@ -6,12 +6,11 @@ from db import database
 from services.analytics import detect_recurring_charges
 from ui.charts import build_monthly_spending_bar, build_spending_donut
 from ui.components import format_money, is_hidden, kpi_card, section_header
-from ui.filters import build_where_clause, render_sidebar_filters
+from ui.filters import build_where_clause, render_filters
 
 
 def render():
-    st.title("Spending Analysis")
-    filters = render_sidebar_filters()
+    filters = render_filters()
 
     conn = database.connect(DB_PATH)
     where_sql, params = build_where_clause(filters, table_alias="t")
@@ -109,43 +108,48 @@ def render():
         kpi_card("Uncategorized", f"€{uncat_spent:,.2f}",
                  subtext=f"{uncat_pct:.1f}% of total")
 
-    # 4. Monthly Trend Chart & Summary Table
-    section_header("Monthly Expenses Trend",
-                   "Month-by-month spending broken down by expense kind")
-    col_chart, col_tbl = st.columns([3, 2])
-    with col_chart:
-        st.plotly_chart(build_monthly_spending_bar(monthly_df),
-                        use_container_width=True, theme=None)
-    with col_tbl:
-        tbl_df = monthly_df[["month", "total_spent",
-                             "fixed_spent", "disc_spent", "uncat_spent"]].copy()
-        tbl_df.columns = [
-            "Month", "Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]
-        if is_hidden():
-            for col in ["Total (€)", "Fixed (€)", "Discretionary (€)", "Uncategorized (€)"]:
-                tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
-            st.dataframe(tbl_df, use_container_width=True, hide_index=True)
-        else:
-            st.dataframe(
-                tbl_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Total (€)": st.column_config.NumberColumn("Total (€)", format="€%.2f"),
-                    "Fixed (€)": st.column_config.NumberColumn("Fixed (€)", format="€%.2f"),
-                    "Discretionary (€)": st.column_config.NumberColumn("Discretionary (€)", format="€%.2f"),
-                    "Uncategorized (€)": st.column_config.NumberColumn("Uncategorized (€)", format="€%.2f"),
-                }
-            )
-
     # 5. Expense Breakdown & Top Merchants
     section_header(f"Expense Breakdown ({selected_scope})",
                    "Hierarchical spending across categories and merchants")
     if not display_df.empty:
-        st.plotly_chart(build_spending_donut(display_df), use_container_width=True, theme=None)
-
         col_left, col_right = st.columns([1, 1])
+        
         with col_left:
+            drill_key = f"donut_drilldown_{selected_scope}"
+            if drill_key not in st.session_state:
+                st.session_state[drill_key] = None
+
+            if st.session_state[drill_key]:
+                if st.button("← Back to Categories"):
+                    st.session_state[drill_key] = None
+                    st.rerun()
+
+            fig = build_spending_donut(display_df, drilldown_category=st.session_state[drill_key])
+            
+            selection = st.plotly_chart(
+                fig, 
+                use_container_width=True, 
+                theme=None, 
+                on_select="rerun", 
+                selection_mode="points"
+            )
+
+            if selection and hasattr(selection, "selection") and selection.selection.get("points"):
+                clicked_point = selection.selection["points"][0]
+                clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                
+                # Only drill down if we are at the top level
+                if st.session_state[drill_key] is None and clicked_label:
+                    st.session_state[drill_key] = clicked_label
+                    st.rerun()
+            elif selection and isinstance(selection, dict) and selection.get("selection", {}).get("points"):
+                clicked_point = selection["selection"]["points"][0]
+                clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                
+                if st.session_state[drill_key] is None and clicked_label:
+                    st.session_state[drill_key] = clicked_label
+                    st.rerun()
+            
             section_header("Top Merchants",
                            f"Highest spending in {selected_scope}")
             top_merchants = display_df.groupby(
@@ -424,5 +428,50 @@ def render():
                     f"View detailed breakdown on the Mortgage tab."
                 )
                 st.rerun()
+
+    # --- Monthly Trend Chart & Summary Table (Moved to bottom) ---
+    section_header("Monthly Expenses Trend",
+                   "Month-by-month spending broken down by expense kind")
+    col_chart, col_tbl = st.columns([2, 3])
+    with col_chart:
+        st.plotly_chart(build_monthly_spending_bar(monthly_df),
+                        use_container_width=True, theme=None)
+    with col_tbl:
+        tbl_df = monthly_df[["month", "total_spent",
+                             "fixed_spent", "disc_spent", "uncat_spent"]].copy()
+        
+        # Add MoM change and percentages
+        tbl_df["prev_total"] = tbl_df["total_spent"].shift(-1)
+        # Avoid division by zero
+        prev_tot = tbl_df["prev_total"].mask(tbl_df["prev_total"] == 0, 1)
+        tbl_df["MoM Change (%)"] = ((tbl_df["total_spent"] - tbl_df["prev_total"]) / prev_tot * 100).fillna(0)
+        
+        tot = tbl_df["total_spent"].mask(tbl_df["total_spent"] == 0, 1)
+        tbl_df["Fixed (%)"] = (tbl_df["fixed_spent"] / tot * 100).fillna(0)
+        tbl_df["Disc. (%)"] = (tbl_df["disc_spent"] / tot * 100).fillna(0)
+        
+        tbl_df = tbl_df[["month", "total_spent", "MoM Change (%)", "Fixed (%)", "Disc. (%)", "uncat_spent"]]
+        tbl_df.columns = [
+            "Month", "Total (€)", "MoM Change (%)", "Fixed (%)", "Disc. (%)", "Uncategorized (€)"]
+        
+        if is_hidden():
+            for col in ["Total (€)", "Uncategorized (€)"]:
+                tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
+            for col in ["MoM Change (%)", "Fixed (%)", "Disc. (%)"]:
+                tbl_df[col] = tbl_df[col].map(lambda x: "***")
+            st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(
+                tbl_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Total (€)": st.column_config.NumberColumn("Total (€)", format="€%.2f"),
+                    "MoM Change (%)": st.column_config.NumberColumn("MoM Change (%)", format="%+.1f%%"),
+                    "Fixed (%)": st.column_config.NumberColumn("Fixed (%)", format="%.1f%%"),
+                    "Disc. (%)": st.column_config.NumberColumn("Disc. (%)", format="%.1f%%"),
+                    "Uncategorized (€)": st.column_config.NumberColumn("Uncategorized (€)", format="€%.2f"),
+                }
+            )
 
     conn.close()

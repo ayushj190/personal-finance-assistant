@@ -3,12 +3,11 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from ui.filters import build_where_clause, render_sidebar_filters
+from ui.filters import build_where_clause, render_filters
 
 
 def render():
-    st.title("Transactions")
-    filters = render_sidebar_filters()
+    filters = render_filters()
 
     conn = database.connect(DB_PATH)
     where_sql, params = build_where_clause(filters, table_alias="t")

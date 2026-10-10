@@ -130,7 +130,6 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
     from connectors.base import NeedsReauth
     from connectors.enable_banking_service import EnableBankingService
     from connectors.etoro_service import EtoroService
-    from connectors.trade_republic_service import TradeRepublicService
     from connectors.market_data_service import update_quotes
     from services import secrets_vault
 
@@ -139,14 +138,14 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
     # 1. Open Banking (Enable Banking) per configured institution/session
     eb = EnableBankingService()
     if eb.is_configured():
-        # Check all sessions stored in vault or default session
+        # Dynamically load all enable banking sessions from vault
         stored_sessions = []
-        for key in ["eb_session_id", "eb_session_abn_amro", "eb_session_revolut", "eb_session_ing", "eb_session_rabobank"]:
+        all_keys = secrets_vault.list_keys()
+        session_keys = [k for k in all_keys if k.startswith("eb_session_") and not k.endswith("_valid_until")]
+        
+        for key in session_keys:
             if secrets_vault.get(key):
                 stored_sessions.append((key, EnableBankingService(session_vault_key=key)))
-
-        if not stored_sessions and secrets_vault.get("eb_session_id"):
-            stored_sessions.append(("eb_session_id", eb))
 
         for session_key, eb_inst in stored_sessions:
             inst_label = session_key.replace("eb_session_", "").replace("_id", "")
@@ -317,46 +316,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                 )
             results["connectors"]["etoro"] = {"status": "error", "error": str(e)}
 
-    # 3. Trade Republic (Savings Account)
-    tr = TradeRepublicService()
-    if tr.is_configured():
-        started = datetime.now().isoformat()
-        try:
-            accs = tr.fetch_accounts()
-            for acc in accs:
-                database.upsert_account(
-                    conn,
-                    {
-                        "provider": "manual",
-                        "institution": acc.institution,
-                        "external_id": acc.external_id,
-                        "name": acc.name,
-                        "currency": acc.currency,
-                        "asset_class": acc.asset_class,
-                    },
-                )
-            with conn:
-                conn.execute(
-                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('trade_republic', ?, datetime('now'), 'ok', 0, 'Trade Republic savings account verified')",
-                    (started,),
-                )
-            results["connectors"]["trade_republic"] = {"status": "ok", "holdings": 0}
-        except NeedsReauth as e:
-            with conn:
-                conn.execute(
-                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('trade_republic', ?, datetime('now'), 'needs_reauth', 0, ?)",
-                    (started, str(e)),
-                )
-            results["connectors"]["trade_republic"] = {"status": "needs_reauth", "error": str(e)}
-        except Exception as e:
-            with conn:
-                conn.execute(
-                    "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES ('trade_republic', ?, datetime('now'), 'error', 0, ?)",
-                    (started, str(e)),
-                )
-            results["connectors"]["trade_republic"] = {"status": "error", "error": str(e)}
-
-    # 4. Market Quotes
+    # 3. Market Quotes
     holdings_tickers = [
         r["ticker"] for r in conn.execute("SELECT DISTINCT ticker FROM holdings WHERE ticker IS NOT NULL").fetchall()
     ]

@@ -81,46 +81,6 @@ Position ID,Action,Amount,Units,Open Rate,Current Rate,Spread,Profit(USD),Open D
         self.assertEqual(holdings[0].quantity, 1.0)
         self.assertEqual(holdings[0].cost_basis_minor, 15000)
 
-    def test_trade_republic_csv_format(self):
-        sample = """Date;Type;Description;Amount
-2026-03-01;Trade;Buy VWCE.DE;-500.00
-2026-03-15;Interest;Monthly Interest;15.25
-"""
-        fmt, txs = parse_statement(sample)
-        self.assertEqual(fmt, FileFormat.TRADE_REPUBLIC_CSV)
-        self.assertEqual(len(txs), 2)
-        self.assertEqual(txs[0].amount_minor, -50000)
-        self.assertEqual(txs[1].amount_minor, 1525)
-
-    def test_trade_republic_pdf_parsing(self):
-        from connectors.file_import.trade_republic_pdf import parse_trade_republic_pdf
-        pdf_text = """TRADE REPUBLIC BANK GMBH
-KONTOAUSZUG
-01.03.2026 Kartenzahlung Supermarkt -24,50 EUR
-15.03.2026 Zinsen 12,30 EUR
-20.03.2026 Gutschrift Überweisung 1.000,00 EUR
-"""
-        txs, holdings, _ = parse_trade_republic_pdf(pdf_text)
-        self.assertEqual(len(txs), 3)
-        self.assertEqual(txs[0].amount_minor, -2450)
-        self.assertEqual(txs[1].amount_minor, 1230)
-        self.assertEqual(txs[2].amount_minor, 100000)
-
-    def test_trade_republic_eindsaldo_balance(self):
-        from connectors.file_import.trade_republic_pdf import parse_trade_republic_pdf
-        pdf_text = """TRADE REPUBLIC BANK GMBH
-REKENINGAFSCHRIFT
-BEGINSALDO
-€ 1.000,00
-01.03.2026 Zinsen 52,33 EUR
-EINDSALDO
-€ 18.052,33
-"""
-        txs, holdings, balance = parse_trade_republic_pdf(pdf_text)
-        self.assertEqual(balance, 1805233)
-        self.assertEqual(len(txs), 1)
-        self.assertEqual(txs[0].amount_minor, 5233)
-
 
 if __name__ == "__main__":
     unittest.main()

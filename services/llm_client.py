@@ -28,6 +28,21 @@ def generate_json(messages: list[dict[str, str]], schema: dict[str, Any] | None 
         print(f"Ollama generation error: {e}")
         return None
 
+def generate_stream(messages: list[dict[str, str]]) -> Any:
+    """Yields string chunks from the LLM response."""
+    client, model = get_ollama_client()
+    try:
+        response = client.chat(
+            model=model,
+            messages=messages,
+            stream=True
+        )
+        for chunk in response:
+            if 'message' in chunk and 'content' in chunk['message']:
+                yield chunk['message']['content']
+    except Exception as e:
+        yield f"\n⚠️ Error connecting to local Ollama model: {e}"
+
 
 def search_brave(query: str) -> str:
     """Perform a web search query via Brave Search API if configured."""
