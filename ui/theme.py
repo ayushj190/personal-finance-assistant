@@ -942,6 +942,54 @@ def inject_custom_css() -> None:
             border-bottom: 1px solid var(--tab-border) !important;
         }
 
+        /* Subtle Micro-Animations */
+        @keyframes subtleFadeUp {
+            from {
+                opacity: 0.92;
+                transform: translateY(3px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .glass-card, 
+        div[data-testid="stMetric"],
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"] {
+            transition: background-color 0.18s ease, color 0.18s ease, transform 0.15s ease !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"]:hover {
+            transform: translateY(-1px) !important;
+        }
+
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"],
+        div[data-testid="stPopover"] > button {
+            transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease, box-shadow 0.18s ease !important;
+        }
+
+        /* Prevent Streamlit from dimming the screen during re-runs */
+        [data-stale="true"],
+        .stApp [data-stale="true"],
+        div[data-testid="stMain"] [data-stale="true"],
+        div[data-testid="stSidebar"] [data-stale="true"],
+        .element-container[data-stale="true"] {
+            opacity: 1 !important;
+            filter: none !important;
+            transition: none !important;
+        }
+
+        [data-testid="stAppViewContainer"] > .main {
+            opacity: 1 !important;
+            filter: none !important;
+        }
+
         /* Hide Scrollbars */
         ::-webkit-scrollbar {
             width: 0px !important;

@@ -4,7 +4,9 @@ import plotly.express as px
 
 from config import DB_PATH
 from db import database
-from ui.components import format_money, section_header, kpi_card
+from ui.components import format_money, section_header, kpi_card, is_hidden
+from services.tax_report_service import generate_dutch_tax_statement
+
 
 
 def calculate_box1_tax(gross_income: float) -> dict:
@@ -116,28 +118,48 @@ def render():
     # Calculations
     box1 = calculate_box1_tax(current_income)
     box3 = calculate_box3_tax(cash_bal, investments_bal, has_partner)
+    tax_statement = generate_dutch_tax_statement()
 
     # 3. Box 1 Display
     section_header("Box 1: Income from Work & Home", "Estimated annual income tax based on 2024 brackets.")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        kpi_card("Gross Income", f"€{current_income:,.2f}")
+        g_str = "€****" if is_hidden() else f"€{current_income:,.2f}"
+        kpi_card("Gross Income", g_str)
     with c2:
-        kpi_card("Net Income", f"€{box1['net_income']:,.2f}", subtext=f"{(box1['net_income'] / current_income)*100:.1f}% retention")
+        net_str = "€****" if is_hidden() else f"€{box1['net_income']:,.2f}"
+        ret_sub = "****" if is_hidden() else f"{(box1['net_income'] / current_income)*100:.1f}% retention"
+        kpi_card("Net Income", net_str, subtext=ret_sub)
     with c3:
-        kpi_card("Total Tax (Box 1)", f"€{box1['total_tax']:,.2f}", subtext=f"{(box1['total_tax'] / current_income)*100:.1f}% effective tax rate")
+        tax_str = "€****" if is_hidden() else f"€{box1['total_tax']:,.2f}"
+        rate_sub = "****" if is_hidden() else f"{(box1['total_tax'] / current_income)*100:.1f}% effective tax"
+        kpi_card("Total Tax (Box 1)", tax_str, subtext=rate_sub)
+    with c4:
+        hra_val = tax_statement["deductible_mortgage_interest"]
+        hra_refund = tax_statement["mortgage_interest_refund"]
+        hra_str = "€****" if is_hidden() else f"€{hra_val:,.2f}"
+        hra_sub = "****" if is_hidden() else f"+€{hra_refund:,.2f} tax benefit"
+        kpi_card("Mortgage HRA (Paid)", hra_str, subtext=hra_sub)
         
-    st.caption(f"Bracket 1 (<€75,518 at 36.97%): **€{box1['bracket1_tax']:,.2f}** | Bracket 2 (>€75,518 at 49.50%): **€{box1['bracket2_tax']:,.2f}**")
+    b1_str = "€****" if is_hidden() else f"€{box1['bracket1_tax']:,.2f}"
+    b2_str = "€****" if is_hidden() else f"€{box1['bracket2_tax']:,.2f}"
+    st.caption(f"Bracket 1 (<€75,518 at 36.97%): **{b1_str}** | Bracket 2 (>€75,518 at 49.50%): **{b2_str}**")
 
     # 4. Box 3 Display
     section_header("Box 3: Wealth & Savings", "Estimated annual wealth tax based on 2024 fictitious yields (ignoring debts).")
     c1, c2, c3 = st.columns(3)
     with c1:
-        kpi_card("Taxable Assets", f"€{cash_bal + investments_bal:,.2f}", subtext=f"Cash: €{cash_bal:,.0f} | Inv: €{investments_bal:,.0f}")
+        assets_str = "€****" if is_hidden() else f"€{cash_bal + investments_bal:,.2f}"
+        sub_str = "Cash: €**** | Inv: €****" if is_hidden() else f"Cash: €{cash_bal:,.0f} | Inv: €{investments_bal:,.0f}"
+        kpi_card("Taxable Assets", assets_str, subtext=sub_str)
     with c2:
-        kpi_card("Tax-free Allowance", f"€{114000 if has_partner else 57000:,.2f}")
+        allowance_val = 114000 if has_partner else 57000
+        allowance_str = "€****" if is_hidden() else f"€{allowance_val:,.2f}"
+        kpi_card("Tax-free Allowance", allowance_str, subtext="Fiscal partner active" if has_partner else "Single allowance")
     with c3:
-        kpi_card("Total Tax (Box 3)", f"€{box3['tax_due']:,.2f}", subtext=f"Based on €{box3['fictitious_return']:,.2f} fictitious return")
+        b3_str = "€****" if is_hidden() else f"€{box3['tax_due']:,.2f}"
+        ret_sub = "Fictitious return: €****" if is_hidden() else f"Fictitious return: €{box3['fictitious_return']:,.2f}"
+        kpi_card("Total Tax (Box 3)", b3_str, subtext=ret_sub)
 
     if box3['tax_due'] == 0:
         st.success("🎉 Your assets fall below the tax-free allowance. No Box 3 tax is owed.")
@@ -154,6 +176,8 @@ def render():
         ])
         fig1 = px.pie(df_box1, names='Category', values='Amount', title='Income Breakdown', hole=0.4)
         fig1.update_layout(margin=dict(t=40, b=0, l=0, r=0))
+        if is_hidden():
+            fig1.update_traces(hovertemplate="Censored<extra></extra>")
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
@@ -165,4 +189,27 @@ def render():
         if (cash_bal + investments_bal) > 0:
             fig2 = px.pie(df_box3, names='Category', values='Amount', title='Asset Taxability (Box 3)', hole=0.4)
             fig2.update_layout(margin=dict(t=40, b=0, l=0, r=0))
+            if is_hidden():
+                fig2.update_traces(hovertemplate="Censored<extra></extra>")
             st.plotly_chart(fig2, use_container_width=True)
+
+    # 5. Official Belastingdienst Tax Filing Statement & Export
+    section_header("📋 Tax Filing Statement (Aangifte Inkomstenbelasting)", "Itemized summary for your annual tax declaration")
+    report_df = tax_statement["report_df"].copy()
+    if is_hidden():
+        report_df["Amount (€)"] = "€****"
+    else:
+        report_df["Amount (€)"] = report_df["Amount (€)"].map(lambda x: f"€{x:,.2f}" if abs(x) > 0 else "—")
+    
+    col_t_table, col_t_dl = st.columns([3, 1])
+    with col_t_table:
+        st.dataframe(report_df, use_container_width=True, hide_index=True)
+    with col_t_dl:
+        st.download_button(
+            label="📥 Export Statement (CSV)",
+            data=tax_statement["csv_content"],
+            file_name=f"tax_filing_statement_{tax_statement['tax_year']}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+

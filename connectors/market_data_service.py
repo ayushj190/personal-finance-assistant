@@ -57,17 +57,54 @@ def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None)
             conn.close()
 
 
+_fx_cache: dict[str, tuple[float, float]] = {}  # currency -> (rate, timestamp)
+
+
 def get_latest_fx_to_eur(currency: str, conn: sqlite3.Connection) -> float:
-    if currency == "EUR":
+    """Returns multiplier to convert an amount in native `currency` into EUR."""
+    curr = (currency or "EUR").upper().strip()
+    if curr == "EUR":
         return 1.0
-    if currency == "USD":
+
+    import time
+    now = time.time()
+    if curr in _fx_cache:
+        cached_rate, ts = _fx_cache[curr]
+        if now - ts < 300:  # 5 min cache
+            return cached_rate
+
+    rate = 1.0
+    fallback_rates = {
+        "USD": 1.0 / 1.08,
+        "GBP": 1.0 / 0.86,
+        "CHF": 1.0 / 0.95,
+        "JPY": 1.0 / 160.0,
+        "TRY": 1.0 / 37.0,
+    }
+
+    ticker_map = {
+        "USD": "EURUSD=X",
+        "GBP": "EURGBP=X",
+        "CHF": "EURCHF=X",
+        "JPY": "EURJPY=X",
+    }
+
+    ticker = ticker_map.get(curr)
+    if ticker:
         row = conn.execute(
-            "SELECT close FROM market_quotes WHERE ticker = 'EURUSD=X' ORDER BY quote_date DESC LIMIT 1"
+            "SELECT close FROM market_quotes WHERE ticker = ? ORDER BY quote_date DESC LIMIT 1",
+            (ticker,)
         ).fetchone()
         if row and row["close"] and row["close"] > 0:
-            return 1.0 / float(row["close"])
-        return 1.0 / 1.08  # reasonable fallback
-    return 1.0
+            rate = 1.0 / float(row["close"])
+        else:
+            rate = fallback_rates.get(curr, 1.0)
+    else:
+        rate = fallback_rates.get(curr, 1.0)
+
+    _fx_cache[curr] = (rate, now)
+    return rate
+
 
 
 def fetch_yfinance_quote(ticker: str) -> dict[str, Any] | None:

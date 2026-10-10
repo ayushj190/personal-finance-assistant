@@ -66,11 +66,18 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
                 conn.execute("ALTER TABLE risk_profiles ADD COLUMN liquidity_needs TEXT;")
             if "investment_experience" not in risk_cols:
                 conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_experience TEXT;")
+
+        # Performance Indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_snapshots_date ON account_snapshots(snapshot_date);")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_acc_date ON transactions(account_id, booking_date);")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_holdings_acc_ticker ON holdings(account_id, ticker);")
+
         row = conn.execute(
             "SELECT version FROM schema_version LIMIT 1;").fetchone()
         if not row:
             conn.execute("INSERT INTO schema_version (version) VALUES (1);")
     conn.close()
+
 
 
 def upsert_account(conn: sqlite3.Connection, acc: dict[str, Any]) -> int:

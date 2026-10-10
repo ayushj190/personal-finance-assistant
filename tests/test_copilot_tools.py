@@ -50,6 +50,26 @@ class TestCopilotTools(unittest.TestCase):
         self.assertTrue(sql_res["success"])
         self.assertIsNotNone(sql_res["df"])
 
+    def test_copilot_worker_job_lifecycle(self):
+        from agent import copilot_worker
+        import time
+
+        job = copilot_worker.CopilotJob(job_id="test-job-1", prompt="test", history=[])
+        # Test default snapshot
+        snap = job.get_snapshot()
+        self.assertEqual(snap["status"], "running")
+        self.assertEqual(snap["accumulated_text"], "")
+
+        # Test job registry
+        copilot_worker._jobs["test-job-1"] = job
+        fetched = copilot_worker.get_job("test-job-1")
+        self.assertIsNotNone(fetched)
+        self.assertEqual(fetched.job_id, "test-job-1")
+
+        copilot_worker.remove_job("test-job-1")
+        self.assertIsNone(copilot_worker.get_job("test-job-1"))
+
 
 if __name__ == "__main__":
     unittest.main()
+

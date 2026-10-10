@@ -60,8 +60,8 @@ The Streamlit interface will launch locally in your browser at `http://localhost
 - **🔒 Global Privacy Mode:** Hide all financial numbers with currency symbols and `****` across the app with a single click. Ideal for screen sharing.
 - **🤖 Background AI Copilot:** Chat with your finances while navigating the app. The AI can execute complex Python analytics and safe SQL queries without blocking your UI.
 - **📊 Dashboard:** 4-KPI ribbon (Net Worth, Liquid Cash, Investments, Runway buffer), accounts grid, net worth trend chart, and upcoming recurring bills.
-- **🛒 Spending:** Month-by-month trends, interactive category drill-down visuals, top merchants ranking, and a subscription leak detector.
-- **📈 Investments:** Direct holdings table with embedded TradingView live market widgets, eToro/Trade Republic tracker, and 3 rebalancing calculators (No-sell injection, Monthly water-filling, Full rebalance) with 5/25 drift alerts.
+- **🛒 Spending:** Month-by-month trends, interactive category drill-down visuals, **Cash Flow Sankey Diagram**, top merchants ranking, and a subscription leak detector.
+- **📈 Investments:** Direct holdings table with embedded TradingView live market widgets, eToro/Trade Republic tracker, 3 rebalancing calculators with 5/25 drift alerts, **FIRE Trajectory Calculator**, **Tax-Loss Harvesting Assistant**, and **Savings Goals tracking**.
 - **🏠 Mortgage:** Complete 30-year amortization schedule (Annuity, Linear, Interest-Only) and penalty-free extra repayment simulators (*Boetevrij aflossen*).
 - **📝 Transactions:** Instant category learning. Manual recategorization creates a local rule and re-applies it automatically.
 - **📥 Import:** Support for ABN AMRO (.TAB), Revolut (CSV), eToro (TSV), Trade Republic (PDF/CSV), MT940, and CAMT.053 XML.
@@ -74,4 +74,4 @@ Run the full automated test suite to ensure local integrity:
 ```powershell
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
-All 37 unit tests verify database migrations, merchant cleaning rules, statement import parsers, savings math, rebalancing engines, UI privacy masking, and the strict SQL sandbox query denial.
+All 48 unit tests verify database migrations, merchant cleaning rules, statement import parsers, savings math, rebalancing engines, UI privacy masking, and the strict SQL sandbox query denial.

@@ -3,10 +3,12 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from services.analytics import detect_recurring_charges
+from services.analytics import detect_recurring_charges, calculate_current_net_worth, calculate_burn_and_runway
+from services.budget_service import calculate_budget_variance, set_category_budget, calculate_12_month_runway_forecast
 from ui.charts import build_monthly_spending_bar, build_spending_donut
-from ui.components import format_money, is_hidden, kpi_card, section_header
+from ui.components import format_money, is_hidden, kpi_card, section_header, status_badge
 from ui.filters import build_where_clause, render_filters
+
 
 
 def render():
@@ -107,6 +109,73 @@ def render():
         uncat_pct = (uncat_spent / total_spent * 100) if total_spent > 0 else 0
         kpi_card("Uncategorized", f"€{uncat_spent:,.2f}",
                  subtext=f"{uncat_pct:.1f}% of total")
+
+    # --- CASH FLOW SANKEY DIAGRAM ---
+    cf_where = "WHERE 1=1"
+    cf_params = []
+    if selected_scope != "All Months (Monthly Average)":
+        cf_where = "WHERE month = ?"
+        cf_params = [selected_scope]
+        
+    cf_df = pd.read_sql_query(f"SELECT * FROM v_monthly_cashflow {cf_where}", conn, params=cf_params)
+    
+    if not cf_df.empty:
+        if selected_scope == "All Months (Monthly Average)":
+            inc = cf_df["income_eur"].mean()
+            fix = cf_df["fixed_eur"].mean()
+            disc = cf_df["discretionary_eur"].mean()
+            sav = cf_df["savings_eur"].mean()
+        else:
+            inc = cf_df["income_eur"].sum()
+            fix = cf_df["fixed_eur"].sum()
+            disc = cf_df["discretionary_eur"].sum()
+            sav = cf_df["savings_eur"].sum()
+            
+        # To avoid Sankey errors, ensure positive flows and handle unmatched outflow
+        total_out = fix + disc + sav + uncat_spent
+        if inc < total_out:
+            inc = total_out # Balance the Sankey node if spending exceeds income
+            
+        import plotly.graph_objects as go
+        
+        # Nodes: 0: Income, 1: Fixed, 2: Discretionary, 3: Savings, 4: Uncategorized, 5: Unallocated
+        unallocated = max(0, inc - total_out)
+        
+        labels = ["Total Income", "Fixed Expenses", "Discretionary", "Savings & Investments", "Uncategorized", "Unallocated Cash"]
+        colors = ["#2DD4BF", "#FB7185", "#FBBF24", "#38BDF8", "#94A3B8", "#A78BFA"]
+        
+        sources = [0, 0, 0, 0, 0]
+        targets = [1, 2, 3, 4, 5]
+        values = [fix, disc, sav, uncat_spent, unallocated]
+        
+        # Filter out 0 value links
+        s_filt, t_filt, v_filt = [], [], []
+        for s, t, v in zip(sources, targets, values):
+            if v > 0:
+                s_filt.append(s)
+                t_filt.append(t)
+                v_filt.append(v)
+                
+        if v_filt:
+            fig = go.Figure(data=[go.Sankey(
+                node = dict(
+                  pad = 15,
+                  thickness = 20,
+                  line = dict(color = "black", width = 0.5),
+                  label = labels,
+                  color = colors
+                ),
+                link = dict(
+                  source = s_filt,
+                  target = t_filt,
+                  value = v_filt
+              ))])
+            
+            fig.update_layout(title_text="Cash Flow Overview", font_size=12, height=350, margin=dict(t=35, l=10, r=10, b=10))
+            if is_hidden():
+                fig.update_traces(hovertemplate="Censored<extra></extra>")
+            
+            st.plotly_chart(fig, use_container_width=True)
 
     # 5. Expense Breakdown & Top Merchants
     section_header(f"Expense Breakdown ({selected_scope})",
@@ -474,4 +543,122 @@ def render():
                 }
             )
 
+    # --- Category Budgeting & Variance Section ---
+    section_header("Category Budget Tracker & Variance", "Track monthly targets and spending discipline")
+    b_data = calculate_budget_variance(conn)
+    
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        tot_b_str = "€****" if is_hidden() else f"€{b_data['total_budget_eur']:,.2f}"
+        kpi_card("Monthly Budget", tot_b_str, subtext="Target cap across categories")
+    with b2:
+        tot_s_str = "€****" if is_hidden() else f"€{b_data['total_spent_eur']:,.2f}"
+        kpi_card("Current Spend", tot_s_str, subtext=f"Total spent in {b_data['month']}")
+    with b3:
+        var_val = b_data['variance_eur']
+        var_sub = "Within budget" if var_val >= 0 else "Over budget"
+        var_str = "€****" if is_hidden() else f"€{abs(var_val):,.2f} {'left' if var_val >= 0 else 'deficit'}"
+        kpi_card("Budget Variance", var_str, subtext=var_sub)
+
+    col_b_tbl, col_b_edit = st.columns([3, 1])
+    with col_b_tbl:
+        cat_df = b_data["categories_df"]
+        if not cat_df.empty:
+            disp_b = cat_df[["category", "kind", "budget_eur", "spent_eur", "remaining_eur", "pct_used", "status"]].copy()
+            disp_b.columns = ["Category", "Type", "Budget (€)", "Spent (€)", "Remaining (€)", "% Used", "Status"]
+            if is_hidden():
+                disp_b["Budget (€)"] = "€****"
+                disp_b["Spent (€)"] = "€****"
+                disp_b["Remaining (€)"] = "€****"
+                disp_b["% Used"] = "***"
+                disp_b["Category"] = "****"
+            else:
+                disp_b["Budget (€)"] = disp_b["Budget (€)"].map(lambda x: f"€{x:,.2f}" if x > 0 else "—")
+                disp_b["Spent (€)"] = disp_b["Spent (€)"].map(lambda x: f"€{x:,.2f}")
+                disp_b["Remaining (€)"] = disp_b["Remaining (€)"].map(lambda x: f"€{x:,.2f}" if x != 0 else "—")
+                disp_b["% Used"] = disp_b["% Used"].map(lambda x: f"{x:.0f}%" if x > 0 else "0%")
+            st.dataframe(disp_b, use_container_width=True, hide_index=True)
+
+    with col_b_edit:
+        with st.popover("✏️ Set Category Budgets", use_container_width=True):
+            st.caption("Update monthly spending caps")
+            with st.form("set_cat_budget_form"):
+                all_cats = conn.execute(
+                    "SELECT id, name FROM categories WHERE kind IN ('fixed', 'discretionary') ORDER BY name ASC"
+                ).fetchall()
+                cat_options = {c["id"]: c["name"] for c in all_cats}
+                selected_cat_id = st.selectbox(
+                    "Category",
+                    options=list(cat_options.keys()),
+                    format_func=lambda x: cat_options[x],
+                )
+                curr_bud = 0.0
+                if selected_cat_id:
+                    matched = cat_df[cat_df["category_id"] == selected_cat_id]
+                    if not matched.empty:
+                        curr_bud = float(matched["budget_eur"].iloc[0])
+                new_limit = st.number_input(
+                    "Monthly Limit (€)",
+                    min_value=0.0,
+                    value=curr_bud,
+                    step=50.0,
+                    format="%.2f",
+                )
+                if st.form_submit_button("Save Budget", type="primary"):
+                    set_category_budget(conn, selected_cat_id, new_limit)
+                    st.success(f"Updated budget for {cat_options[selected_cat_id]}!")
+                    st.rerun()
+
+    # --- 12-Month Runway Projection Chart ---
+    st.markdown("#### 📈 12-Month Financial Trajectory Projection")
+    nw_data = calculate_current_net_worth(conn)
+    liq_cash = nw_data["liquid_cash"]
+    
+    # Estimate income and burn
+    inc_row = conn.execute(
+        "SELECT AVG(monthly_inc) as avg_inc FROM (SELECT SUM(amount_eur) as monthly_inc FROM v_transactions WHERE category_kind = 'income' AND is_internal_transfer = 0 GROUP BY strftime('%Y-%m', booking_date) ORDER BY strftime('%Y-%m', booking_date) DESC LIMIT 6)"
+    ).fetchone()
+    avg_income = float(inc_row["avg_inc"] or 0.0) if inc_row else 0.0
+
+    cur_burn = float(monthly_df["total_spent"].iloc[0]) if not monthly_df.empty else 0.0
+    bud_burn = float(b_data["total_budget_eur"]) if b_data["total_budget_eur"] > 0 else cur_burn
+
+    forecast_data = calculate_12_month_runway_forecast(
+        liquid_cash=liq_cash,
+        projected_monthly_income=avg_income,
+        current_burn_rate=cur_burn,
+        budgeted_burn_rate=bud_burn,
+        horizon_months=12,
+    )
+
+    if forecast_data:
+        import plotly.graph_objects as go
+        f_df = pd.DataFrame(forecast_data)
+        f_fig = go.Figure()
+        f_fig.add_trace(go.Scatter(
+            x=f_df["month_label"],
+            y=f_df["current_spend_balance_eur"],
+            mode="lines+markers",
+            name="Current Burn Trajectory",
+            line=dict(color="#FB7185", width=2.5),
+        ))
+        f_fig.add_trace(go.Scatter(
+            x=f_df["month_label"],
+            y=f_df["budgeted_spend_balance_eur"],
+            mode="lines+markers",
+            name="Budgeted Target Trajectory",
+            line=dict(color="#2DD4BF", width=2.5, dash="dash"),
+        ))
+        f_fig.update_layout(
+            title="12-Month Cash Buffer Trajectory (Current vs Target Budget)",
+            xaxis_title="Timeline",
+            yaxis_title="Projected Cash Balance (€)",
+            margin=dict(t=35, l=10, r=10, b=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        if is_hidden():
+            f_fig.update_traces(hovertemplate="Censored<extra></extra>")
+        st.plotly_chart(f_fig, use_container_width=True)
+
     conn.close()
+

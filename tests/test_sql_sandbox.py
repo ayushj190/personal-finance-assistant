@@ -38,6 +38,15 @@ class TestSqlSandbox(unittest.TestCase):
         with self.assertRaises(Exception):
             execute_safe_query("PRAGMA journal_mode", db_path=self.db_path)
 
+    def test_denial_of_sensitive_tables(self):
+        # Reading secrets_vault must be blocked by authorizer
+        with self.assertRaises(Exception):
+            execute_safe_query("SELECT * FROM secrets_vault", db_path=self.db_path)
+
+        with self.assertRaises(Exception):
+            execute_safe_query("SELECT * FROM schema_migrations", db_path=self.db_path)
+
 
 if __name__ == "__main__":
     unittest.main()
+
