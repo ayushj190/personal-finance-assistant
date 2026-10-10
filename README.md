@@ -61,7 +61,7 @@ The Streamlit interface will launch locally in your browser at `http://localhost
 - **🤖 Background AI Copilot:** Chat with your finances while navigating the app. The AI can execute complex Python analytics and safe SQL queries without blocking your UI.
 - **📊 Dashboard:** 4-KPI ribbon (Net Worth, Liquid Cash, Investments, Runway buffer), accounts grid, net worth trend chart, and upcoming recurring bills.
 - **🛒 Spending:** Month-by-month trends, interactive category drill-down visuals, top merchants ranking, and a subscription leak detector.
-- **📈 Investments:** Direct holdings table, eToro/Trade Republic tracker, and 3 rebalancing calculators (No-sell injection, Monthly water-filling, Full rebalance) with 5/25 drift alerts.
+- **📈 Investments:** Direct holdings table with embedded TradingView live market widgets, eToro/Trade Republic tracker, and 3 rebalancing calculators (No-sell injection, Monthly water-filling, Full rebalance) with 5/25 drift alerts.
 - **🏠 Mortgage:** Complete 30-year amortization schedule (Annuity, Linear, Interest-Only) and penalty-free extra repayment simulators (*Boetevrij aflossen*).
 - **📝 Transactions:** Instant category learning. Manual recategorization creates a local rule and re-applies it automatically.
 - **📥 Import:** Support for ABN AMRO (.TAB), Revolut (CSV), eToro (TSV), Trade Republic (PDF/CSV), MT940, and CAMT.053 XML.

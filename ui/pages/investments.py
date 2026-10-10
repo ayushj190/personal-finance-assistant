@@ -188,54 +188,6 @@ def render():
     usd_to_eur = (1.0 / float(fx_row["close"])
                   ) if fx_row and fx_row["close"] else 0.892
 
-    # 1. Copy Portfolios Section
-    if not copy_df.empty:
-        section_header("eToro Copied Traders",
-                       "CopyPortfolios and automated trader mirroring")
-        render_copy_portfolios(copy_df, usd_to_eur)
-
-    # 2. Direct Holdings Section
-    section_header("Direct Holdings", "Stocks, ETFs, and assets held directly")
-    if not direct_df.empty:
-        # TradingView live market data widget
-        tv_symbols = []
-        for t in direct_df["ticker"].unique():
-            tv_symbols.append({"name": t.split('.')[0] if '.' in t else t})
-            
-        theme = st.get_option("theme.base")
-        tv_height = max(300, len(tv_symbols) * 45 + 90)
-        blur_overlay = """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>""" if is_hidden() else ""
-        tv_html = f"""
-        <div style="position: relative; width: 100%; height: {tv_height}px;">
-            {blur_overlay}
-            <!-- TradingView Widget BEGIN -->
-            <div class="tradingview-widget-container">
-              <div class="tradingview-widget-container__widget"></div>
-              <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
-              {{
-              "width": "100%",
-              "height": {tv_height},
-              "symbolsGroups": [
-                {{
-                  "name": "Live Market Prices",
-                  "originalName": "Holdings",
-                  "symbols": {json.dumps(tv_symbols)}
-                }}
-              ],
-              "showSymbolLogo": true,
-              "isTransparent": true,
-              "colorTheme": "{'light' if theme == 'light' else 'dark'}",
-              "locale": "en"
-            }}
-              </script>
-            </div>
-            <!-- TradingView Widget END -->
-        </div>
-        """
-        st.components.v1.html(tv_html, height=tv_height)
-    else:
-        st.caption("No direct holdings found.")
-
     # 2. Allocation & Drift Analysis
     section_header("Allocation & Rebalancing",
                    "Track drift from targets and generate buy/sell recommendations")
@@ -331,40 +283,14 @@ def render():
         total_portfolio_eur = consolidated_df["value_eur"].sum()
         theme_totals = consolidated_df.groupby("sector")["value_eur"].sum().to_dict()
 
-        def get_theme_stat(sector_name):
-            val = theme_totals.get(sector_name, 0.0)
-            pct = (val / total_portfolio_eur * 100.0) if total_portfolio_eur > 0 else 0.0
-            return val, pct
-
-        tech_val, tech_pct = get_theme_stat("Technology")
-        gold_val, gold_pct = get_theme_stat("Gold & Metals")
-        energy_val, energy_pct = get_theme_stat("Energy")
-        defense_val, defense_pct = get_theme_stat("Defense & Aerospace")
-        crypto_val, crypto_pct = get_theme_stat("Cryptocurrency")
-        broad_val, broad_pct = get_theme_stat("Broad Market ETF")
-
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
-        with k1:
-            kpi_card("Technology", f"€{tech_val:,.0f}", delta_str=f"{tech_pct:.1f}% wt")
-        with k2:
-            kpi_card("Gold & Metals", f"€{gold_val:,.0f}", delta_str=f"{gold_pct:.1f}% wt")
-        with k3:
-            kpi_card("Energy", f"€{energy_val:,.0f}", delta_str=f"{energy_pct:.1f}% wt")
-        with k4:
-            kpi_card("Defense & Aero", f"€{defense_val:,.0f}", delta_str=f"{defense_pct:.1f}% wt")
-        with k5:
-            kpi_card("Crypto", f"€{crypto_val:,.0f}", delta_str=f"{crypto_pct:.1f}% wt")
-        with k6:
-            kpi_card("Broad ETFs", f"€{broad_val:,.0f}", delta_str=f"{broad_pct:.1f}% wt")
-
         # View Mode Selector
         view_col, _ = st.columns([3, 1])
         with view_col:
             view_mode = st.radio(
                 "Exposure Visualizer View:",
                 options=[
-                    "By Portfolio / Source (Default)",
                     "By Sector & Theme",
+                    "By Portfolio / Source",
                     "By Asset Type",
                     "By Region",
                     "All Assets (Flat)"
@@ -374,15 +300,15 @@ def render():
                 help="Group by Copy Portfolio for copied assets (keeping Direct Holdings grouped), or view by Sector/Theme, Asset Type, or Geography."
             )
 
-        if view_mode == "By Portfolio / Source (Default)":
+        if view_mode == "By Sector & Theme":
+            treemap_path = [px.Constant("Portfolio"), 'sector', 'display_label']
+            chart_title = 'Consolidated True Exposure by Sector & Theme'
+        elif view_mode == "By Portfolio / Source":
             treemap_path = [px.Constant("Portfolio"), 'source', 'display_label']
             chart_title = 'Consolidated True Exposure Grouped by Copy Portfolio / Source & Asset'
-        elif view_mode == "By Sector & Theme":
-            treemap_path = [px.Constant("Portfolio"), 'sector', 'display_label']
-            chart_title = 'Consolidated True Exposure by Sector & Theme (Tech, Gold, Defense, Energy, etc.)'
         elif view_mode == "By Asset Type":
             treemap_path = [px.Constant("Portfolio"), 'asset_type_display', 'display_label']
-            chart_title = 'Consolidated True Exposure by Asset Type (ETF, Stock, Crypto)'
+            chart_title = 'Consolidated True Exposure by Asset Type'
         elif view_mode == "By Region":
             treemap_path = [px.Constant("Portfolio"), 'region', 'display_label']
             chart_title = 'Consolidated True Exposure by Geographic Region'
@@ -390,21 +316,88 @@ def render():
             treemap_path = [px.Constant("Portfolio"), 'display_label']
             chart_title = 'All Consolidated Holdings (Weighted by Size)'
 
-        fig = px.treemap(
-            consolidated_df,
-            path=treemap_path,
-            values='value_eur',
-            color='value_eur',
-            color_continuous_scale='Blues',
-            title=chart_title
-        )
+        SECTOR_COLORS = {
+            "Technology": "#38BDF8", 
+            "Gold & Metals": "#FBBF24", 
+            "Energy": "#FB7185", 
+            "Defense & Aerospace": "#A78BFA", 
+            "Cryptocurrency": "#34D399", 
+            "Broad Market ETF": "#2DD4BF"
+        }
+        
+        plot_df = consolidated_df.copy()
+        if is_hidden():
+            plot_df['display_label'] = [
+                ("█" * min(8, max(4, len(str(row['display_label']))))) + ("\u200b" * i)
+                for i, row in plot_df.iterrows()
+            ]
+            textinfo = "label"
+            hovertemplate = "<b>%{label}</b><extra></extra>"
+        else:
+            textinfo = "label+value+percent parent"
+            hovertemplate = "<b>%{label}</b><br>Value: €%{value:,.2f}<br>%{percentRoot:.1%} of Portfolio<extra></extra>"
+
+        if view_mode == "By Sector & Theme":
+            fig = px.treemap(
+                plot_df,
+                path=treemap_path,
+                values='value_eur',
+                color='sector',
+                color_discrete_map=SECTOR_COLORS,
+                title=chart_title
+            )
+        else:
+            fig = px.treemap(
+                plot_df,
+                path=treemap_path,
+                values='value_eur',
+                color='value_eur',
+                color_continuous_scale='Blues',
+                title=chart_title
+            )
+
         fig.update_traces(
             root_color="lightgrey",
-            textinfo="label+value+percent parent",
-            hovertemplate="<b>%{label}</b><br>Value: €%{value:,.2f}<br>%{percentRoot:.1%} of Portfolio<extra></extra>"
+            textinfo=textinfo,
+            hovertemplate=hovertemplate,
+            marker=dict(line=dict(color='black', width=1.5))
         )
-        fig.update_layout(margin=dict(t=35, l=10, r=10, b=10))
+        fig.update_layout(margin=dict(t=35, l=10, r=10, b=10), height=700) # Made it square/larger
         st.plotly_chart(fig, use_container_width=True)
+
+        def get_theme_stat(sector_name):
+            val = theme_totals.get(sector_name, 0.0)
+            pct = (val / total_portfolio_eur * 100.0) if total_portfolio_eur > 0 else 0.0
+            return val, pct
+
+        st.markdown("<div style='margin-top: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        
+        def render_colored_kpi(col, title, sector_name):
+            val, pct = get_theme_stat(sector_name)
+            color = SECTOR_COLORS.get(sector_name, "#94A3B8")
+            if is_hidden():
+                val_str = "€****"
+                pct_str = "****"
+            else:
+                val_str = f"€{val:,.0f}"
+                pct_str = f"{pct:.1f}% wt"
+            with col:
+                st.markdown(f"""
+                <div style="border-top: 4px solid {color}; background-color: var(--secondary-background-color); border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 1px solid var(--tab-border); border-right: 1px solid var(--tab-border); border-bottom: 1px solid var(--tab-border);">
+                    <div style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600; margin-bottom: 4px;">{title}</div>
+                    <div style="color: var(--text-color); font-size: 1.25rem; font-weight: 700; margin-bottom: 4px;">{val_str}</div>
+                    <div style="color: {color}; font-size: 0.8rem; font-weight: 600;">{pct_str}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        render_colored_kpi(k1, "Technology", "Technology")
+        render_colored_kpi(k2, "Gold & Metals", "Gold & Metals")
+        render_colored_kpi(k3, "Energy", "Energy")
+        render_colored_kpi(k4, "Defense & Aero", "Defense & Aerospace")
+        render_colored_kpi(k5, "Crypto", "Cryptocurrency")
+        render_colored_kpi(k6, "Broad ETFs", "Broad Market ETF")
+        st.markdown("</div>", unsafe_allow_html=True)
 
         # Exposure Breakdown (Bar Chart + Table)
         st.markdown("#### 📊 Thematic & Sector Exposure Breakdown")
@@ -424,23 +417,33 @@ def render():
                 x="weight_pct",
                 y="sector",
                 orientation="h",
-                text=sec_df["weight_pct"].map(lambda x: f"{x:.1f}%"),
+                text=sec_df["weight_pct"].map(lambda x: "****" if is_hidden() else f"{x:.1f}%"),
                 labels={"weight_pct": "Weight (%)", "sector": "Theme / Sector"},
                 title="Weight by Theme / Sector (%)",
-                color="weight_pct",
-                color_continuous_scale="Tealgrn"
+                color="sector",
+                color_discrete_map=SECTOR_COLORS
             )
             bar_fig.update_layout(showlegend=False, margin=dict(t=30, l=10, r=10, b=10), xaxis_title="Weight (%)", yaxis_title="")
+            
+            if is_hidden():
+                bar_fig.update_traces(hovertemplate="Censored<extra></extra>")
+            
             st.plotly_chart(bar_fig, use_container_width=True)
 
         with c_table:
             display_sec_df = sec_df.sort_values(by="value_eur", ascending=False).copy()
-            display_sec_df["Value (€)"] = display_sec_df["value_eur"].map(lambda x: f"€{x:,.2f}")
-            display_sec_df["Weight (%)"] = display_sec_df["weight_pct"].map(lambda x: f"{x:.1f}%")
+            if is_hidden():
+                display_sec_df["Value (€)"] = "€****"
+                display_sec_df["Weight (%)"] = "****"
+                display_sec_df["Sample Holdings"] = "****"
+            else:
+                display_sec_df["Value (€)"] = display_sec_df["value_eur"].map(lambda x: f"€{x:,.2f}")
+                display_sec_df["Weight (%)"] = display_sec_df["weight_pct"].map(lambda x: f"{x:.1f}%")
+                display_sec_df["Sample Holdings"] = display_sec_df["top_asset"]
+            
             display_sec_df = display_sec_df.rename(columns={
                 "sector": "Theme / Sector",
                 "count": "Assets",
-                "top_asset": "Sample Holdings"
             })[["Theme / Sector", "Weight (%)", "Value (€)", "Assets", "Sample Holdings"]]
             st.dataframe(display_sec_df, use_container_width=True, hide_index=True)
 
@@ -448,8 +451,61 @@ def render():
             disp_cols = ["ticker", "name", "asset_type_display", "sector", "region", "value_eur", "source"]
             tbl_df = consolidated_df[disp_cols].copy()
             tbl_df.columns = ["Ticker", "Name", "Type", "Theme / Sector", "Region", "Value (EUR)", "Source"]
-            tbl_df["Value (EUR)"] = tbl_df["Value (EUR)"].map(lambda x: f"€{x:,.2f}")
+            if is_hidden():
+                tbl_df["Value (EUR)"] = "€****"
+                tbl_df["Name"] = "****"
+                tbl_df["Ticker"] = "****"
+            else:
+                tbl_df["Value (EUR)"] = tbl_df["Value (EUR)"].map(lambda x: f"€{x:,.2f}")
             st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+
+    # 1. Copy Portfolios Section
+    if not copy_df.empty:
+        section_header("eToro Copied Traders",
+                       "CopyPortfolios and automated trader mirroring")
+        render_copy_portfolios(copy_df, usd_to_eur)
+
+    # 2. Direct Holdings Section
+    section_header("Direct Holdings", "Stocks, ETFs, and assets held directly")
+    if not direct_df.empty:
+        # TradingView live market data widget
+        tv_symbols = []
+        for t in direct_df["ticker"].unique():
+            tv_symbols.append({"name": t.split('.')[0] if '.' in t else t})
+            
+        theme = st.get_option("theme.base")
+        tv_height = max(300, len(tv_symbols) * 45 + 90)
+        blur_overlay = """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>""" if is_hidden() else ""
+        tv_html = f"""
+        <div style="position: relative; width: 100%; height: {tv_height}px;">
+            {blur_overlay}
+            <!-- TradingView Widget BEGIN -->
+            <div class="tradingview-widget-container">
+              <div class="tradingview-widget-container__widget"></div>
+              <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
+              {{
+              "width": "100%",
+              "height": {tv_height},
+              "symbolsGroups": [
+                {{
+                  "name": "Live Market Prices",
+                  "originalName": "Holdings",
+                  "symbols": {json.dumps(tv_symbols)}
+                }}
+              ],
+              "showSymbolLogo": true,
+              "isTransparent": true,
+              "colorTheme": "{'light' if theme == 'light' else 'dark'}",
+              "locale": "en"
+            }}
+              </script>
+            </div>
+            <!-- TradingView Widget END -->
+        </div>
+        """
+        st.components.v1.html(tv_html, height=tv_height)
+    else:
+        st.caption("No direct holdings found.")
 
     # 4. Target Allocation & Drift Analysis Section
     section_header("Target Allocation & Drift",

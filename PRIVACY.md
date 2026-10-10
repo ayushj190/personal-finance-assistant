@@ -27,6 +27,7 @@ The application interfaces with third parties only when explicitly configured an
 1. **Enable Banking Oy (AISP):** Used to sync bank data via Open Banking (PSD2). This requires your explicit Strong Customer Authentication (SCA) directly with your bank. You may revoke consent at any time.
 2. **Yahoo Finance (`yfinance`):** Used to fetch public market data for investment tickers. No personal data is transmitted.
 3. **Brave Search API (Optional):** If enabled, public merchant names (e.g., "MCDONALDS AMSTERDAM") are queried to improve categorization. **No transaction amounts, balances, or IBANs are ever transmitted.**
+4. **TradingView Widget:** Used to display live market prices for direct holdings. This is a client-side embedded widget. Your browser directly connects to TradingView servers, which means your IP address and the specific ticker symbols requested are visible to TradingView in accordance with their privacy policy.
 
 ## 4. EU AI Act Compliance (Artificial Intelligence Processing)
 The application utilizes an **Offline AI Copilot** (via Ollama) to analyze your finances, categorize transactions, and assess risk tolerance.

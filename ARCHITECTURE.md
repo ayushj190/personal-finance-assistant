@@ -3,7 +3,7 @@
 Personal Finance Assistant (PFA) is built as a local-first, privacy-focused application for Windows 11. It operates entirely on your machine without relying on cloud storage or external telemetry.
 
 ## Core Stack
-- **Frontend & App Framework:** Streamlit (Python)
+- **Frontend & App Framework:** Streamlit (Python) with custom CSS for modern UI styling
 - **Database:** SQLite3 in WAL (Write-Ahead Logging) mode (`data/finance.db`)
 - **AI/LLM:** Ollama running locally (default: `qwen2.5:7b-instruct`)
 - **Data Processing:** Pandas, NumPy, and local SQLite execution
@@ -21,7 +21,7 @@ Personal Finance Assistant (PFA) is built as a local-first, privacy-focused appl
 
 ### 2. External Connectors & Data Flow
 - **Open Banking:** Uses Enable Banking Oy (AISP) for read-only PSD2 compliant bank syncing (e.g., ABN AMRO, Revolut).
-- **Market Data:** Fetches live quotes and fundamentals for ETFs/stocks via Yahoo Finance (`yfinance`).
+- **Market Data:** Fetches fundamentals via Yahoo Finance (`yfinance`) and embeds TradingView widgets for live client-side market prices.
 - **File Parsing:** Supports offline PDF parsing, CSV, TSV, MT940, and CAMT.053 XML for manual broker imports (Trade Republic, eToro).
 - **Merchant Enrichment:** Uses the optional Brave Search API to look up unknown merchants for improved categorization.
 
