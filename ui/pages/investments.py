@@ -6,10 +6,115 @@ from db import database
 from services.portfolio import allocate_contribution, calculate_drift, full_rebalance, rebalance_without_selling
 from ui.charts import build_drift_bar_chart
 from ui.components import format_money, is_hidden, kpi_card, section_header
+from connectors.market_data_service import update_quotes, get_ticker_logo_url, enrich_ticker_metadata, classify_asset
+import streamlit.components.v1 as components
+import json
+
+@st.fragment(run_every="5s")
+def render_copy_portfolios(copy_df, usd_to_eur):
+    from pathlib import Path
+    cache_path = Path(__file__).resolve().parent.parent.parent / "data" / "etoro_mirrors_cache.json"
+    meta_path = Path(__file__).resolve().parent.parent.parent / "data" / "ticker_metadata.json"
+    mirrors_map = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                mirrors_data = json.load(f)
+                mirrors_map = {m["ticker"]: m for m in mirrors_data}
+        except Exception:
+            pass
+            
+    meta_map = {}
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta_map = json.load(f)
+        except Exception:
+            pass
+
+    for _, row in copy_df.iterrows():
+        ticker = row["ticker"]
+        username = ticker.replace("COPY:", "")
+        mirror_info = mirrors_map.get(ticker, {})
+
+        invested_usd = mirror_info.get("invested_usd", float(row["cost_basis"]))
+        val_usd = mirror_info.get("value_usd", float(row["value_eur"]) / usd_to_eur)
+        pnl_usd = mirror_info.get("unrealized_pnl_usd", val_usd - invested_usd)
+        ret_pct = (pnl_usd / invested_usd * 100.0) if invested_usd > 0 else 0.0
+
+        invested_eur = invested_usd * usd_to_eur
+        val_eur = val_usd * usd_to_eur
+        pnl_eur = pnl_usd * usd_to_eur
+
+        pnl_sign = "+" if pnl_eur >= 0 else ""
+
+        underlying = mirror_info.get("positions", [])
+        a_types = {}
+        total_val = val_usd
+        for p in underlying:
+            sym = p.get("symbol") or f"ID_{p.get('instrument_id')}"
+            m_info = meta_map.get(sym, {})
+            a_type = m_info.get("asset_type")
+            if not a_type:
+                a_type = "etf" if "ETF" in (p.get("name") or "").upper() else "stock"
+            p_val = p.get("amount_usd", 0.0) + p.get("pnl_usd", 0.0)
+            a_types[a_type] = a_types.get(a_type, 0.0) + p_val
+            
+        breakdown_str = " | ".join([f"{k.upper()}: {(v/total_val*100):.1f}%" for k,v in a_types.items() if total_val > 0])
+        
+        if is_hidden():
+            label = f"👤 {username}  |  Invested: €****  |  Value: €****  |  P&L: €****"
+        else:
+            label = f"👤 {username}  |  Invested: €{invested_eur:,.2f}  |  Value: €{val_eur:,.2f}  |  P&L: {pnl_sign}€{abs(pnl_eur):,.2f} ({pnl_sign}{ret_pct:.1f}%)  |  🎯 {breakdown_str}"
+
+        with st.expander(label, expanded=False):
+            st.caption(f"**Positions:** {mirror_info.get('positions_count', len(underlying))}  |  **Available Cash:** ${mirror_info.get('available_cash_usd', 0.0):,.2f}")
+            show_all = st.checkbox("Show all assets", key=f"show_all_{username}")
+            
+            underlying = mirror_info.get("positions", [])
+            if underlying:
+                tv_symbols_underlying = []
+                for p in underlying:
+                    sym = p.get("symbol") or f"ID_{p.get('instrument_id')}"
+                    if sym and not sym.startswith("ID_"):
+                        tv_symbols_underlying.append({"name": sym.split('.')[0] if isinstance(sym, str) and '.' in sym else sym})
+
+                if tv_symbols_underlying:
+                    theme = st.get_option("theme.base")
+                    tv_height = max(300, len(tv_symbols_underlying) * 45 + 90) if show_all else 300
+                    blur_overlay = """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>""" if is_hidden() else ""
+                    tv_html_u = f"""
+                    <div style="position: relative; width: 100%; height: {tv_height}px;">
+                        {blur_overlay}
+                        <!-- TradingView Widget BEGIN -->
+                        <div class="tradingview-widget-container">
+                          <div class="tradingview-widget-container__widget"></div>
+                          <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
+                          {{
+                          "width": "100%",
+                          "height": {tv_height},
+                          "symbolsGroups": [
+                            {{
+                              "name": "Live Market Prices",
+                              "originalName": "Holdings",
+                              "symbols": {json.dumps(tv_symbols_underlying)}
+                            }}
+                          ],
+                          "showSymbolLogo": true,
+                          "isTransparent": true,
+                          "colorTheme": "{'light' if theme == 'light' else 'dark'}",
+                          "locale": "en"
+                        }}
+                          </script>
+                        </div>
+                        <!-- TradingView Widget END -->
+                    </div>
+                    """
+                    st.components.v1.html(tv_html_u, height=tv_height)
 
 
+@st.fragment(run_every="60s")
 def render():
-    st.title("Investments & Portfolio")
 
     conn = database.connect(DB_PATH)
 
@@ -21,6 +126,42 @@ def render():
         st.info(
             "No holdings found. Sync an investment connector or add holdings in Settings.")
         return
+
+    # Update quotes for real-time prices
+    direct_tickers = [t for t in holdings_df["ticker"].unique() if not t.startswith("COPY:") and not t.startswith("ID_")]
+    if direct_tickers:
+        update_quotes(direct_tickers, conn)
+        # Re-fetch after update to get latest prices in v_holdings
+        holdings_df = pd.read_sql_query("SELECT * FROM v_holdings", conn)
+        
+    # TradingView Ticker Tape Widget
+    symbols = []
+    for ticker in direct_tickers:
+        clean_ticker = ticker.split(".")[0] if isinstance(ticker, str) and "." in ticker else ticker
+        symbols.append({"proName": clean_ticker, "description": ticker})
+        
+    if not symbols:
+        symbols = [{"proName": "SPY", "description": "S&P 500"}, {"proName": "QQQ", "description": "Nasdaq 100"}]
+        
+    theme = st.get_option("theme.base")
+    tape_html = f"""
+    <!-- TradingView Widget BEGIN -->
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+      {{
+      "symbols": {json.dumps(symbols)},
+      "showSymbolLogo": true,
+      "isTransparent": true,
+      "displayMode": "adaptive",
+      "colorTheme": "{'light' if theme == 'light' else 'dark'}",
+      "locale": "en"
+    }}
+      </script>
+    </div>
+    <!-- TradingView Widget END -->
+    """
+    components.html(tape_html, height=44)
 
     total_value = holdings_df["value_eur"].sum()
     total_cost = holdings_df["cost_basis"].sum()
@@ -51,124 +192,267 @@ def render():
     if not copy_df.empty:
         section_header("eToro Copied Traders",
                        "CopyPortfolios and automated trader mirroring")
-
-        # Try loading mirror positions cache
-        from pathlib import Path
-        import json
-        cache_path = Path(__file__).resolve(
-        ).parent.parent.parent / "data" / "etoro_mirrors_cache.json"
-        mirrors_map = {}
-        if cache_path.exists():
-            try:
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    mirrors_data = json.load(f)
-                    mirrors_map = {m["ticker"]: m for m in mirrors_data}
-            except Exception:
-                pass
-
-        for _, row in copy_df.iterrows():
-            ticker = row["ticker"]
-            username = ticker.replace("COPY:", "")
-            mirror_info = mirrors_map.get(ticker, {})
-
-            invested_usd = mirror_info.get(
-                "invested_usd", float(row["cost_basis"]))
-            val_usd = mirror_info.get(
-                "value_usd", float(row["value_eur"]) / usd_to_eur)
-            pnl_usd = mirror_info.get(
-                "unrealized_pnl_usd", val_usd - invested_usd)
-            ret_pct = (pnl_usd / invested_usd *
-                       100.0) if invested_usd > 0 else 0.0
-
-            invested_eur = invested_usd * usd_to_eur
-            val_eur = val_usd * usd_to_eur
-            pnl_eur = pnl_usd * usd_to_eur
-
-            pnl_color = "normal" if pnl_eur >= 0 else "off"
-            pnl_sign = "+" if pnl_eur >= 0 else ""
-
-            with st.container(border=True):
-                col_u1, col_u2, col_u3, col_u4, col_u5 = st.columns(
-                    [2, 2, 2, 2, 2])
-                with col_u1:
-                    st.markdown(f"### 👤 {username}")
-                    st.caption(
-                        f"{mirror_info.get('positions_count', 'N/A')} open positions")
-                with col_u2:
-                    st.metric("Invested", format_money(invested_eur,
-                              "€"), format_money(invested_usd, "$"))
-                with col_u3:
-                    st.metric("Current Value", format_money(
-                        val_eur, "€"), format_money(val_usd, "$"))
-                with col_u4:
-                    pnl_eur_str = f"{pnl_sign}{format_money(abs(pnl_eur), '€')}" if not is_hidden(
-                    ) else "€****"
-                    pnl_usd_str = f"{pnl_sign}{format_money(abs(pnl_usd), '$')}" if not is_hidden(
-                    ) else "$****"
-                    st.metric("Unrealized P&L", pnl_eur_str,
-                              pnl_usd_str, delta_color=pnl_color)
-                with col_u5:
-                    st.metric(
-                        "Total Return", f"{pnl_sign}{ret_pct:.2f}%", delta_color=pnl_color)
-
-                # Underlying positions expander
-                underlying = mirror_info.get("positions", [])
-                if underlying:
-                    with st.expander(f"View {username}'s Top Holdings ({len(underlying)} positions)"):
-                        pos_rows = []
-                        for p in underlying:
-                            p_amt = p.get("amount_usd", 0.0)
-                            p_pnl = p.get("pnl_usd", 0.0)
-                            p_ret = (p_pnl / p_amt *
-                                     100.0) if p_amt > 0 else 0.0
-                            pos_rows.append({
-                                "Symbol": p.get("symbol") or f"ID_{p.get('instrument_id')}",
-                                "Name": p.get("name") or "-",
-                                "Amount ($)": format_money(p_amt, "$"),
-                                "Amount (€)": format_money(p_amt * usd_to_eur, "€"),
-                                "P&L ($)": (f"{'+' if p_pnl >= 0 else ''}{format_money(abs(pnl_usd), '$')}") if not is_hidden() else "$****",
-                                "Return": f"{'+' if p_ret >= 0 else ''}{p_ret:.1f}%",
-                            })
-                        st.dataframe(
-                            pd.DataFrame(pos_rows),
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={"Name": st.column_config.TextColumn(
-                                "Name", width="medium")}
-                        )
+        render_copy_portfolios(copy_df, usd_to_eur)
 
     # 2. Direct Holdings Section
     section_header("Direct Holdings", "Stocks, ETFs, and assets held directly")
     if not direct_df.empty:
-        display_df = direct_df[["ticker", "name", "institution", "asset_type", "quantity",
-                                "cost_basis", "latest_close", "value_eur", "unrealized_pnl_eur"]].copy()
-        display_df.columns = ["Ticker", "Name", "Institution", "Asset Type",
-                              "Qty", "Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]
-        if is_hidden():
-            for c in ["Cost Basis (€)", "Price", "Value (€)", "P&L (€)"]:
-                display_df[c] = "€****"
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-        else:
-            num_cfg = st.column_config.NumberColumn(
-                "Amount", format="€%.2f", disabled=True)
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Name": st.column_config.TextColumn("Name", width="medium"),
-                    "Institution": st.column_config.TextColumn("Institution", width="medium"),
-                    "Cost Basis (€)": num_cfg,
-                    "Price": num_cfg,
-                    "Value (€)": num_cfg,
-                    "P&L (€)": num_cfg,
-                }
-            )
+        # TradingView live market data widget
+        tv_symbols = []
+        for t in direct_df["ticker"].unique():
+            tv_symbols.append({"name": t.split('.')[0] if '.' in t else t})
+            
+        theme = st.get_option("theme.base")
+        tv_height = max(300, len(tv_symbols) * 45 + 90)
+        blur_overlay = """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>""" if is_hidden() else ""
+        tv_html = f"""
+        <div style="position: relative; width: 100%; height: {tv_height}px;">
+            {blur_overlay}
+            <!-- TradingView Widget BEGIN -->
+            <div class="tradingview-widget-container">
+              <div class="tradingview-widget-container__widget"></div>
+              <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
+              {{
+              "width": "100%",
+              "height": {tv_height},
+              "symbolsGroups": [
+                {{
+                  "name": "Live Market Prices",
+                  "originalName": "Holdings",
+                  "symbols": {json.dumps(tv_symbols)}
+                }}
+              ],
+              "showSymbolLogo": true,
+              "isTransparent": true,
+              "colorTheme": "{'light' if theme == 'light' else 'dark'}",
+              "locale": "en"
+            }}
+              </script>
+            </div>
+            <!-- TradingView Widget END -->
+        </div>
+        """
+        st.components.v1.html(tv_html, height=tv_height)
     else:
         st.caption("No direct holdings found.")
 
     # 2. Allocation & Drift Analysis
     section_header("Allocation & Rebalancing",
+                   "Track drift from targets and generate buy/sell recommendations")
+
+    # Build consolidated drill-down DataFrame
+    import plotly.express as px
+    from pathlib import Path
+    
+    cache_path = Path(__file__).resolve().parent.parent.parent / "data" / "etoro_mirrors_cache.json"
+    meta_path = Path(__file__).resolve().parent.parent.parent / "data" / "ticker_metadata.json"
+    mirrors_map = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                mirrors_map = {m["ticker"]: m for m in json.load(f)}
+        except Exception:
+            pass
+    meta_map = {}
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta_map = json.load(f)
+        except Exception:
+            pass
+
+    consolidated_items = []
+    for _, row in holdings_df.iterrows():
+        t = row["ticker"]
+        if t.startswith("COPY:"):
+            m = mirrors_map.get(t, {})
+            positions = m.get("positions", [])
+            copy_user = m.get("username") or t.replace("COPY:", "")
+            source_name = f"Copy: {copy_user}"
+            for p in positions:
+                sym = p.get("symbol") or f"ID_{p.get('instrument_id')}"
+                p_name = p.get("name") or sym
+                m_info = meta_map.get(sym, {})
+                a_type, sec = classify_asset(sym, p_name, m_info)
+                reg = m_info.get("country") or "Unknown"
+                cur = m_info.get("currency") or "USD"
+                exc = m_info.get("exchange") or "Unknown"
+
+                val_usd = float(p.get("amount_usd", 0.0)) + float(p.get("pnl_usd", 0.0))
+                val_eur = val_usd * usd_to_eur
+                consolidated_items.append({
+                    "ticker": sym,
+                    "name": p_name,
+                    "value_eur": val_eur,
+                    "asset_class": "investment",
+                    "asset_type": a_type,
+                    "asset_type_display": a_type.upper(),
+                    "region": reg,
+                    "sector": sec,
+                    "currency": cur,
+                    "exchange": exc,
+                    "source": source_name,
+                    "display_label": f"{sym} ({p_name[:20]})" if p_name and p_name != sym else sym
+                })
+        else:
+            m_info = meta_map.get(t, {})
+            d_name = row.get("name") or t
+            a_type, sec = classify_asset(t, d_name, m_info)
+            reg = m_info.get("country") or row.get("region") or "Unknown"
+            cur = m_info.get("currency") or row.get("currency") or "EUR"
+            exc = m_info.get("exchange") or "Unknown"
+            consolidated_items.append({
+                "ticker": t,
+                "name": d_name,
+                "value_eur": row.get("value_eur", 0.0),
+                "asset_class": row.get("asset_class") or "investment",
+                "asset_type": a_type,
+                "asset_type_display": a_type.upper(),
+                "region": reg,
+                "sector": sec,
+                "currency": cur,
+                "exchange": exc,
+                "source": "Direct Holdings",
+                "display_label": f"{t} ({d_name[:20]})" if d_name and d_name != t else t
+            })
+
+    all_syms = [item["ticker"] for item in consolidated_items if not item["ticker"].startswith("ID_")]
+    names_map = {item["ticker"]: item["name"] for item in consolidated_items}
+    if all_syms:
+        enrich_ticker_metadata(list(set(all_syms)), names_map=names_map)
+
+    consolidated_df = pd.DataFrame(consolidated_items)
+
+    # 3. True Exposure Visualizer & Breakdown Section
+    section_header("True Exposure & Thematic Breakdown",
+                   "Consolidated underlying exposure across Direct Holdings and Copy Portfolios")
+
+    if not consolidated_df.empty:
+        total_portfolio_eur = consolidated_df["value_eur"].sum()
+        theme_totals = consolidated_df.groupby("sector")["value_eur"].sum().to_dict()
+
+        def get_theme_stat(sector_name):
+            val = theme_totals.get(sector_name, 0.0)
+            pct = (val / total_portfolio_eur * 100.0) if total_portfolio_eur > 0 else 0.0
+            return val, pct
+
+        tech_val, tech_pct = get_theme_stat("Technology")
+        gold_val, gold_pct = get_theme_stat("Gold & Metals")
+        energy_val, energy_pct = get_theme_stat("Energy")
+        defense_val, defense_pct = get_theme_stat("Defense & Aerospace")
+        crypto_val, crypto_pct = get_theme_stat("Cryptocurrency")
+        broad_val, broad_pct = get_theme_stat("Broad Market ETF")
+
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        with k1:
+            kpi_card("Technology", f"€{tech_val:,.0f}", delta_str=f"{tech_pct:.1f}% wt")
+        with k2:
+            kpi_card("Gold & Metals", f"€{gold_val:,.0f}", delta_str=f"{gold_pct:.1f}% wt")
+        with k3:
+            kpi_card("Energy", f"€{energy_val:,.0f}", delta_str=f"{energy_pct:.1f}% wt")
+        with k4:
+            kpi_card("Defense & Aero", f"€{defense_val:,.0f}", delta_str=f"{defense_pct:.1f}% wt")
+        with k5:
+            kpi_card("Crypto", f"€{crypto_val:,.0f}", delta_str=f"{crypto_pct:.1f}% wt")
+        with k6:
+            kpi_card("Broad ETFs", f"€{broad_val:,.0f}", delta_str=f"{broad_pct:.1f}% wt")
+
+        # View Mode Selector
+        view_col, _ = st.columns([3, 1])
+        with view_col:
+            view_mode = st.radio(
+                "Exposure Visualizer View:",
+                options=[
+                    "By Portfolio / Source (Default)",
+                    "By Sector & Theme",
+                    "By Asset Type",
+                    "By Region",
+                    "All Assets (Flat)"
+                ],
+                index=0,
+                horizontal=True,
+                help="Group by Copy Portfolio for copied assets (keeping Direct Holdings grouped), or view by Sector/Theme, Asset Type, or Geography."
+            )
+
+        if view_mode == "By Portfolio / Source (Default)":
+            treemap_path = [px.Constant("Portfolio"), 'source', 'display_label']
+            chart_title = 'Consolidated True Exposure Grouped by Copy Portfolio / Source & Asset'
+        elif view_mode == "By Sector & Theme":
+            treemap_path = [px.Constant("Portfolio"), 'sector', 'display_label']
+            chart_title = 'Consolidated True Exposure by Sector & Theme (Tech, Gold, Defense, Energy, etc.)'
+        elif view_mode == "By Asset Type":
+            treemap_path = [px.Constant("Portfolio"), 'asset_type_display', 'display_label']
+            chart_title = 'Consolidated True Exposure by Asset Type (ETF, Stock, Crypto)'
+        elif view_mode == "By Region":
+            treemap_path = [px.Constant("Portfolio"), 'region', 'display_label']
+            chart_title = 'Consolidated True Exposure by Geographic Region'
+        else:
+            treemap_path = [px.Constant("Portfolio"), 'display_label']
+            chart_title = 'All Consolidated Holdings (Weighted by Size)'
+
+        fig = px.treemap(
+            consolidated_df,
+            path=treemap_path,
+            values='value_eur',
+            color='value_eur',
+            color_continuous_scale='Blues',
+            title=chart_title
+        )
+        fig.update_traces(
+            root_color="lightgrey",
+            textinfo="label+value+percent parent",
+            hovertemplate="<b>%{label}</b><br>Value: €%{value:,.2f}<br>%{percentRoot:.1%} of Portfolio<extra></extra>"
+        )
+        fig.update_layout(margin=dict(t=35, l=10, r=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Exposure Breakdown (Bar Chart + Table)
+        st.markdown("#### 📊 Thematic & Sector Exposure Breakdown")
+        c_chart, c_table = st.columns([1, 1])
+
+        sec_df = consolidated_df.groupby("sector").agg(
+            value_eur=("value_eur", "sum"),
+            count=("ticker", "count"),
+            top_asset=("ticker", lambda x: ", ".join(x.iloc[:3]))
+        ).reset_index()
+        sec_df["weight_pct"] = (sec_df["value_eur"] / total_portfolio_eur * 100.0) if total_portfolio_eur > 0 else 0.0
+        sec_df = sec_df.sort_values(by="value_eur", ascending=True)
+
+        with c_chart:
+            bar_fig = px.bar(
+                sec_df,
+                x="weight_pct",
+                y="sector",
+                orientation="h",
+                text=sec_df["weight_pct"].map(lambda x: f"{x:.1f}%"),
+                labels={"weight_pct": "Weight (%)", "sector": "Theme / Sector"},
+                title="Weight by Theme / Sector (%)",
+                color="weight_pct",
+                color_continuous_scale="Tealgrn"
+            )
+            bar_fig.update_layout(showlegend=False, margin=dict(t=30, l=10, r=10, b=10), xaxis_title="Weight (%)", yaxis_title="")
+            st.plotly_chart(bar_fig, use_container_width=True)
+
+        with c_table:
+            display_sec_df = sec_df.sort_values(by="value_eur", ascending=False).copy()
+            display_sec_df["Value (€)"] = display_sec_df["value_eur"].map(lambda x: f"€{x:,.2f}")
+            display_sec_df["Weight (%)"] = display_sec_df["weight_pct"].map(lambda x: f"{x:.1f}%")
+            display_sec_df = display_sec_df.rename(columns={
+                "sector": "Theme / Sector",
+                "count": "Assets",
+                "top_asset": "Sample Holdings"
+            })[["Theme / Sector", "Weight (%)", "Value (€)", "Assets", "Sample Holdings"]]
+            st.dataframe(display_sec_df, use_container_width=True, hide_index=True)
+
+        with st.expander("🔍 Consolidated Underlying Holdings Table (All Sources)"):
+            disp_cols = ["ticker", "name", "asset_type_display", "sector", "region", "value_eur", "source"]
+            tbl_df = consolidated_df[disp_cols].copy()
+            tbl_df.columns = ["Ticker", "Name", "Type", "Theme / Sector", "Region", "Value (EUR)", "Source"]
+            tbl_df["Value (EUR)"] = tbl_df["Value (EUR)"].map(lambda x: f"€{x:,.2f}")
+            st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+
+    # 4. Target Allocation & Drift Analysis Section
+    section_header("Target Allocation & Drift",
                    "Track drift from targets and generate buy/sell recommendations")
 
     # Fetch allocation profiles
@@ -194,7 +478,7 @@ def render():
     dimension = profile["dimension"]
     current_values: dict[str, float] = {}
 
-    for _, row in holdings_df.iterrows():
+    for _, row in consolidated_df.iterrows():
         b_key = str(row.get(dimension) or "other")
         current_values[b_key] = current_values.get(
             b_key, 0.0) + float(row.get("value_eur", 0.0))
@@ -226,36 +510,8 @@ def render():
             lambda x: "⚠️ Rebalance" if x else "✅ On Target")
         st.dataframe(drift_df, use_container_width=True, hide_index=True)
 
-    # 3. Rebalance Engine Tabs
-    st.subheader("Rebalance Calculator")
-    tab1, tab2, tab3 = st.tabs(
-        ["No-Sell Cash Injection", "Monthly Deposit Allocation", "Full Rebalance"])
-
-    with tab1:
-        st.markdown(
-            "Calculates minimum new capital required to restore all target weights without triggering taxable sales.")
-        needed_cash, buys = rebalance_without_selling(current_values, targets)
-        st.write(f"**Required New Capital:** €{needed_cash:,.2f}")
-        for b, amt in buys.items():
-            if amt > 0.01:
-                st.write(f"- Buy **{b}**: €{amt:,.2f}")
-
-    with tab2:
-        deposit = st.number_input(
-            "Deposit Amount (€)", value=500.0, step=50.0, min_value=0.0)
-        allocations = allocate_contribution(current_values, targets, deposit)
-        st.markdown("**Deposit Allocation (Water-filling):**")
-        for b, amt in allocations.items():
-            if amt > 0.01:
-                st.write(
-                    f"- Invest **€{amt:,.2f}** into **{b}** ({(amt/deposit*100):.1f}%)")
-
-    with tab3:
-        st.markdown(
-            "Rebalance to exact targets by selling overweight buckets and buying underweight buckets.")
-        deltas = full_rebalance(current_values, targets)
-        for b, delta in deltas.items():
-            action = "BUY" if delta > 0 else "SELL"
-            st.write(f"- {action} **€{abs(delta):,.2f}** of **{b}**")
+    # 3. Rebalance AI Integration
+    st.subheader("Automated Rebalancing")
+    st.info("💡 **Tip:** Use the AI Copilot chatbot to calculate rebalancing instructions. Just say: *\"Help me rebalance my portfolio for the selected profile.\"* or *\"I have €1000 to deposit, how should I allocate it based on my targets?\"*")
 
     conn.close()

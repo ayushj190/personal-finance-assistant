@@ -130,9 +130,9 @@ class EtoroService:
                 direct_positions = portfolio.get("positions", [])
                 mirrors = portfolio.get("mirrors", [])
 
-                # 1. Fetch metadata for direct position and top mirror instruments
+                # 1. Fetch metadata for direct position and all mirror instruments
                 mirror_pos_ids = {p.get("instrumentID") for m in mirrors for p in m.get(
-                    "positions", [])[:25] if p.get("instrumentID")}
+                    "positions", []) if p.get("instrumentID")}
                 inst_ids = sorted(list({p.get("instrumentID") for p in direct_positions if p.get(
                     "instrumentID")} | mirror_pos_ids))
                 inst_map: dict[int, dict[str, Any]] = {}
@@ -227,11 +227,11 @@ class EtoroService:
 
                     pos_invested = sum(float(p.get("amount") or 0.0)
                                        for p in mirror_positions)
-                    pos__pnl = sum(float((p.get("unrealizedPnL") or {}).get(
+                    pos_pnl = sum(float((p.get("unrealizedPnL") or {}).get(
                         "pnL") or 0.0) for p in mirror_positions)
                     open_pos_val = pos_invested + pos_pnl
                     total_val = open_pos_val + avail_cash
-                    unrealized__pnl = total_val - invested
+                    unrealized_pnl = total_val - invested
 
                     # One row in holdings for the copied trader
                     holdings.append(
@@ -274,12 +274,12 @@ class EtoroService:
                                     "instrument_id": p.get("instrumentID"),
                                     "symbol": inst_map.get(p.get("instrumentID"), {}).get("symbol", f"ID_{p.get('instrumentID')}"),
                                     "name": inst_map.get(p.get("instrumentID"), {}).get("name", "Unknown"),
+                                    "type_id": inst_map.get(p.get("instrumentID"), {}).get("type_id", 5),
                                     "amount_usd": float(p.get("amount") or 0.0),
                                     "units": float(p.get("units") or 0.0),
                                     "pnl_usd": float((p.get("unrealizedPnL") or {}).get("pnL") or 0.0),
                                 }
-                                # top 50 positions preview
-                                for p in mirror_positions[:50]
+                                for p in mirror_positions
                             ],
                         }
                     )
@@ -457,3 +457,43 @@ class EtoroService:
             print(f"Error fetching eToro transactions: {e}")
 
         return txs
+
+    def fetch_news(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Fetch news feed from eToro API."""
+        if not self.is_configured():
+            return []
+        
+        news_items = []
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                resp = client.get(
+                    f"{BASE_URL}/feeds/news",
+                    headers=self._headers(),
+                    params={"take": limit, "reactionsPageSize": 1}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    discussions = data.get("discussions", [])
+                    for d in discussions:
+                        post = d.get("post", {})
+                        owner = post.get("owner", {})
+                        message = post.get("message", {})
+                        text = message.get("text", "")
+                        
+                        # Some posts might be just attachments, keep them if text is empty?
+                        if not text:
+                            continue
+
+                        avatar_obj = owner.get("avatar")
+                        avatar_url = avatar_obj.get("medium", "") if isinstance(avatar_obj, dict) else (avatar_obj if isinstance(avatar_obj, str) else "")
+
+                        news_items.append({
+                            "text": text,
+                            "username": owner.get("username", "Unknown"),
+                            "avatar": avatar_url,
+                            "created": post.get("created", "")
+                        })
+        except Exception as e:
+            print(f"Error fetching eToro news: {e}")
+            
+        return news_items

@@ -142,6 +142,10 @@ def inject_custom_css() -> None:
             background-color: #FFFFFF !important;
             color: #0F172A !important;
         }
+        
+        section[data-testid="stSidebar"] .st-key-sticky_sidebar_header {
+            background-color: #FFFFFF !important;
+        }
         section[data-testid="stSidebar"] * {
             color: #0F172A !important;
         }
@@ -227,6 +231,10 @@ def inject_custom_css() -> None:
             background-color: transparent !important;
             border-bottom: 2px solid #E2E8F0 !important;
             gap: 8px !important;
+            justify-content: flex-start !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            width: 100% !important;
         }
         [role="tab"],
         [data-baseweb="tab"],
@@ -350,50 +358,55 @@ def inject_custom_css() -> None:
     else:
         css_theme = """
         :root, .stApp {
-            --background-color: #1E1E1E !important;
-            --secondary-background-color: #252526 !important;
-            --text-color: #D4D4D4 !important;
-            --primary-color: #007ACC !important;
-            --tab-border: #3C3C3C !important;
-            --tab-inactive-bg: #2D2D2D !important;
-            --button-border: #3C3C3C !important;
-            --button-bg: #333333 !important;
-            --text-muted: #858585 !important;
-            background-color: #1E1E1E !important;
-            color: #D4D4D4 !important;
+            --background-color: #0a110d !important;
+            --secondary-background-color: #101c15 !important;
+            --text-color: #ecfdf5 !important;
+            --primary-color: #10b981 !important;
+            --tab-border: #162a1f !important;
+            --tab-inactive-bg: #0d1711 !important;
+            --button-border: #1e3325 !important;
+            --button-bg: #101c15 !important;
+            --text-muted: #94a3b8 !important;
+            background-color: #0a110d !important;
+            color: #ecfdf5 !important;
+            font-family: 'Inter', sans-serif !important;
         }
 
         /* Sidebar in Dark Mode */
         section[data-testid="stSidebar"] {
-            border-right: 1px solid #3C3C3C !important;
+            border-right: 1px solid #162a1f !important;
         }
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
         div[data-testid="stSidebarUserContent"] {
-            background-color: #252526 !important;
-            color: #D4D4D4 !important;
+            background-color: #101c15 !important;
+            color: #ecfdf5 !important;
+        }
+        
+        section[data-testid="stSidebar"] .st-key-sticky_sidebar_header {
+            background-color: #101c15 !important;
         }
         section[data-testid="stSidebar"] * {
-            color: #D4D4D4;
+            color: #ecfdf5;
         }
         section[data-testid="stSidebar"] .stMarkdown p,
         section[data-testid="stSidebar"] .stMarkdown span,
         section[data-testid="stSidebar"] .stCaption,
         section[data-testid="stSidebar"] .stCaption * {
-            color: #858585 !important;
+            color: #94a3b8 !important;
         }
         section[data-testid="stSidebar"] hr {
-            border-color: #3C3C3C !important;
+            border-color: #1e3325 !important;
         }
 
         /* Metric Cards & Glass Cards */
         .glass-card, div[data-testid="stMetric"] {
-            background: #252526 !important;
+            background: #101c15 !important;
             backdrop-filter: none !important;
-            border: 1px solid #3C3C3C !important;
-            border-radius: 4px !important;
+            border: 1px solid #1e3325 !important;
+            border-radius: 12px !important;
             padding: 16px 20px !important;
-            box-shadow: none !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
             transition: all 0.2s ease-in-out !important;
             min-height: 115px !important;
             display: flex !important;
@@ -402,50 +415,54 @@ def inject_custom_css() -> None:
             box-sizing: border-box !important;
         }
         .glass-card:hover, div[data-testid="stMetric"]:hover {
-            border-color: #007ACC !important;
+            border-color: #10b981 !important;
             transform: translateY(-2px) !important;
-            box-shadow: none !important;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.15) !important;
         }
         [data-testid="stMetricLabel"],
         [data-testid="stMetricLabel"] * {
-            color: #94A3B8 !important;
+            color: #94a3b8 !important;
         }
         [data-testid="stMetricValue"],
         [data-testid="stMetricValue"] * {
-            color: #F8FAFC !important;
+            color: #ecfdf5 !important;
         }
-        .kpi-title { color: #94A3B8 !important; }
-        .kpi-value { color: #F8FAFC !important; }
+        .kpi-title { color: #94a3b8 !important; }
+        .kpi-value { color: #ecfdf5 !important; }
 
         /* Bordered Containers */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: #252526 !important;
+            background: #101c15 !important;
             backdrop-filter: none !important;
-            border: 1px solid #3C3C3C !important;
-            border-radius: 4px !important;
+            border: 1px solid #1e3325 !important;
+            border-radius: 12px !important;
             padding: 16px !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             transition: border-color 0.2s ease, transform 0.2s ease !important;
-            color: #D4D4D4 !important;
+            color: #ecfdf5 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
-            border-color: #007ACC !important;
+            border-color: #10b981 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div * {
-            color: #F8FAFC;
+            color: #ecfdf5;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
         div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
-            color: #94A3B8 !important;
+            color: #94a3b8 !important;
         }
 
         /* Tabs in Dark Mode */
         div[data-baseweb="tab-list"],
         div[data-testid="stTabs"] [role="tablist"] {
             background-color: transparent !important;
-            border-bottom: 2px solid rgba(148, 163, 184, 0.18) !important;
+            border-bottom: 2px solid #1e3325 !important;
             gap: 8px !important;
+            justify-content: flex-start !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            width: 100% !important;
         }
         [role="tab"],
         [data-baseweb="tab"],
@@ -464,7 +481,7 @@ def inject_custom_css() -> None:
         [data-testid="stTab"] *,
         div[data-testid="stTabs"] button *,
         div[data-testid="stTabs"] div[role="tab"] * {
-            color: #94A3B8 !important;
+            color: #94a3b8 !important;
             font-size: 0.92rem !important;
             font-weight: 500 !important;
         }
@@ -474,7 +491,7 @@ def inject_custom_css() -> None:
         [data-baseweb="tab"]:hover *,
         [data-testid="stTab"]:hover,
         [data-testid="stTab"]:hover * {
-            color: #F8FAFC !important;
+            color: #ecfdf5 !important;
         }
         [role="tab"][aria-selected="true"],
         [role="tab"][aria-selected="true"] *,
@@ -482,26 +499,26 @@ def inject_custom_css() -> None:
         [data-baseweb="tab"][aria-selected="true"] *,
         [data-testid="stTab"][aria-selected="true"],
         [data-testid="stTab"][aria-selected="true"] * {
-            color: #2DD4BF !important;
+            color: #10b981 !important;
             font-weight: 700 !important;
         }
         div[data-baseweb="tab-highlight"],
         div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-            background-color: #2DD4BF !important;
+            background-color: #10b981 !important;
             height: 3px !important;
             border-radius: 2px !important;
         }
         div[data-baseweb="tab-border"] {
-            background-color: rgba(148, 163, 184, 0.18) !important;
+            background-color: #1e3325 !important;
         }
 
         /* Secondary Buttons & Popovers */
         button[kind="secondary"],
         button[data-testid="baseButton-secondary"],
         div[data-testid="stPopover"] > button {
-            background: rgba(30, 41, 59, 0.5) !important;
-            border: 1px solid rgba(148, 163, 184, 0.25) !important;
-            color: #E2E8F0 !important;
+            background: #101c15 !important;
+            border: 1px solid #1e3325 !important;
+            color: #ecfdf5 !important;
             border-radius: 8px !important;
             min-height: 38px !important;
             height: 38px !important;
@@ -515,9 +532,9 @@ def inject_custom_css() -> None:
         button[kind="secondary"]:hover,
         button[data-testid="baseButton-secondary"]:hover,
         div[data-testid="stPopover"] > button:hover {
-            border-color: rgba(45, 212, 191, 0.5) !important;
-            color: #2DD4BF !important;
-            background: rgba(30, 41, 59, 0.8) !important;
+            border-color: #10b981 !important;
+            color: #10b981 !important;
+            background: #162a1f !important;
             transform: translateY(-1px) !important;
         }
 
@@ -528,25 +545,25 @@ def inject_custom_css() -> None:
         .stTextInput input,
         .stNumberInput input,
         .stDateInput input {
-            background-color: #1E293B !important;
-            color: #F8FAFC !important;
-            border-color: rgba(148, 163, 184, 0.2) !important;
+            background-color: #0d1711 !important;
+            color: #ecfdf5 !important;
+            border-color: #1e3325 !important;
         }
         div[data-testid="stExpander"] {
-            background-color: rgba(15, 23, 42, 0.45) !important;
-            border: 1px solid rgba(148, 163, 184, 0.18) !important;
+            background-color: #101c15 !important;
+            border: 1px solid #1e3325 !important;
             border-radius: 10px !important;
         }
         div[data-testid="stExpander"] details summary,
         div[data-testid="stExpander"] details summary span,
         div[data-testid="stExpander"] details summary p {
-            color: #F8FAFC !important;
+            color: #ecfdf5 !important;
             font-weight: 600 !important;
         }
         div[data-testid="stPopoverBody"] {
-            background-color: #0F172A !important;
-            border: 1px solid rgba(148, 163, 184, 0.25) !important;
-            color: #F8FAFC !important;
+            background-color: #0a110d !important;
+            border: 1px solid #1e3325 !important;
+            color: #ecfdf5 !important;
         }
         /* Chat UI */
         div[data-testid="stChatMessage"] {
@@ -564,8 +581,8 @@ def inject_custom_css() -> None:
         }
         div[data-testid="stChatMessage"]:has([alt="user avatar"]) .stMarkdown,
         div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stMarkdown {
-            background-color: #007ACC !important;
-            color: #FFFFFF !important;
+            background-color: #10b981 !important;
+            color: #0a110d !important;
             border-radius: 18px 18px 4px 18px !important;
             padding: 12px 16px !important;
             max-width: 80% !important;
@@ -580,8 +597,8 @@ def inject_custom_css() -> None:
         }
         div[data-testid="stChatMessage"]:has([alt="assistant avatar"]) .stMarkdown,
         div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stMarkdown {
-            background-color: #333333 !important;
-            color: #D4D4D4 !important;
+            background-color: #162a1f !important;
+            color: #ecfdf5 !important;
             border-radius: 18px 18px 18px 4px !important;
             padding: 12px 16px !important;
             max-width: 85% !important;
@@ -590,7 +607,7 @@ def inject_custom_css() -> None:
         }
         div[data-testid="stRadio"] label p,
         div[data-testid="stCheckbox"] label p {
-            color: #F8FAFC !important;
+            color: #ecfdf5 !important;
         }
         """
 
@@ -598,20 +615,134 @@ def inject_custom_css() -> None:
         <style>
         __CSS_THEME__
 
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
+        .block-container,
+        div[data-testid="stMainBlockContainer"] {
+            padding: 1rem 2rem 2rem 2rem !important;
+            max-width: 100% !important;
         }
 
-        /* Move main h1 titles into the top gap */
-        .block-container h1 {
-            margin-top: -1.5rem !important;
-            padding-top: 0 !important;
+        /* Top App Bar Sticky Header Container */
+        div.st-key-top_app_bar {
+            position: sticky !important;
+            top: 0px !important;
+            z-index: 99999 !important;
+            background-color: var(--background-color) !important;
+            border-bottom: 1px solid var(--tab-border) !important;
+            margin-left: -2rem !important;
+            margin-right: -2rem !important;
+            margin-top: -1rem !important;
+            margin-bottom: 1.25rem !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            padding-top: 0.65rem !important;
+            padding-bottom: 0.55rem !important;
+            width: calc(100% + 4rem) !important;
+            box-sizing: border-box !important;
         }
-        /* Push sidebar content up slightly to fill gap */
-        [data-testid="stSidebarContent"] {
-            padding-top: 0rem !important;
+
+        /* Top App Bar Inner Layout */
+        div.st-key-top_app_bar > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"],
+        div.st-key-top_app_bar div[data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+            gap: 12px !important;
         }
+
+        /* Tabs Row Columns */
+        div.st-key-top_app_bar div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+            gap: 6px !important;
+        }
+
+        /* Individual Tab Links */
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"] {
+            background-color: var(--tab-inactive-bg) !important;
+            border: 1px solid var(--tab-border) !important;
+            border-radius: 8px !important;
+            padding: 6px 10px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-decoration: none !important;
+            color: var(--text-muted) !important;
+            font-size: 0.84rem !important;
+            font-weight: 500 !important;
+            white-space: nowrap !important;
+            width: 100% !important;
+            min-height: 36px !important;
+            height: 36px !important;
+            box-sizing: border-box !important;
+            transition: all 0.15s ease-in-out !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"]:hover {
+            background-color: rgba(16, 185, 129, 0.08) !important;
+            border-color: rgba(16, 185, 129, 0.35) !important;
+            color: var(--text-color) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"][aria-current="page"] {
+            background-color: rgba(16, 185, 129, 0.16) !important;
+            border: 1px solid var(--primary-color) !important;
+            color: var(--primary-color) !important;
+            font-weight: 600 !important;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"] * {
+            color: var(--text-muted) !important;
+            font-size: 0.84rem !important;
+            font-weight: inherit !important;
+            white-space: nowrap !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"]:hover * {
+            color: var(--text-color) !important;
+        }
+
+        div.st-key-top_app_bar a[data-testid="stPageLink-NavLink"][aria-current="page"] * {
+            color: var(--primary-color) !important;
+            font-weight: 600 !important;
+        }
+
+        /* Right Column: Hide values toggle alignment */
+        div.st-key-top_app_bar > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:last-child {
+            display: flex !important;
+            justify-content: flex-end !important;
+            align-items: center !important;
+        }
+
+        div.st-key-top_app_bar div[data-testid="stToggle"],
+        div.st-key-top_app_bar div[data-testid="stCheckbox"] {
+            margin-bottom: 0 !important;
+            margin-top: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            width: 100% !important;
+        }
+
+        div.st-key-top_app_bar div[data-testid="stToggle"] label,
+        div.st-key-top_app_bar div[data-testid="stCheckbox"] label {
+            margin-bottom: 0 !important;
+            margin-top: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            cursor: pointer !important;
+            justify-content: flex-end !important;
+        }
+
+        div.st-key-top_app_bar div[data-testid="stToggle"] label p,
+        div.st-key-top_app_bar div[data-testid="stCheckbox"] label p {
+            font-size: 0.85rem !important;
+            font-weight: 500 !important;
+            color: var(--text-muted) !important;
+            margin: 0 !important;
+            white-space: nowrap !important;
+        }
+
+        /* Remove Small gap for the rest of the main content */
 
         header[data-testid="stHeader"] {
             background-color: transparent !important;
@@ -621,13 +752,43 @@ def inject_custom_css() -> None:
             pointer-events: auto !important;
         }
         
-        /* Ensure the sidebar button can be seen outside, but keep inner contents clipped */
+        /* Sidebar styling to start at the top */
         [data-testid="stSidebar"] {
+            top: 0 !important;
+            height: 100vh !important;
+            padding-top: 0 !important;
             overflow: visible !important;
         }
+        [data-testid="stSidebarNav"] {
+            display: none !important;
+        }
+        [data-testid="stSidebarContent"] {
+            padding-top: 0 !important;
+            gap: 0 !important;
+        }
         [data-testid="stSidebarUserContent"] {
-            overflow-x: hidden !important;
-            overflow-y: hidden !important;
+            padding-top: 0 !important;
+            margin-top: -4.5rem !important; /* Forcefully pull up to kill the un-hideable gap */
+            height: calc(100vh + 4.5rem) !important;
+            overflow: hidden !important; /* Use flexbox for internal scrolling */
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        
+        /* Middle Chat History Container */
+        [data-testid="stSidebarUserContent"] > div.element-container:nth-child(2) {
+            flex-grow: 1 !important;
+            overflow-y: auto !important; /* ONLY this scrolls! */
+            padding-bottom: 1rem !important;
+            padding-right: 0.5rem !important;
+        }
+        
+        /* Bottom Chat Input */
+        div[data-testid="stChatInput"] {
+            position: relative !important;
+            bottom: auto !important;
+            flex-shrink: 0 !important;
+            padding-bottom: 1rem !important;
         }
         
         /* Hide sidebar collapse button so it cannot be closed */
@@ -636,6 +797,18 @@ def inject_custom_css() -> None:
             display: none !important;
         }
 
+        /* Sleek DataFrames */
+        [data-testid="stDataFrame"] {
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+            border: 1px solid var(--tab-border) !important;
+            transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+        }
+        [data-testid="stDataFrame"]:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 24px rgba(13, 148, 136, 0.15) !important;
+        }
 
         /* ------------------------------------------ */
 
@@ -654,8 +827,8 @@ def inject_custom_css() -> None:
 
         /* Standardized Primary Buttons */
         button[kind="primary"], button[data-testid="baseButton-primary"] {
-            background: #007ACC !important;
-            color: #FFFFFF !important;
+            background: #10b981 !important;
+            color: #0a110d !important;
             border: none !important;
             font-weight: 500 !important;
             border-radius: 2px !important;
@@ -668,7 +841,7 @@ def inject_custom_css() -> None:
             justify-content: center !important;
         }
         button[kind="primary"]:hover, button[data-testid="baseButton-primary"]:hover {
-            background: #005999 !important;
+            background: #059669 !important;
             box-shadow: none !important;
             transform: none !important;
         }
@@ -755,11 +928,15 @@ def inject_custom_css() -> None:
         .stDeployButton { display: none !important; }
         [data-testid="stAppMetaInfo"] { display: none !important; }
 
-
-
-
-
-
+        /* Sticky Sidebar Header */
+        div[data-testid="stSidebarUserContent"] .st-key-sticky_sidebar_header {
+            flex-shrink: 0 !important;
+            padding-top: 1.5rem !important;
+            padding-bottom: 1rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            border-bottom: 1px solid var(--tab-border) !important;
+        }
 
         /* Hide Scrollbars */
         ::-webkit-scrollbar {

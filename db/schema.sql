@@ -245,7 +245,10 @@ CREATE TABLE IF NOT EXISTS risk_profiles (
   assessed_date   TEXT NOT NULL DEFAULT (datetime('now')),
   risk_score      INTEGER NOT NULL,              -- 1 to 10 scale
   risk_tolerance  TEXT NOT NULL,                 -- 'Conservative', 'Moderately Conservative', 'Moderate', 'Growth', 'Aggressive'
-  notes           TEXT
+  notes           TEXT,
+  investment_horizon_years INTEGER,
+  liquidity_needs TEXT,
+  investment_experience TEXT
 );
 
 CREATE TABLE IF NOT EXISTS risk_questionnaire_answers (
@@ -254,4 +257,21 @@ CREATE TABLE IF NOT EXISTS risk_questionnaire_answers (
   question        TEXT NOT NULL,
   answer          TEXT NOT NULL
 );
+
+-- ── Tax Profile ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tax_profile (
+  id INTEGER PRIMARY KEY CHECK (id = 1), -- Enforce single user profile
+  gross_annual_income INTEGER NOT NULL,
+  has_fiscal_partner INTEGER NOT NULL DEFAULT 0,
+  has_30_percent_ruling INTEGER NOT NULL DEFAULT 0,
+  is_entrepreneur INTEGER NOT NULL DEFAULT 0,
+  owns_home INTEGER NOT NULL DEFAULT 0,
+  birth_year INTEGER,
+  has_13th_month INTEGER NOT NULL DEFAULT 0,
+  expected_bonus_eur INTEGER NOT NULL DEFAULT 0,
+  pension_contribution_pct REAL NOT NULL DEFAULT 0,
+  employer_pension_match_pct REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 

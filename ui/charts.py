@@ -86,7 +86,7 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         height=350,
         hovermode="x unified",
-        margin=dict(l=0, r=0, t=20, b=0),
+        margin=dict(l=10, r=10, t=20, b=20),
         legend=dict(orientation="h", yanchor="bottom",
                     y=1.02, xanchor="right", x=1),
     )
@@ -95,36 +95,44 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
 
 
 
-def build_spending_donut(df: pd.DataFrame) -> go.Figure:
+def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None) -> go.Figure:
     if df.empty:
         return go.Figure()
 
-    fig = px.sunburst(
-        df,
-        path=["category", "merchant"],
+    if drilldown_category:
+        filtered_df = df[df["category"] == drilldown_category]
+        df_grouped = filtered_df.groupby("merchant", as_index=False)["amount_eur"].sum()
+        names_col = "merchant"
+    else:
+        df_grouped = df.groupby("category", as_index=False)["amount_eur"].sum()
+        names_col = "category"
+
+    pull_values = [0.02] * len(df_grouped)
+
+    fig = px.pie(
+        df_grouped,
+        names=names_col,
         values="amount_eur",
-        color="category",
-        color_discrete_sequence=COLOR_PALETTE,
-        custom_data=["amount_eur"]
+        hole=0.55,
+        color_discrete_sequence=COLOR_PALETTE
     )
     
     fig.update_traces(
-        maxdepth=2,
-        textinfo="label+percent parent",
+        textinfo="percent+label" if not drilldown_category else "percent",
+        textposition="inside",
+        pull=pull_values,
         hovertemplate=(
             "<b>%{label}</b><br>"
-            "Spent: €%{customdata[0]:,.2f}<br>"
-            "Share of Total: %{percentRoot:.1%}<br>"
-            "Share of Category: %{percentParent:.1%}<extra></extra>"
+            "Spent: €%{value:,.2f}<br>"
+            "Share: %{percent}<extra></extra>"
         ),
-        insidetextorientation='radial',
-        marker=dict(line=dict(color='#1E293B', width=1.5))
+        marker=dict(line=dict(color='#0F172A', width=2))
     )
     
     fig.update_layout(
         height=350, 
-        margin=dict(l=0, r=0, t=10, b=10),
-        showlegend=False,
+        margin=dict(l=10, r=10, t=20, b=20),
+        showlegend=True if drilldown_category else False,
         transition=dict(duration=500, easing="cubic-in-out")
     )
     return fig
@@ -136,27 +144,18 @@ def build_drift_bar_chart(drift_data: list[dict[str, Any]], drift_band_pct: floa
         return fig
 
     buckets = [d["bucket"] for d in drift_data]
-    diffs = [d["drift_pp"] for d in drift_data]
-    colors = [COLOR_LIABILITY if d["alert"]
-              else COLOR_CASH for d in drift_data]
+    actuals = [d["actual_pct"] for d in drift_data]
+    targets = [d["target_pct"] for d in drift_data]
 
-    fig.add_trace(go.Bar(x=buckets, y=diffs, marker_color=colors, text=[
-                  f"{diff:+.1f} pp" for diff in diffs], textposition="auto"))
-
-    # Shaded band
-    fig.add_hrect(
-        y0=-drift_band_pct,
-        y1=drift_band_pct,
-        line_width=0,
-        fillcolor="rgba(45, 212, 191, 0.08)",
-        annotation_text="Tolerance Band",
-        annotation_position="top right",
-    )
+    fig.add_trace(go.Bar(x=buckets, y=actuals, name="Current %", marker_color=COLOR_INVESTMENT, text=[f"{a:.1f}%" for a in actuals], textposition="auto"))
+    fig.add_trace(go.Bar(x=buckets, y=targets, name="Target %", marker_color=COLOR_SAVINGS, text=[f"{t:.1f}%" for t in targets], textposition="auto"))
 
     fig.update_layout(
         height=350,
-        yaxis_title="Deviation (pp)",
-        margin=dict(l=0, r=0, t=20, b=0),
+        barmode='group',
+        yaxis_title="Allocation (%)",
+        margin=dict(l=10, r=10, t=20, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     return fig
 
@@ -194,7 +193,7 @@ def build_mortgage_amortization_chart(schedule_df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         height=350,
         hovermode="x unified",
-        margin=dict(l=0, r=0, t=20, b=0),
+        margin=dict(l=10, r=10, t=20, b=20),
         legend=dict(orientation="h", yanchor="bottom",
                     y=1.02, xanchor="right", x=1),
     )
@@ -219,7 +218,7 @@ def build_mortgage_interest_principal_bar(schedule_df: pd.DataFrame) -> go.Figur
         height=350,
         barmode="stack",
         hovermode="x unified",
-        margin=dict(l=0, r=0, t=20, b=0),
+        margin=dict(l=10, r=10, t=20, b=20),
         legend=dict(orientation="h", yanchor="bottom",
                     y=1.02, xanchor="right", x=1),
     )
@@ -246,7 +245,7 @@ def build_monthly_spending_bar(monthly_df: pd.DataFrame) -> go.Figure:
         height=350,
         barmode="stack",
         hovermode="x unified",
-        margin=dict(l=0, r=0, t=20, b=0),
+        margin=dict(l=10, r=10, t=20, b=20),
         legend=dict(orientation="h", yanchor="bottom",
                     y=1.02, xanchor="right", x=1),
         yaxis=dict(title="Expenses (€)"),

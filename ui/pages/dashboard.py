@@ -5,10 +5,10 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from services.analytics import calculate_burn_and_runway, detect_recurring_charges
-from ui.charts import build_net_worth_area_chart, build_spending_donut
+from services.analytics import calculate_burn_and_runway, detect_recurring_charges, calculate_current_net_worth
+from ui.charts import build_spending_donut
 from ui.components import empty_state, format_money, is_hidden, kpi_card, section_header, status_badge
-
+from connectors.etoro_service import EtoroService
 
 def get_account_status(acc: dict[str, Any], sync_logs: list[dict[str, Any]]) -> tuple[str, str]:
     """Derive status badge label and kind for any bank or investment account."""
@@ -63,9 +63,6 @@ def get_institution_icon(institution: str) -> str:
 def render():
     conn = database.connect(DB_PATH)
 
-    col_title, col_sync = st.columns([3, 1])
-    with col_title:
-        st.title("Financial Overview")
 
     # 1. Accounts & Balances
     accounts = [dict(r) for r in conn.execute(
@@ -84,7 +81,13 @@ def render():
     ).fetchall()]
 
     # Compute current balances
-    acc_balances: dict[int, float] = {}
+    nw_data = calculate_current_net_worth(conn)
+    acc_balances = nw_data["acc_balances"]
+    liquid_cash = nw_data["liquid_cash"]
+    invested = nw_data["invested"]
+    home_equity = nw_data["home_equity"]
+    net_worth = nw_data["net_worth"]
+
     acc_subtexts: dict[int, str] = {}
     today = date.today()
 
@@ -93,10 +96,10 @@ def render():
             "SELECT balance_minor, balance_eur_minor, snapshot_date FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
             (acc["id"],),
         ).fetchone()
+        subtext = ""
         if row:
             base_bal_eur = row["balance_eur_minor"] / 100.0
             apy = acc.get("apy")
-            subtext = ""
             if apy and apy > 0:
                 snap_date_str = str(row["snapshot_date"])[:10]
                 try:
@@ -106,67 +109,15 @@ def render():
                     if days > 0:
                         daily_rate = (apy / 100.0) / 365.0
                         accrued = base_bal_eur * (daily_rate * days)
-                        base_bal_eur += accrued
                         subtext = f"+€{accrued:,.2f} accrued ({apy}% APY)"
                 except Exception:
                     pass
-            acc_balances[acc["id"]] = base_bal_eur
-            acc_subtexts[acc["id"]] = subtext
-        else:
-            tx_sum = conn.execute(
-                "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
-                (acc["id"],),
-            ).fetchone()
-            acc_balances[acc["id"]] = (tx_sum["total"] or 0) / 100.0
-            acc_subtexts[acc["id"]] = ""
+        acc_subtexts[acc["id"]] = subtext
 
     # Liability balance & Property Asset
     lib_row = conn.execute(
         "SELECT original_principal_minor, home_value_minor, balance_override_minor, balance_override_date FROM liabilities LIMIT 1"
     ).fetchone()
-    home_value = 0.0
-    mortgage_balance = 0.0
-    home_equity = 0.0
-    if lib_row:
-        orig_p = (lib_row["original_principal_minor"] /
-                  100.0) if lib_row["original_principal_minor"] else 0.0
-        home_value = (lib_row["home_value_minor"] /
-                      100.0) if lib_row["home_value_minor"] is not None else orig_p
-        if lib_row["balance_override_minor"]:
-            mortgage_balance = lib_row["balance_override_minor"] / 100.0
-        else:
-            today_str = date.today().isoformat()
-            mortgage_bal_row = conn.execute(
-                "SELECT balance_minor FROM liability_schedule WHERE due_date <= ? ORDER BY due_date DESC LIMIT 1",
-                (today_str,),
-            ).fetchone()
-            if not mortgage_bal_row:
-                mortgage_bal_row = conn.execute(
-                    "SELECT balance_minor FROM liability_schedule ORDER BY due_date ASC LIMIT 1").fetchone()
-            mortgage_balance = (
-                mortgage_bal_row["balance_minor"] / 100.0) if mortgage_bal_row else 0.0
-        home_equity = home_value - mortgage_balance
-
-    # Total cash & invested
-    liquid_cash = sum(
-        bal for acc in accounts if acc.get("asset_class") == "cash" and (bal := acc_balances.get(acc["id"], 0.0))
-    )
-    holdings_acc_rows = conn.execute(
-        "SELECT DISTINCT account_id FROM holdings").fetchall()
-    holdings_acc_ids = {r["account_id"] for r in holdings_acc_rows}
-    invested_row = conn.execute(
-        "SELECT SUM(CASE WHEN value_eur > 0 THEN value_eur ELSE cost_basis END) as total FROM v_holdings"
-    ).fetchone()
-    invested_holdings = float(
-        invested_row["total"] or 0.0) if invested_row else 0.0
-    invested_other = sum(
-        bal for acc in accounts
-        if acc.get("asset_class") == "investment"
-        and acc["id"] not in holdings_acc_ids
-        and (bal := acc_balances.get(acc["id"], 0.0))
-    )
-    invested = invested_holdings + invested_other
-    net_worth = liquid_cash + invested + home_equity
 
     # Monthly cashflow for runway calculation
     cf_query = """
@@ -274,28 +225,13 @@ def render():
                             st.write(f"**Currency:** {curr}")
                             st.caption(f"Status: {badge_txt}")
 
-    # Main Chart: Net worth trend
-    section_header("Net Worth Trend",
-                   "Evolution of assets and liabilities over time")
-    nw_query = """
-    SELECT date, asset_class, value_eur
-    FROM v_net_worth_daily
-    ORDER BY date ASC
-    """
-    nw_df = pd.read_sql_query(nw_query, conn)
-    if not nw_df.empty:
-        st.plotly_chart(build_net_worth_area_chart(nw_df),
-                        use_container_width=True, theme=None)
-    else:
-        st.info("Net worth historical daily snapshots will populate automatically as transactions and quotes accumulate.")
-
     # Lower Grid: Spending Donut + Recurring Bills
     col_left, col_right = st.columns([1, 1])
 
     with col_left:
         section_header("Spending by Category", "Last 30 days expenses")
         spend_query = """
-        SELECT c.name AS category, -t.amount_eur_minor / 100.0 AS amount_eur
+        SELECT c.name AS category, t.merchant_normalized AS merchant, -t.amount_eur_minor / 100.0 AS amount_eur
         FROM transactions t
         JOIN categories c ON c.id = t.category_id
         WHERE t.amount_eur_minor < 0
@@ -305,8 +241,44 @@ def render():
         """
         spend_df = pd.read_sql_query(spend_query, conn)
         if not spend_df.empty:
-            st.plotly_chart(build_spending_donut(
-                spend_df, group_col="category"), use_container_width=True, theme=None)
+            drill_key = "donut_drilldown_dashboard"
+            if drill_key not in st.session_state:
+                st.session_state[drill_key] = None
+
+            if st.session_state[drill_key]:
+                if st.button("← Back to Categories"):
+                    st.session_state[drill_key] = None
+                    st.rerun()
+
+            fig = build_spending_donut(spend_df, drilldown_category=st.session_state[drill_key])
+            
+            selection = st.plotly_chart(
+                fig, 
+                use_container_width=True, 
+                theme=None, 
+                on_select="rerun", 
+                selection_mode="points"
+            )
+
+            if selection and hasattr(selection, "selection") and selection.selection.get("points"):
+                clicked_point = selection.selection["points"][0]
+                clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                if isinstance(clicked_label, str):
+                    clicked_label = clicked_label.replace("&amp;", "&")
+                
+                # Only drill down if we are at the top level
+                if st.session_state[drill_key] is None and clicked_label:
+                    st.session_state[drill_key] = clicked_label
+                    st.rerun()
+            elif selection and isinstance(selection, dict) and selection.get("selection", {}).get("points"):
+                clicked_point = selection["selection"]["points"][0]
+                clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                if isinstance(clicked_label, str):
+                    clicked_label = clicked_label.replace("&amp;", "&")
+                
+                if st.session_state[drill_key] is None and clicked_label:
+                    st.session_state[drill_key] = clicked_label
+                    st.rerun()
         else:
             st.caption("No expense transactions found in the last 30 days.")
 
@@ -317,7 +289,7 @@ def render():
             "SELECT * FROM v_transactions ORDER BY booking_date DESC LIMIT 500").fetchall()]
         recurring = detect_recurring_charges(all_tx_rows)
         if recurring:
-            rec_df = pd.DataFrame(recurring[:6])[
+            rec_df = pd.DataFrame(recurring[:10])[
                 ["merchant", "cadence", "amount_eur", "next_expected_date"]]
             rec_df.columns = ["Merchant", "Cadence", "Amount", "Next Expected"]
             if is_hidden():
@@ -338,5 +310,36 @@ def render():
             )
         else:
             st.caption("No recurring subscriptions detected yet.")
+
+    # Market News (Moved to bottom)
+    section_header("Market News",
+                   "Latest updates from eToro feed")
+    etoro = EtoroService()
+    news = etoro.fetch_news(limit=10)
+    
+    if news:
+        with st.container(height=300, border=True):
+            for item in news:
+                c1, c2 = st.columns([1, 15])
+                with c1:
+                    if item.get("avatar"):
+                        st.image(item["avatar"], width=24)
+                    else:
+                        st.write("👤")
+                with c2:
+                    text = item['text']
+                    if len(text) > 200:
+                        text = text[:200] + "..."
+                    st.markdown(
+                        f"**@{item['username']}** <span style='color: gray; font-size: 0.8em;'>• {item['created'][:10]}</span><br/>"
+                        f"<span style='font-size: 0.9em;'>{text}</span>", 
+                        unsafe_allow_html=True
+                    )
+                st.divider()
+    else:
+        if not etoro.is_configured():
+            st.info("Connect eToro in Settings to view market news.")
+        else:
+            st.info("No news available right now.")
 
     conn.close()

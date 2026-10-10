@@ -9,7 +9,6 @@ from services.sync_service import import_statement_content, process_and_save_tra
 
 
 def render():
-    st.title("Import Statements")
     st.markdown("Drop your bank, card, or broker export files (Trade Republic, ABN AMRO, Revolut, eToro, MT940, CAMT.053 XML). The system will automatically detect the format and target account.")
 
     conn = database.connect(DB_PATH)
@@ -17,8 +16,6 @@ def render():
     def auto_resolve_accounts(conn, fmt: FileFormat) -> tuple[int, int]:
         # Maps format to (Institution, Cash_Ext_ID, Inv_Ext_ID)
         mapping = {
-            FileFormat.TRADE_REPUBLIC_PDF: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
-            FileFormat.TRADE_REPUBLIC_CSV: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
             FileFormat.ETORO_STATEMENT_CSV: ("eToro", "etoro_cash_eur", "etoro_trading_usd"),
             FileFormat.ETORO_MONEY_TSV: ("eToro Bank", "etoro_cash_eur", "etoro_cash_eur"),
             FileFormat.REVOLUT_CSV: ("Revolut", "revolut_eur", "revolut_eur"),
@@ -65,9 +62,6 @@ def render():
             fmt, raw_txs = parse_statement(raw_bytes)
             raw_holdings = parse_statement_holdings(raw_bytes)
             raw_balance = parse_statement_balance(raw_bytes)
-
-            if fmt in (FileFormat.TRADE_REPUBLIC_PDF, FileFormat.TRADE_REPUBLIC_CSV):
-                raw_holdings = []
 
             st.markdown(
                 f"**File:** `{file.name}` | **Detected Format:** `{fmt.value}`")
@@ -132,19 +126,14 @@ def render():
                 cash_acc_id, inv_acc_id = auto_resolve_accounts(conn, fmt)
                 msg_parts = []
                 if raw_txs:
-                    if fmt == FileFormat.TRADE_REPUBLIC_PDF:
-                        inserted, skipped = process_and_save_transactions(
-                            conn, account_id=cash_acc_id, raw_txs=raw_txs, source="pdf", enable_llm_categorization=False
-                        )
-                    else:
-                        content_str = raw_bytes.decode(
-                            "utf-8", errors="replace")
-                        inserted, skipped, _ = import_statement_content(
-                            conn,
-                            content=content_str,
-                            target_account_id=cash_acc_id,
-                            enable_llm=False,
-                        )
+                    content_str = raw_bytes.decode(
+                        "utf-8", errors="replace")
+                    inserted, skipped, _ = import_statement_content(
+                        conn,
+                        content=content_str,
+                        target_account_id=cash_acc_id,
+                        enable_llm=False,
+                    )
                     msg_parts.append(
                         f"{inserted} new transactions inserted ({skipped} duplicates skipped)")
 

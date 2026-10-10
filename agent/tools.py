@@ -19,6 +19,24 @@ from db import database
 from services.llm_client import classify_merchants, search_brave
 from services.mortgage import sync_liability_schedule
 from services.sync_service import import_statement_content, process_and_save_transactions
+from services.analytics import calculate_current_net_worth
+
+
+def tool_get_current_net_worth() -> dict[str, Any]:
+    """Calculate and return the user's real-time net worth, including liquid cash, investments, and home equity."""
+    conn = database.connect(DB_PATH)
+    try:
+        nw_data = calculate_current_net_worth(conn)
+        return {
+            "success": True,
+            "liquid_cash_eur": nw_data["liquid_cash"],
+            "investments_eur": nw_data["invested"],
+            "home_equity_eur": nw_data["home_equity"],
+            "net_worth_eur": nw_data["net_worth"],
+            "message": f"Your current net worth is €{nw_data['net_worth']:,.2f}."
+        }
+    finally:
+        conn.close()
 
 
 def tool_toggle_privacy_mode(enable: bool | None = None) -> dict[str, Any]:
@@ -180,17 +198,25 @@ def tool_save_risk_profile(
     risk_tolerance: str,
     notes: str = "",
     answers: dict[str, str] | None = None,
+    investment_horizon_years: int | None = None,
+    liquidity_needs: str | None = None,
+    investment_experience: str | None = None,
 ) -> dict[str, Any]:
     """Save user investment risk assessment profile to the database."""
     conn = database.connect(DB_PATH)
     try:
-        score = max(1, min(10, int(risk_score)))
+        score = max(1, min(10, int(risk_score))) if risk_score is not None else 5
+        risk_tolerance = risk_tolerance.strip() if risk_tolerance else "Moderate"
+        notes = notes.strip() if notes else ""
         p_id = database.save_risk_profile(
             conn,
             risk_score=score,
             risk_tolerance=risk_tolerance.strip(),
             notes=notes.strip(),
             answers=answers or {},
+            investment_horizon_years=investment_horizon_years,
+            liquidity_needs=liquidity_needs,
+            investment_experience=investment_experience,
         )
         return {
             "success": True,
@@ -218,7 +244,7 @@ def tool_get_risk_profile() -> dict[str, Any]:
         conn.close()
 
 
-def tool_get_portfolio_and_risk_summary() -> dict[str, Any]:
+def tool_analyze_investments() -> dict[str, Any]:
     """Analyze current portfolio asset allocation against the active target profile and user risk profile."""
     conn = database.connect(DB_PATH)
     try:
@@ -281,9 +307,6 @@ def tool_parse_and_import_file(
         raw_holdings = parse_statement_holdings(file_bytes)
         detected_balance = parse_statement_balance(file_bytes)
 
-        if fmt in (FileFormat.TRADE_REPUBLIC_PDF, FileFormat.TRADE_REPUBLIC_CSV):
-            raw_holdings = []
-
         if not raw_txs and not raw_holdings and detected_balance is None:
             return {
                 "success": False,
@@ -292,8 +315,6 @@ def tool_parse_and_import_file(
 
         # Map format to accounts
         mapping = {
-            FileFormat.TRADE_REPUBLIC_PDF: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
-            FileFormat.TRADE_REPUBLIC_CSV: ("Trade Republic", "tr_cash_eur", "tr_cash_eur"),
             FileFormat.ETORO_STATEMENT_CSV: ("eToro", "etoro_cash_eur", "etoro_trading_usd"),
             FileFormat.ETORO_MONEY_TSV: ("eToro Bank", "etoro_cash_eur", "etoro_cash_eur"),
             FileFormat.REVOLUT_CSV: ("Revolut", "revolut_eur", "revolut_eur"),
@@ -341,15 +362,10 @@ def tool_parse_and_import_file(
         details = []
         inserted, skipped = 0, 0
         if raw_txs:
-            if fmt == FileFormat.TRADE_REPUBLIC_PDF:
-                inserted, skipped = process_and_save_transactions(
-                    conn, account_id=cash_id, raw_txs=raw_txs, source="pdf", enable_llm_categorization=False
-                )
-            else:
-                content_str = file_bytes.decode("utf-8", errors="replace")
-                inserted, skipped, _ = import_statement_content(
-                    conn, content=content_str, target_account_id=cash_id, enable_llm=False
-                )
+            content_str = file_bytes.decode("utf-8", errors="replace")
+            inserted, skipped, _ = import_statement_content(
+                conn, content=content_str, target_account_id=cash_id, enable_llm=False
+            )
             details.append(
                 f"{inserted} transactions imported ({skipped} duplicates skipped)")
 
@@ -407,7 +423,7 @@ def tool_parse_and_import_file(
         conn.close()
 
 
-def tool_categorize_expenses(limit: int = 50) -> dict[str, Any]:
+def tool_auto_categorize_uncategorized_transactions(limit: int = 50) -> dict[str, Any]:
     """Find uncategorized transactions and classify them using LLM / merchant rules."""
     conn = database.connect(DB_PATH)
     try:
@@ -536,3 +552,118 @@ def tool_execute_python(code: str) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
     finally:
         sys.stdout = old_stdout
+
+
+def tool_save_tax_profile(
+    gross_annual_income: float,
+    has_fiscal_partner: bool,
+    has_30_percent_ruling: bool = False,
+    is_entrepreneur: bool = False,
+    owns_home: bool = False,
+    birth_year: int | None = None,
+    has_13th_month: bool = False,
+    expected_bonus_eur: float = 0,
+    pension_contribution_pct: float = 0,
+    employer_pension_match_pct: float = 0
+) -> dict[str, Any]:
+    """Save user tax profile to the database."""
+    conn = database.connect(DB_PATH)
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO tax_profile (id, gross_annual_income, has_fiscal_partner, has_30_percent_ruling, "
+                "is_entrepreneur, owns_home, birth_year, has_13th_month, expected_bonus_eur, pension_contribution_pct, employer_pension_match_pct) "
+                "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET gross_annual_income=excluded.gross_annual_income, "
+                "has_fiscal_partner=excluded.has_fiscal_partner, has_30_percent_ruling=excluded.has_30_percent_ruling, "
+                "is_entrepreneur=excluded.is_entrepreneur, owns_home=excluded.owns_home, birth_year=excluded.birth_year, "
+                "has_13th_month=excluded.has_13th_month, expected_bonus_eur=excluded.expected_bonus_eur, "
+                "pension_contribution_pct=excluded.pension_contribution_pct, employer_pension_match_pct=excluded.employer_pension_match_pct, "
+                "updated_at=datetime('now')",
+                (gross_annual_income if gross_annual_income is not None else 0.0, 
+                 1 if has_fiscal_partner else 0, 1 if has_30_percent_ruling else 0, 1 if is_entrepreneur else 0, 
+                 1 if owns_home else 0, birth_year, 1 if has_13th_month else 0, 
+                 int(expected_bonus_eur) if expected_bonus_eur is not None else 0, 
+                 pension_contribution_pct if pension_contribution_pct is not None else 0.0, 
+                 employer_pension_match_pct if employer_pension_match_pct is not None else 0.0)
+            )
+        return {
+            "success": True,
+            "message": f"Tax profile saved successfully: Gross Income €{(gross_annual_income or 0):,.2f}, Fiscal Partner: {bool(has_fiscal_partner)}."
+        }
+    finally:
+        conn.close()
+
+
+def tool_analyze_tax_situation() -> dict[str, Any]:
+    """Fetch the user's gross income from tax_profile, their investment/cash balances for Box 3, and return them for analysis."""
+    conn = database.connect(DB_PATH)
+    try:
+        profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
+        if not profile or profile["gross_annual_income"] == 0:
+            return {
+                "success": False,
+                "message": "User has not set up their tax profile or gross income. Ask them to fill it out in the Tax Analysis tab."
+            }
+        
+        # Get net worth data for Box 3
+        nw_data = calculate_current_net_worth(conn)
+        cash_bal = nw_data["liquid_cash"]
+        invested_bal = nw_data["invested"]
+        
+        return {
+            "success": True,
+            "tax_profile": dict(profile),
+            "box3_assets": {
+                "liquid_cash": cash_bal,
+                "invested": invested_bal,
+                "total_wealth": cash_bal + invested_bal
+            },
+            "message": "Tax data retrieved successfully."
+        }
+    finally:
+        conn.close()
+
+
+def tool_analyze_mortgage() -> dict[str, Any]:
+    """Fetch liability details, schedule, and interest rates for mortgage analysis."""
+    conn = database.connect(DB_PATH)
+    try:
+        liabilities = conn.execute("SELECT * FROM liabilities").fetchall()
+        if not liabilities:
+            return {
+                "success": False,
+                "message": "User has no active mortgages or liabilities configured."
+            }
+        
+        mortgage_data = []
+        for lib in liabilities:
+            lib_id = lib["id"]
+            # Get latest rate period
+            rate = conn.execute("SELECT annual_rate, fixed_until FROM liability_rate_periods WHERE liability_id = ? ORDER BY from_date DESC LIMIT 1", (lib_id,)).fetchone()
+            # Get upcoming schedule payments (next 3 months)
+            schedule = conn.execute("SELECT due_date, payment_minor, interest_minor, principal_minor, balance_minor FROM liability_schedule WHERE liability_id = ? AND due_date >= date('now') ORDER BY due_date ASC LIMIT 3", (lib_id,)).fetchall()
+            
+            mortgage_data.append({
+                "liability": dict(lib),
+                "current_rate": dict(rate) if rate else None,
+                "upcoming_schedule": [dict(s) for s in schedule]
+            })
+            
+        return {
+            "success": True,
+            "mortgages": mortgage_data,
+            "message": "Mortgage data retrieved successfully."
+        }
+    finally:
+        conn.close()
+
+
+def tool_request_profile_form(form_type: str) -> dict[str, Any]:
+    """Request the UI to render an interactive form for the user to fill out. Valid form_types: 'tax_profile', 'risk_profile'"""
+    return {
+        "success": True,
+        "form_request": form_type,
+        "message": f"Displaying the {form_type.replace('_', ' ')} form..."
+    }
+
