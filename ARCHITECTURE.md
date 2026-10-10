@@ -26,7 +26,7 @@ Personal Finance Assistant (PFA) is built as a local-first, privacy-focused appl
 - **Merchant Enrichment:** Uses the optional Brave Search API to look up unknown merchants for improved categorization.
 
 ### 3. Background Threading Model
-The Copilot assistant utilizes Python's `threading.Thread` and Streamlit's `add_script_run_ctx` combined with `@st.fragment` polling. This allows the AI to perform heavy inferences or web searches in the background without blocking the UI rendering thread or being interrupted by page navigation.
+The Copilot assistant utilizes Python's `threading.Thread` and Streamlit's `add_script_run_ctx`. Background polling is decoupled into a dedicated `@st.fragment` (e.g. `_render_chat_status()`) to prevent rerun queue collisions with global UI toggles, ensuring seamless background execution without layout context errors.
 
 ## High-Level Data Model
 - **`accounts`**: User financial accounts and their configurations.
@@ -36,3 +36,4 @@ The Copilot assistant utilizes Python's `threading.Thread` and Streamlit's `add_
 - **`allocation_profiles` & `targets`**: Investment strategy definitions for drift calculation.
 - **`liabilities`**: Mortgage configurations and extra repayment tracking.
 - **`risk_profiles`**: User's investment risk tolerance questionnaire results.
+- **`goals`**: Tracking specific target amounts and dates linked to saving accounts.

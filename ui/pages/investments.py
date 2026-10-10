@@ -1,14 +1,17 @@
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 from config import DB_PATH
 from db import database
 from services.portfolio import allocate_contribution, calculate_drift, full_rebalance, rebalance_without_selling
+from services.dividend_service import calculate_dividend_projections
 from ui.charts import build_drift_bar_chart
 from ui.components import format_money, is_hidden, kpi_card, section_header
 from connectors.market_data_service import update_quotes, get_ticker_logo_url, enrich_ticker_metadata, classify_asset
 import streamlit.components.v1 as components
 import json
+
 
 @st.fragment(run_every="5s")
 def render_copy_portfolios(copy_df, usd_to_eur):
@@ -122,7 +125,106 @@ def render():
     holdings_df = pd.read_sql_query("SELECT * FROM v_holdings", conn)
 
     if holdings_df.empty:
-        conn.close()
+    
+    # --- TAX LOSS HARVESTING ---
+    section_header("Tax-Loss Harvesting Assistant", "Identify unrealized losses to offset capital gains")
+    loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(by="unrealized_pnl_eur")
+    if not loss_df.empty:
+        st.info("💡 You have unrealized losses that could be realized to offset capital gains taxes.")
+        disp_loss = loss_df[["ticker", "name", "value_eur", "unrealized_pnl_eur"]].copy()
+        disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
+        if is_hidden():
+            disp_loss["Value (€)"] = "€****"
+            disp_loss["Unrealized P&L (€)"] = "€****"
+            disp_loss["Asset"] = "****"
+            disp_loss["Ticker"] = "****"
+        else:
+            disp_loss["Value (€)"] = disp_loss["Value (€)"].map(lambda x: f"€{x:,.2f}")
+            disp_loss["Unrealized P&L (€)"] = disp_loss["Unrealized P&L (€)"].map(lambda x: f"€{x:,.2f}")
+        st.dataframe(disp_loss, hide_index=True, use_container_width=True)
+    else:
+        st.caption("No significant unrealized losses available for harvesting.")
+
+    # --- FIRE & GOALS ---
+    section_header("FIRE & Financial Goals", "Track savings targets and Financial Independence trajectory")
+    c_fire, c_goals = st.columns([1, 1])
+    
+    with c_fire:
+        st.subheader("🔥 FIRE Trajectory")
+        st.caption("Target 25x Annual Expenses")
+        # Estimate expenses
+        exp_row = conn.execute("SELECT AVG(monthly_exp) as m_exp FROM (SELECT SUM(amount_eur_minor)/100.0 as monthly_exp FROM v_transactions WHERE amount_eur_minor < 0 AND category_kind IN ('fixed', 'discretionary') GROUP BY strftime('%Y-%m', booking_date))").fetchone()
+        m_exp = float(exp_row["m_exp"] or 0) if exp_row else 0
+        annual_exp = abs(m_exp) * 12
+        fi_number = annual_exp * 25
+        
+        # Estimate savings
+        sav_row = conn.execute("SELECT AVG(savings_eur) as m_sav FROM v_monthly_cashflow").fetchone()
+        m_sav = float(sav_row["m_sav"] or 0) if sav_row else 0
+        
+        nw_row = conn.execute("SELECT SUM(balance_eur_minor)/100.0 as nw FROM account_snapshots WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM account_snapshots)").fetchone()
+        curr_nw = float(nw_row["nw"] or 0) if nw_row else 0
+        
+        c_sl1, c_sl2 = st.columns(2)
+        with c_sl1:
+            ret_rate = st.slider("Expected Annual Return (%)", 1.0, 15.0, 7.0, 0.5)
+        with c_sl2:
+            inf_rate = st.slider("Expected Inflation (%)", 0.0, 10.0, 2.0, 0.5)
+        real_return = (ret_rate - inf_rate) / 100.0
+        
+        if is_hidden():
+            st.metric("FI Number (25x)", "€****")
+        else:
+            st.metric("FI Number (25x)", f"€{fi_number:,.2f}")
+            
+        # Chart
+        years = list(range(31))
+        proj = []
+        val = curr_nw
+        for y in years:
+            proj.append(val)
+            val = val * (1 + real_return) + (m_sav * 12)
+            
+        fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
+        fig_fire.add_hline(y=fi_number, line_dash="dash", annotation_text="FI Target", line_color="#2DD4BF")
+        fig_fire.update_layout(xaxis_title="Years from Now", yaxis_title="Net Worth (€)", margin=dict(t=35, l=10, r=10, b=10))
+        if is_hidden():
+            fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
+        st.plotly_chart(fig_fire, use_container_width=True)
+
+    with c_goals:
+        st.subheader("🎯 Savings Goals")
+        
+        with st.expander("➕ Add New Goal", expanded=False):
+            with st.form("new_goal_form"):
+                g_name = st.text_input("Goal Name")
+                g_target = st.number_input("Target Amount (€)", min_value=1.0, step=100.0)
+                accs = conn.execute("SELECT id, name FROM accounts WHERE asset_class = 'cash'").fetchall()
+                acc_options = {a["id"]: a["name"] for a in accs}
+                g_acc = st.selectbox("Linked Account", options=list(acc_options.keys()), format_func=lambda x: acc_options[x])
+                
+                if st.form_submit_button("Save Goal"):
+                    with conn:
+                        conn.execute("INSERT INTO goals (name, target_amount, account_id) VALUES (?, ?, ?)", (g_name, g_target, g_acc))
+                    st.success("Goal added!")
+                    st.rerun(scope="app")
+                    
+        goals = conn.execute("SELECT g.*, a.name as account_name, (SELECT balance_eur_minor/100.0 FROM account_snapshots s WHERE s.account_id = g.account_id ORDER BY snapshot_date DESC LIMIT 1) as current_balance FROM goals g LEFT JOIN accounts a ON a.id = g.account_id").fetchall()
+        if not goals:
+            st.caption("No financial goals tracked yet.")
+        for g in goals:
+            tar = float(g["target_amount"])
+            bal = float(g["current_balance"] or 0)
+            pct = min(1.0, max(0.0, bal / tar)) if tar > 0 else 0
+            if is_hidden():
+                st.write(f"**{g['name']}** — █% (in ****)")
+                st.progress(pct)
+            else:
+                st.write(f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}")
+                st.progress(pct)
+
+
+    conn.close()
         st.info(
             "No holdings found. Sync an investment connector or add holdings in Settings.")
         return
@@ -450,14 +552,15 @@ def render():
         with st.expander("🔍 Consolidated Underlying Holdings Table (All Sources)"):
             disp_cols = ["ticker", "name", "asset_type_display", "sector", "region", "value_eur", "source"]
             tbl_df = consolidated_df[disp_cols].copy()
-            tbl_df.columns = ["Ticker", "Name", "Type", "Theme / Sector", "Region", "Value (EUR)", "Source"]
+            tbl_df.columns = ["Asset Ticker", "Asset Name", "Asset Class", "Sector / Theme", "Geographic Region", "Position Value (€)", "Account / Source"]
             if is_hidden():
-                tbl_df["Value (EUR)"] = "€****"
-                tbl_df["Name"] = "****"
-                tbl_df["Ticker"] = "****"
+                tbl_df["Position Value (€)"] = "€****"
+                tbl_df["Asset Name"] = "****"
+                tbl_df["Asset Ticker"] = "****"
             else:
-                tbl_df["Value (EUR)"] = tbl_df["Value (EUR)"].map(lambda x: f"€{x:,.2f}")
+                tbl_df["Position Value (€)"] = tbl_df["Position Value (€)"].map(lambda x: f"€{x:,.2f}")
             st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+
 
     # 1. Copy Portfolios Section
     if not copy_df.empty:
@@ -515,7 +618,106 @@ def render():
     profiles = conn.execute(
         "SELECT * FROM allocation_profiles ORDER BY is_active DESC, name ASC").fetchall()
     if not profiles:
-        conn.close()
+    
+    # --- TAX LOSS HARVESTING ---
+    section_header("Tax-Loss Harvesting Assistant", "Identify unrealized losses to offset capital gains")
+    loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(by="unrealized_pnl_eur")
+    if not loss_df.empty:
+        st.info("💡 You have unrealized losses that could be realized to offset capital gains taxes.")
+        disp_loss = loss_df[["ticker", "name", "value_eur", "unrealized_pnl_eur"]].copy()
+        disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
+        if is_hidden():
+            disp_loss["Value (€)"] = "€****"
+            disp_loss["Unrealized P&L (€)"] = "€****"
+            disp_loss["Asset"] = "****"
+            disp_loss["Ticker"] = "****"
+        else:
+            disp_loss["Value (€)"] = disp_loss["Value (€)"].map(lambda x: f"€{x:,.2f}")
+            disp_loss["Unrealized P&L (€)"] = disp_loss["Unrealized P&L (€)"].map(lambda x: f"€{x:,.2f}")
+        st.dataframe(disp_loss, hide_index=True, use_container_width=True)
+    else:
+        st.caption("No significant unrealized losses available for harvesting.")
+
+    # --- FIRE & GOALS ---
+    section_header("FIRE & Financial Goals", "Track savings targets and Financial Independence trajectory")
+    c_fire, c_goals = st.columns([1, 1])
+    
+    with c_fire:
+        st.subheader("🔥 FIRE Trajectory")
+        st.caption("Target 25x Annual Expenses")
+        # Estimate expenses
+        exp_row = conn.execute("SELECT AVG(monthly_exp) as m_exp FROM (SELECT SUM(amount_eur_minor)/100.0 as monthly_exp FROM v_transactions WHERE amount_eur_minor < 0 AND category_kind IN ('fixed', 'discretionary') GROUP BY strftime('%Y-%m', booking_date))").fetchone()
+        m_exp = float(exp_row["m_exp"] or 0) if exp_row else 0
+        annual_exp = abs(m_exp) * 12
+        fi_number = annual_exp * 25
+        
+        # Estimate savings
+        sav_row = conn.execute("SELECT AVG(savings_eur) as m_sav FROM v_monthly_cashflow").fetchone()
+        m_sav = float(sav_row["m_sav"] or 0) if sav_row else 0
+        
+        nw_row = conn.execute("SELECT SUM(balance_eur_minor)/100.0 as nw FROM account_snapshots WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM account_snapshots)").fetchone()
+        curr_nw = float(nw_row["nw"] or 0) if nw_row else 0
+        
+        c_sl1, c_sl2 = st.columns(2)
+        with c_sl1:
+            ret_rate = st.slider("Expected Annual Return (%)", 1.0, 15.0, 7.0, 0.5)
+        with c_sl2:
+            inf_rate = st.slider("Expected Inflation (%)", 0.0, 10.0, 2.0, 0.5)
+        real_return = (ret_rate - inf_rate) / 100.0
+        
+        if is_hidden():
+            st.metric("FI Number (25x)", "€****")
+        else:
+            st.metric("FI Number (25x)", f"€{fi_number:,.2f}")
+            
+        # Chart
+        years = list(range(31))
+        proj = []
+        val = curr_nw
+        for y in years:
+            proj.append(val)
+            val = val * (1 + real_return) + (m_sav * 12)
+            
+        fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
+        fig_fire.add_hline(y=fi_number, line_dash="dash", annotation_text="FI Target", line_color="#2DD4BF")
+        fig_fire.update_layout(xaxis_title="Years from Now", yaxis_title="Net Worth (€)", margin=dict(t=35, l=10, r=10, b=10))
+        if is_hidden():
+            fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
+        st.plotly_chart(fig_fire, use_container_width=True)
+
+    with c_goals:
+        st.subheader("🎯 Savings Goals")
+        
+        with st.expander("➕ Add New Goal", expanded=False):
+            with st.form("new_goal_form"):
+                g_name = st.text_input("Goal Name")
+                g_target = st.number_input("Target Amount (€)", min_value=1.0, step=100.0)
+                accs = conn.execute("SELECT id, name FROM accounts WHERE asset_class = 'cash'").fetchall()
+                acc_options = {a["id"]: a["name"] for a in accs}
+                g_acc = st.selectbox("Linked Account", options=list(acc_options.keys()), format_func=lambda x: acc_options[x])
+                
+                if st.form_submit_button("Save Goal"):
+                    with conn:
+                        conn.execute("INSERT INTO goals (name, target_amount, account_id) VALUES (?, ?, ?)", (g_name, g_target, g_acc))
+                    st.success("Goal added!")
+                    st.rerun(scope="app")
+                    
+        goals = conn.execute("SELECT g.*, a.name as account_name, (SELECT balance_eur_minor/100.0 FROM account_snapshots s WHERE s.account_id = g.account_id ORDER BY snapshot_date DESC LIMIT 1) as current_balance FROM goals g LEFT JOIN accounts a ON a.id = g.account_id").fetchall()
+        if not goals:
+            st.caption("No financial goals tracked yet.")
+        for g in goals:
+            tar = float(g["target_amount"])
+            bal = float(g["current_balance"] or 0)
+            pct = min(1.0, max(0.0, bal / tar)) if tar > 0 else 0
+            if is_hidden():
+                st.write(f"**{g['name']}** — █% (in ****)")
+                st.progress(pct)
+            else:
+                st.write(f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}")
+                st.progress(pct)
+
+
+    conn.close()
         st.caption("No allocation profiles configured.")
         return
 
@@ -570,4 +772,161 @@ def render():
     st.subheader("Automated Rebalancing")
     st.info("💡 **Tip:** Use the AI Copilot chatbot to calculate rebalancing instructions. Just say: *\"Help me rebalance my portfolio for the selected profile.\"* or *\"I have €1000 to deposit, how should I allocate it based on my targets?\"*")
 
+    # 4. Dividend Tracking & Cash Flow Projections
+    section_header("Dividend & Cash Flow Projections", "Projected passive income and estimated yields across holdings")
+    div_data = calculate_dividend_projections(conn)
+
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        ann_str = "€****" if is_hidden() else f"€{div_data['projected_annual_dividends_eur']:,.2f}"
+        kpi_card("Projected Annual Income", ann_str, subtext="Estimated forward dividends")
+    with d2:
+        yield_str = "****" if is_hidden() else f"{div_data['average_dividend_yield_pct']:.2f}%"
+        kpi_card("Portfolio Yield", yield_str, subtext="Weighted average forward yield")
+    with d3:
+        mo_str = "€****" if is_hidden() else f"€{div_data['monthly_average_eur']:,.2f}"
+        kpi_card("Monthly Average", mo_str, subtext="Projected passive monthly flow")
+
+    if div_data["monthly_distribution"]:
+        m_dist_df = pd.DataFrame(div_data["monthly_distribution"])
+        col_m_chart, col_m_table = st.columns([1, 1])
+
+        with col_m_chart:
+            dist_fig = px.bar(
+                m_dist_df,
+                x="month",
+                y="payout_eur",
+                title="Projected Monthly Dividend Calendar (€)",
+                text=m_dist_df["payout_eur"].map(lambda x: "€****" if is_hidden() else f"€{x:,.0f}"),
+                color_discrete_sequence=["#2DD4BF"],
+            )
+            dist_fig.update_layout(
+                margin=dict(t=35, l=10, r=10, b=10),
+                xaxis_title="Month",
+                yaxis_title="Projected Payout (€)",
+            )
+            if is_hidden():
+                dist_fig.update_traces(hovertemplate="Censored<extra></extra>")
+            st.plotly_chart(dist_fig, use_container_width=True)
+
+        with col_m_table:
+            st.markdown("#### 🏆 Dividend Contributors")
+            h_df = div_data["holdings_df"]
+            if not h_df.empty:
+                disp_h = h_df[["ticker", "name", "value_eur", "yield_pct", "annual_dividend_eur"]].copy()
+                disp_h.columns = ["Ticker", "Asset", "Value (€)", "Est. Yield", "Annual Div (€)"]
+                if is_hidden():
+                    disp_h["Value (€)"] = "€****"
+                    disp_h["Est. Yield"] = "****"
+                    disp_h["Annual Div (€)"] = "€****"
+                    disp_h["Asset"] = "****"
+                    disp_h["Ticker"] = "****"
+                else:
+                    disp_h["Value (€)"] = disp_h["Value (€)"].map(lambda x: f"€{x:,.2f}")
+                    disp_h["Est. Yield"] = disp_h["Est. Yield"].map(lambda x: f"{x:.1f}%")
+                    disp_h["Annual Div (€)"] = disp_h["Annual Div (€)"].map(lambda x: f"€{x:,.2f}")
+                st.dataframe(disp_h, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No dividend-generating assets tracked.")
+
+
+    # --- TAX LOSS HARVESTING ---
+    section_header("Tax-Loss Harvesting Assistant", "Identify unrealized losses to offset capital gains")
+    loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(by="unrealized_pnl_eur")
+    if not loss_df.empty:
+        st.info("💡 You have unrealized losses that could be realized to offset capital gains taxes.")
+        disp_loss = loss_df[["ticker", "name", "value_eur", "unrealized_pnl_eur"]].copy()
+        disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
+        if is_hidden():
+            disp_loss["Value (€)"] = "€****"
+            disp_loss["Unrealized P&L (€)"] = "€****"
+            disp_loss["Asset"] = "****"
+            disp_loss["Ticker"] = "****"
+        else:
+            disp_loss["Value (€)"] = disp_loss["Value (€)"].map(lambda x: f"€{x:,.2f}")
+            disp_loss["Unrealized P&L (€)"] = disp_loss["Unrealized P&L (€)"].map(lambda x: f"€{x:,.2f}")
+        st.dataframe(disp_loss, hide_index=True, use_container_width=True)
+    else:
+        st.caption("No significant unrealized losses available for harvesting.")
+
+    # --- FIRE & GOALS ---
+    section_header("FIRE & Financial Goals", "Track savings targets and Financial Independence trajectory")
+    c_fire, c_goals = st.columns([1, 1])
+    
+    with c_fire:
+        st.subheader("🔥 FIRE Trajectory")
+        st.caption("Target 25x Annual Expenses")
+        # Estimate expenses
+        exp_row = conn.execute("SELECT AVG(monthly_exp) as m_exp FROM (SELECT SUM(amount_eur_minor)/100.0 as monthly_exp FROM v_transactions WHERE amount_eur_minor < 0 AND category_kind IN ('fixed', 'discretionary') GROUP BY strftime('%Y-%m', booking_date))").fetchone()
+        m_exp = float(exp_row["m_exp"] or 0) if exp_row else 0
+        annual_exp = abs(m_exp) * 12
+        fi_number = annual_exp * 25
+        
+        # Estimate savings
+        sav_row = conn.execute("SELECT AVG(savings_eur) as m_sav FROM v_monthly_cashflow").fetchone()
+        m_sav = float(sav_row["m_sav"] or 0) if sav_row else 0
+        
+        nw_row = conn.execute("SELECT SUM(balance_eur_minor)/100.0 as nw FROM account_snapshots WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM account_snapshots)").fetchone()
+        curr_nw = float(nw_row["nw"] or 0) if nw_row else 0
+        
+        c_sl1, c_sl2 = st.columns(2)
+        with c_sl1:
+            ret_rate = st.slider("Expected Annual Return (%)", 1.0, 15.0, 7.0, 0.5)
+        with c_sl2:
+            inf_rate = st.slider("Expected Inflation (%)", 0.0, 10.0, 2.0, 0.5)
+        real_return = (ret_rate - inf_rate) / 100.0
+        
+        if is_hidden():
+            st.metric("FI Number (25x)", "€****")
+        else:
+            st.metric("FI Number (25x)", f"€{fi_number:,.2f}")
+            
+        # Chart
+        years = list(range(31))
+        proj = []
+        val = curr_nw
+        for y in years:
+            proj.append(val)
+            val = val * (1 + real_return) + (m_sav * 12)
+            
+        fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
+        fig_fire.add_hline(y=fi_number, line_dash="dash", annotation_text="FI Target", line_color="#2DD4BF")
+        fig_fire.update_layout(xaxis_title="Years from Now", yaxis_title="Net Worth (€)", margin=dict(t=35, l=10, r=10, b=10))
+        if is_hidden():
+            fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
+        st.plotly_chart(fig_fire, use_container_width=True)
+
+    with c_goals:
+        st.subheader("🎯 Savings Goals")
+        
+        with st.expander("➕ Add New Goal", expanded=False):
+            with st.form("new_goal_form"):
+                g_name = st.text_input("Goal Name")
+                g_target = st.number_input("Target Amount (€)", min_value=1.0, step=100.0)
+                accs = conn.execute("SELECT id, name FROM accounts WHERE asset_class = 'cash'").fetchall()
+                acc_options = {a["id"]: a["name"] for a in accs}
+                g_acc = st.selectbox("Linked Account", options=list(acc_options.keys()), format_func=lambda x: acc_options[x])
+                
+                if st.form_submit_button("Save Goal"):
+                    with conn:
+                        conn.execute("INSERT INTO goals (name, target_amount, account_id) VALUES (?, ?, ?)", (g_name, g_target, g_acc))
+                    st.success("Goal added!")
+                    st.rerun(scope="app")
+                    
+        goals = conn.execute("SELECT g.*, a.name as account_name, (SELECT balance_eur_minor/100.0 FROM account_snapshots s WHERE s.account_id = g.account_id ORDER BY snapshot_date DESC LIMIT 1) as current_balance FROM goals g LEFT JOIN accounts a ON a.id = g.account_id").fetchall()
+        if not goals:
+            st.caption("No financial goals tracked yet.")
+        for g in goals:
+            tar = float(g["target_amount"])
+            bal = float(g["current_balance"] or 0)
+            pct = min(1.0, max(0.0, bal / tar)) if tar > 0 else 0
+            if is_hidden():
+                st.write(f"**{g['name']}** — █% (in ****)")
+                st.progress(pct)
+            else:
+                st.write(f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}")
+                st.progress(pct)
+
+
     conn.close()
+

@@ -274,4 +274,13 @@ CREATE TABLE IF NOT EXISTS tax_profile (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ── Goals ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS goals (
+  id              INTEGER PRIMARY KEY,
+  name            TEXT NOT NULL,
+  target_amount   REAL NOT NULL,
+  target_date     TEXT,
+  account_id      INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
 

@@ -21,7 +21,12 @@ DISALLOWED_ACTIONS = {
 def _authorizer(action: int, _arg1: Any, arg2: Any, _db: Any, _trigger: Any) -> int:
     if action in DISALLOWED_ACTIONS:
         return sqlite3.SQLITE_DENY
-    if action == sqlite3.SQLITE_SELECT or action == sqlite3.SQLITE_READ:
+    if action == sqlite3.SQLITE_SELECT:
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_READ:
+        table_name = str(_arg1).lower() if _arg1 else ""
+        if table_name in {"secrets_vault", "schema_migrations"} or table_name.startswith("sqlite_"):
+            return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_FUNCTION:
         func_name = str(arg2).lower()
@@ -29,6 +34,7 @@ def _authorizer(action: int, _arg1: Any, arg2: Any, _db: Any, _trigger: Any) -> 
             return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
+
 
 
 def execute_safe_query(

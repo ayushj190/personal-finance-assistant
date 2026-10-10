@@ -295,6 +295,10 @@ def tool_analyze_investments() -> dict[str, Any]:
         conn.close()
 
 
+tool_get_portfolio_and_risk_summary = tool_analyze_investments
+
+
+
 def tool_parse_and_import_file(
     file_name: str,
     file_bytes: bytes,
