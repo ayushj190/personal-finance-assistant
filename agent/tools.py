@@ -31,16 +31,29 @@ from services.analytics import calculate_current_net_worth
 
 def tool_get_current_net_worth() -> dict[str, Any]:
     """Calculate and return the user's real-time net worth, including liquid cash, investments, and home equity."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         nw_data = calculate_current_net_worth(conn)
+        acc_count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        if acc_count == 0 and nw_data["net_worth"] == 0:
+            guidance = "No financial accounts configured yet. Import a bank or broker statement via '📎 Import' in the sidebar or add manual accounts on the Dashboard."
+            return {
+                "success": True,
+                "liquid_cash_eur": 0.0,
+                "investments_eur": 0.0,
+                "home_equity_eur": 0.0,
+                "net_worth_eur": 0.0,
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"Your current net worth is €0.00. {guidance}",
+            }
         return {
             "success": True,
             "liquid_cash_eur": nw_data["liquid_cash"],
             "investments_eur": nw_data["invested"],
             "home_equity_eur": nw_data["home_equity"],
             "net_worth_eur": nw_data["net_worth"],
-            "message": f"Your current net worth is €{nw_data['net_worth']:,.2f}."
+            "message": f"Your current net worth is €{nw_data['net_worth']:,.2f}.",
         }
     finally:
         conn.close()
@@ -245,13 +258,16 @@ def tool_save_risk_profile(
 
 def tool_get_risk_profile() -> dict[str, Any]:
     """Retrieve the latest saved investment risk tolerance profile."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         profile = database.get_latest_risk_profile(conn)
         if not profile:
+            guidance = "No risk profile has been established yet. You can complete the questionnaire by clicking '🎯 Assess Risk' in the sidebar."
             return {
                 "success": False,
-                "message": "No risk profile has been established yet. Offer the user a risk questionnaire to determine their tolerance.",
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"No risk profile has been established yet. {guidance}",
             }
         return {"success": True, "profile": profile}
     finally:
@@ -260,7 +276,7 @@ def tool_get_risk_profile() -> dict[str, Any]:
 
 def tool_analyze_investments() -> dict[str, Any]:
     """Analyze current portfolio asset allocation against the active target profile and user risk profile."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         # Net worth breakdown
         nw_rows = conn.execute(
@@ -296,6 +312,20 @@ def tool_analyze_investments() -> dict[str, Any]:
             targets = [dict(t) for t in t_rows]
 
         risk_prof = database.get_latest_risk_profile(conn)
+
+        if not nw_rows and not h_rows:
+            guidance = "No portfolio holdings or investment accounts recorded yet. Import an eToro or broker statement via the '📎 Import' button in the sidebar or from the Investments page."
+            return {
+                "success": True,
+                "asset_classes_eur": {},
+                "holdings_by_asset_type_eur": {},
+                "active_allocation_profile": dict(profile) if profile else None,
+                "allocation_targets": targets,
+                "risk_profile": risk_prof,
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"No investment holdings found. {guidance}",
+            }
 
         return {
             "success": True,
@@ -493,17 +523,48 @@ def tool_get_spending_by_category(
     month: int | None = None,
 ) -> dict[str, Any]:
     """Get aggregated spending by category for a specific month and year, or all-time."""
-    conn = database.connect(DB_PATH)
+    # Parameter sanitization
+    clean_year = None
+    if year is not None:
+        try:
+            clean_year = int(year)
+            if not (1900 <= clean_year <= 2100):
+                return {
+                    "success": False,
+                    "message": f"Invalid year '{year}'. Please specify a year between 1900 and 2100.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid year '{year}'. Please specify a 4-digit numeric year (e.g. 2026).",
+            }
+
+    clean_month = None
+    if month is not None:
+        try:
+            clean_month = int(month)
+            if not (1 <= clean_month <= 12):
+                return {
+                    "success": False,
+                    "message": f"Invalid month '{month}'. Please specify a month number between 1 and 12.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid month '{month}'. Please provide a valid numeric month (1 to 12).",
+            }
+
+    conn = database.connect_readonly(DB_PATH)
     try:
         where_clauses = ["is_internal_transfer = 0", "amount_eur < 0"]
         params: list[Any] = []
 
-        if year is not None and month is not None:
-            prefix = f"{year:04d}-{month:02d}%"
+        if clean_year is not None and clean_month is not None:
+            prefix = f"{clean_year:04d}-{clean_month:02d}%"
             where_clauses.append("booking_date LIKE ?")
             params.append(prefix)
-        elif year is not None:
-            prefix = f"{year:04d}-%"
+        elif clean_year is not None:
+            prefix = f"{clean_year:04d}-%"
             where_clauses.append("booking_date LIKE ?")
             params.append(prefix)
 
@@ -518,23 +579,39 @@ def tool_get_spending_by_category(
         df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
         total = float(df["total_spent"].sum()) if not df.empty else 0.0
-        time_label = f"for {year}-{month:02d}" if (year and month) else (f"for {year}" if year else "overall")
+        time_label = f"for {clean_year}-{clean_month:02d}" if (clean_year and clean_month) else (f"for {clean_year}" if clean_year else "overall")
 
-        fig = None
-        if not df.empty:
-            chart_spec = {
-                "type": "bar",
-                "x": "category",
-                "y": "total_spent",
-                "title": f"Spending by Category ({time_label})",
+        if df.empty:
+            total_txs = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            if total_txs == 0:
+                guidance = "Your transaction ledger is currently empty. You can import bank or credit card statements via the '📎 Import' button in the sidebar or from the Spending page."
+            else:
+                guidance = f"No spending transactions found {time_label}. Try checking a different month or viewing overall spending."
+            return {
+                "success": True,
+                "period": time_label,
+                "total_spent_eur": 0.0,
+                "categories": [],
+                "df": df,
+                "figure": None,
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"No spending records found {time_label}. {guidance}",
             }
-            fig = render_chart(df, chart_spec)
+
+        chart_spec = {
+            "type": "bar",
+            "x": "category",
+            "y": "total_spent",
+            "title": f"Spending by Category ({time_label})",
+        }
+        fig = render_chart(df, chart_spec)
 
         return {
             "success": True,
             "period": time_label,
             "total_spent_eur": total,
-            "categories": df.to_dict(orient="records") if not df.empty else [],
+            "categories": df.to_dict(orient="records"),
             "df": df,
             "figure": fig,
             "message": f"Total spending {time_label} is €{total:,.2f} across {len(df)} categories.",
@@ -548,16 +625,30 @@ def tool_get_recent_transactions(
     category: str | None = None,
 ) -> dict[str, Any]:
     """Retrieve recent transactions filtered optionally by category name."""
-    conn = database.connect(DB_PATH)
+    try:
+        clean_limit = int(limit)
+    except (ValueError, TypeError):
+        return {
+            "success": False,
+            "message": f"Invalid limit '{limit}'. Please provide a numeric limit.",
+        }
+    if clean_limit <= 0:
+        return {
+            "success": False,
+            "message": f"Limit must be a positive integer, got {limit}.",
+        }
+    clean_limit = min(clean_limit, 100)
+    clean_category = str(category).strip() if category is not None and str(category).strip() else None
+
+    conn = database.connect_readonly(DB_PATH)
     try:
         where_clauses = ["is_internal_transfer = 0"]
         params: list[Any] = []
 
-        if category:
+        if clean_category:
             where_clauses.append("LOWER(category) LIKE LOWER(?)")
-            params.append(f"%{category.strip()}%")
+            params.append(f"%{clean_category}%")
 
-        clean_limit = max(1, min(100, int(limit)))
         query = f"""
             SELECT booking_date, institution, merchant, category, amount_eur
             FROM v_transactions
@@ -569,10 +660,28 @@ def tool_get_recent_transactions(
         rows = conn.execute(query, tuple(params)).fetchall()
         df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
+        if df.empty:
+            total_txs = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            if total_txs == 0:
+                guidance = "No transactions found because your transaction ledger is empty. Upload a CSV or PDF statement via '📎 Import' in the sidebar to populate your transactions."
+            else:
+                cat_desc = f" for category '{clean_category}'" if clean_category else ""
+                guidance = f"No transactions found{cat_desc}. Try removing or broadening the category filter."
+            return {
+                "success": True,
+                "count": 0,
+                "transactions": [],
+                "df": df,
+                "figure": None,
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": guidance,
+            }
+
         return {
             "success": True,
             "count": len(df),
-            "transactions": df.to_dict(orient="records") if not df.empty else [],
+            "transactions": df.to_dict(orient="records"),
             "df": df,
             "figure": None,
             "message": f"Found {len(df)} transactions.",
@@ -583,13 +692,28 @@ def tool_get_recent_transactions(
 
 def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
     """Get monthly cashflow summary (income, fixed, discretionary, savings)."""
-    conn = database.connect(DB_PATH)
+    clean_year = None
+    if year is not None:
+        try:
+            clean_year = int(year)
+            if not (1900 <= clean_year <= 2100):
+                return {
+                    "success": False,
+                    "message": f"Invalid year '{year}'. Please specify a year between 1900 and 2100.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid year '{year}'. Please specify a 4-digit numeric year.",
+            }
+
+    conn = database.connect_readonly(DB_PATH)
     try:
         params: list[Any] = []
         where_clause = ""
-        if year is not None:
+        if clean_year is not None:
             where_clause = "WHERE month LIKE ?"
-            params.append(f"{year:04d}-%")
+            params.append(f"{clean_year:04d}-%")
 
         query = f"""
             SELECT month, income_eur, fixed_eur, discretionary_eur, savings_eur
@@ -601,9 +725,26 @@ def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
         rows = conn.execute(query, tuple(params)).fetchall()
         df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
+        if df.empty:
+            total_txs = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            if total_txs == 0:
+                guidance = "No monthly cashflow available because your transaction ledger is empty. Upload bank statements via the '📎 Import' button in the sidebar to generate cashflow summaries."
+            else:
+                yr_desc = f" for year {clean_year}" if clean_year else ""
+                guidance = f"No cashflow records found{yr_desc}. Import additional monthly statements or adjust the year filter."
+            return {
+                "success": True,
+                "cashflow": [],
+                "df": df,
+                "figure": None,
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": guidance,
+            }
+
         return {
             "success": True,
-            "cashflow": df.to_dict(orient="records") if not df.empty else [],
+            "cashflow": df.to_dict(orient="records"),
             "df": df,
             "figure": None,
             "message": f"Retrieved cashflow data for {len(df)} months.",
@@ -612,16 +753,39 @@ def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
         conn.close()
 
 
+
 def tool_search_dutch_law_vault(
     query: str,
     category: str | None = None,
     effective_year: int | None = None,
 ) -> dict[str, Any]:
     """Search the Dutch Financial Law Vector Vault using hybrid FTS5 and sqlite-vec RRF search."""
-    results = search_legal_vault(query, category=category, top_k=4, effective_year=effective_year)
+    if not query or not str(query).strip():
+        return {
+            "success": False,
+            "message": "Search query cannot be empty. Please specify a financial, tax, or legal question.",
+        }
+    clean_query = str(query).strip()
+
+    clean_year = None
+    if effective_year is not None:
+        try:
+            clean_year = int(effective_year)
+            if not (1900 <= clean_year <= 2100):
+                return {
+                    "success": False,
+                    "message": f"Invalid effective year '{effective_year}'. Must be between 1900 and 2100.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid effective year '{effective_year}'. Must be a 4-digit numeric year.",
+            }
+
+    results = search_legal_vault(clean_query, category=category, top_k=4, effective_year=clean_year)
     if not results:
         # Graceful fallback to legacy knowledge base if no statutory article matches
-        legacy_res = search_knowledge_base(query, top_k=3, category=category)
+        legacy_res = search_knowledge_base(clean_query, top_k=3, category=category)
         if legacy_res:
             citations = [
                 {
@@ -644,7 +808,7 @@ def tool_search_dutch_law_vault(
             "success": False,
             "results": [],
             "citations": [],
-            "message": f"No statutory articles found for query '{query}'.",
+            "message": f"No statutory articles found for query '{clean_query}'.",
         }
 
     citations = [
@@ -683,11 +847,17 @@ def tool_search_dutch_law_vault(
 
 def tool_lookup_tax_law_article(article_ref: str) -> dict[str, Any]:
     """Look up an exact Dutch statutory tax code or legal article reference (e.g. 'Art. 3.16', 'Art. 5.2', 'Art. 3.120')."""
-    res = lookup_article(article_ref)
+    if not article_ref or not str(article_ref).strip():
+        return {
+            "success": False,
+            "message": "Article reference cannot be empty. Please specify an article reference such as 'Art. 3.16' or 'Art. 5.2'.",
+        }
+    clean_ref = str(article_ref).strip()
+    res = lookup_article(clean_ref)
     if not res:
         return {
             "success": False,
-            "message": f"Article reference '{article_ref}' not found in the Dutch Financial Law Vault.",
+            "message": f"Article reference '{clean_ref}' not found in the Dutch Financial Law Vault.",
         }
 
     citation = {
@@ -791,16 +961,39 @@ def tool_save_tax_profile(
 
 def tool_simulate_tax_optimization(capital_eur: float, horizon_years: int = 10) -> dict[str, Any]:
     """Simulate 4-way capital trade-off (Mortgage Prepayment vs. Pillar 3 Jaarruimte vs. Certified Groenfonds vs. Taxable ETF)."""
-    conn = database.connect(DB_PATH)
     try:
-        sim = simulate_capital_allocation_tradeoff(capital_eur, horizon_years, conn=conn)
+        clean_capital = float(capital_eur)
+    except (ValueError, TypeError):
+        return {
+            "success": False,
+            "message": f"Invalid capital amount '{capital_eur}'. Please provide a numeric value.",
+        }
+    if clean_capital <= 0:
+        return {
+            "success": False,
+            "message": f"Capital amount must be greater than 0, got €{clean_capital:,.2f}.",
+        }
+
+    try:
+        clean_horizon = int(horizon_years)
+    except (ValueError, TypeError):
+        clean_horizon = 10
+    if not (1 <= clean_horizon <= 50):
+        return {
+            "success": False,
+            "message": f"Horizon must be between 1 and 50 years, got {horizon_years}.",
+        }
+
+    conn = database.connect_readonly(DB_PATH)
+    try:
+        sim = simulate_capital_allocation_tradeoff(clean_capital, clean_horizon, conn=conn)
         df = sim["trajectory_df"]
 
         fig = px.line(
             df,
             x="Year",
             y=["Mortgage Prepayment", "Pillar 3 Pension (Jaarruimte)", "Certified Groenfonds", "Taxable Box 3 ETF"],
-            title=f"Capital Allocation Strategy Comparison (€{capital_eur:,.0f} Horizon {horizon_years}y)",
+            title=f"Capital Allocation Strategy Comparison (€{clean_capital:,.0f} Horizon {clean_horizon}y)",
             labels={"value": "Total Net Wealth (€)", "variable": "Strategy"},
             markers=True,
         )
@@ -812,7 +1005,7 @@ def tool_simulate_tax_optimization(capital_eur: float, horizon_years: int = 10) 
 
         winner = sim["winner_strategy"].replace("_", " ").title()
         msg = (
-            f"Simulated €{capital_eur:,.0f} across {horizon_years} years. "
+            f"Simulated €{clean_capital:,.0f} across {clean_horizon} years. "
             f"Top outcome: {winner} yielding €{sim['final_values'][sim['winner_strategy']]:,.2f} net. "
             f"Immediate Pillar 3 tax refund: €{sim['immediate_pension_refund_eur']:,.2f}."
         )
@@ -830,17 +1023,42 @@ def tool_simulate_tax_optimization(capital_eur: float, horizon_years: int = 10) 
 
 def tool_calculate_pension_room(gross_income: float | None = None, factor_a: float = 0.0) -> dict[str, Any]:
     """Calculate official Dutch Pillar 3 pension gap (Jaarruimte & Reserveringsruimte) and immediate Box 1 tax refund."""
-    conn = database.connect(DB_PATH)
-    try:
-        if gross_income is None:
-            profile = conn.execute("SELECT gross_annual_income, factor_a_minor, reserveringsruimte_minor FROM tax_profile WHERE id = 1").fetchone()
-            gross_income = float(profile["gross_annual_income"]) if profile else 65000.0
-            if factor_a == 0.0 and profile and "factor_a_minor" in profile.keys():
-                factor_a = float(profile["factor_a_minor"]) / 100.0
+    clean_income = None
+    if gross_income is not None:
+        try:
+            clean_income = float(gross_income)
+            if clean_income < 0:
+                return {
+                    "success": False,
+                    "message": f"Gross annual income cannot be negative, got €{clean_income:,.2f}.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid gross income '{gross_income}'. Please provide a valid numeric amount.",
+            }
 
-        pension_data = calculate_jaarruimte(gross_income=gross_income, factor_a=factor_a)
+    try:
+        clean_factor_a = float(factor_a)
+        if clean_factor_a < 0:
+            return {
+                "success": False,
+                "message": f"Factor A cannot be negative, got €{clean_factor_a:,.2f}.",
+            }
+    except (ValueError, TypeError):
+        clean_factor_a = 0.0
+
+    conn = database.connect_readonly(DB_PATH)
+    try:
+        if clean_income is None:
+            profile = conn.execute("SELECT gross_annual_income, factor_a_minor, reserveringsruimte_minor FROM tax_profile WHERE id = 1").fetchone()
+            clean_income = float(profile["gross_annual_income"]) if profile else 65000.0
+            if clean_factor_a == 0.0 and profile and "factor_a_minor" in profile.keys():
+                clean_factor_a = float(profile["factor_a_minor"]) / 100.0
+
+        pension_data = calculate_jaarruimte(gross_income=clean_income, factor_a=clean_factor_a)
         msg = (
-            f"Calculated Jaarruimte for €{gross_income:,.0f} gross (Factor A: €{factor_a:,.0f}): "
+            f"Calculated Jaarruimte for €{clean_income:,.0f} gross (Factor A: €{clean_factor_a:,.0f}): "
             f"Annual room €{pension_data['annual_jaarruimte']:,.2f}. "
             f"Immediate Box 1 tax refund: €{pension_data['immediate_tax_rebate']:,.2f} "
             f"({pension_data['marginal_tax_rate']*100:.2f}% marginal bracket). "
@@ -857,14 +1075,29 @@ def tool_calculate_pension_room(gross_income: float | None = None, factor_a: flo
 
 def tool_analyze_green_fund_strategy(target_allocation: float | None = None) -> dict[str, Any]:
     """Analyze Dutch Groenfondsen double tax benefit (Box 3 wealth tax exemption and 0.1% Box 1 credit)."""
-    conn = database.connect(DB_PATH)
+    clean_target = None
+    if target_allocation is not None:
+        try:
+            clean_target = float(target_allocation)
+            if clean_target < 0:
+                return {
+                    "success": False,
+                    "message": f"Target allocation cannot be negative, got €{clean_target:,.2f}.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "message": f"Invalid target allocation '{target_allocation}'. Please provide a valid numeric amount.",
+            }
+
+    conn = database.connect_readonly(DB_PATH)
     try:
         nw = calculate_current_net_worth(conn)
         total_wealth = nw["liquid_cash"] + nw["invested"]
         profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
         has_partner = bool(profile["has_fiscal_partner"]) if profile else False
         current_green = (float(profile["green_investments_minor"]) / 100.0) if profile and "green_investments_minor" in profile.keys() else 0.0
-        prospective = target_allocation if target_allocation is not None else (25000.0 if current_green == 0 else 0.0)
+        prospective = clean_target if clean_target is not None else (25000.0 if current_green == 0 else 0.0)
 
         arb = calculate_groenfondsen_arbitrage(
             total_wealth=total_wealth,
@@ -891,7 +1124,7 @@ def tool_analyze_green_fund_strategy(target_allocation: float | None = None) -> 
 
 def tool_diagnose_tax_leaks() -> dict[str, Any]:
     """Scan current user assets, liabilities, and income to proactively diagnose tax inefficiencies."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         leaks = diagnose_tax_leakage(conn)
         tot_savings = sum(l["potential_annual_saving_eur"] for l in leaks)
@@ -917,32 +1150,34 @@ def tool_ingest_financial_document(doc_title: str, content: str, category: str =
         conn.close()
 
 
-
 def tool_analyze_tax_situation() -> dict[str, Any]:
     """Fetch the user's gross income from tax_profile, their investment/cash balances for Box 3, and return them for analysis."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
         if not profile or profile["gross_annual_income"] == 0:
+            guidance = "No gross annual income or tax profile configured yet. Please open the Tax Analysis tab or tell me your gross income to configure Box 1 and Box 3 calculations."
             return {
                 "success": False,
-                "message": "User has not set up their tax profile or gross income. Ask them to fill it out in the Tax Analysis tab."
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"Tax profile is not configured. {guidance}",
             }
-        
+
         # Get net worth data for Box 3
         nw_data = calculate_current_net_worth(conn)
         cash_bal = nw_data["liquid_cash"]
         invested_bal = nw_data["invested"]
-        
+
         return {
             "success": True,
             "tax_profile": dict(profile),
             "box3_assets": {
                 "liquid_cash": cash_bal,
                 "invested": invested_bal,
-                "total_wealth": cash_bal + invested_bal
+                "total_wealth": cash_bal + invested_bal,
             },
-            "message": "Tax data retrieved successfully."
+            "message": "Tax data retrieved successfully.",
         }
     finally:
         conn.close()
@@ -950,33 +1185,34 @@ def tool_analyze_tax_situation() -> dict[str, Any]:
 
 def tool_analyze_mortgage() -> dict[str, Any]:
     """Fetch liability details, schedule, and interest rates for mortgage analysis."""
-    conn = database.connect(DB_PATH)
+    conn = database.connect_readonly(DB_PATH)
     try:
         liabilities = conn.execute("SELECT * FROM liabilities").fetchall()
         if not liabilities:
+            guidance = "No active mortgages or liabilities configured in your ledger. You can add a mortgage on the Mortgage page to track amortization schedules, interest rates, and deductible interest."
             return {
                 "success": False,
-                "message": "User has no active mortgages or liabilities configured."
+                "empty_dataset": True,
+                "guidance": guidance,
+                "message": f"No active mortgages or loans found. {guidance}",
             }
-        
+
         mortgage_data = []
         for lib in liabilities:
             lib_id = lib["id"]
-            # Get latest rate period
             rate = conn.execute("SELECT annual_rate, fixed_until FROM liability_rate_periods WHERE liability_id = ? ORDER BY from_date DESC LIMIT 1", (lib_id,)).fetchone()
-            # Get upcoming schedule payments (next 3 months)
             schedule = conn.execute("SELECT due_date, payment_minor, interest_minor, principal_minor, balance_minor FROM liability_schedule WHERE liability_id = ? AND due_date >= date('now') ORDER BY due_date ASC LIMIT 3", (lib_id,)).fetchall()
-            
+
             mortgage_data.append({
                 "liability": dict(lib),
                 "current_rate": dict(rate) if rate else None,
-                "upcoming_schedule": [dict(s) for s in schedule]
+                "upcoming_schedule": [dict(s) for s in schedule],
             })
-            
+
         return {
             "success": True,
             "mortgages": mortgage_data,
-            "message": "Mortgage data retrieved successfully."
+            "message": "Mortgage data retrieved successfully.",
         }
     finally:
         conn.close()

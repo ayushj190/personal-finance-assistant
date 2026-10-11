@@ -13,6 +13,20 @@ def get_ollama_client() -> tuple[Client, str]:
     return Client(host=endpoint), model
 
 
+def check_ollama_status() -> dict[str, Any]:
+    """Check connectivity to Ollama instance via fast HTTP heartbeat with 1.5s timeout."""
+    endpoint = secrets_vault.get("ollama_endpoint") or DEFAULT_OLLAMA_URL
+    model = secrets_vault.get("ollama_model") or DEFAULT_MODEL
+    try:
+        url = endpoint.rstrip("/") + "/api/tags"
+        resp = httpx.get(url, timeout=1.5)
+        if resp.status_code == 200:
+            return {"online": True, "model": model, "error": None}
+        return {"online": False, "model": model, "error": f"Ollama HTTP status {resp.status_code}"}
+    except Exception as e:
+        return {"online": False, "model": model, "error": str(e)}
+
+
 def generate_json(messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any] | None:
     client, model = get_ollama_client()
     try:

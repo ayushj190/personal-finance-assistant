@@ -9,9 +9,11 @@ from config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
 from services.analytics import calculate_current_net_worth
-from ui.charts import render_cash_flow_sankey
+from services.portfolio import get_consolidated_holdings_df
+from ui.charts import build_investments_market_carpet, render_cash_flow_sankey
 from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
 from ui.logos import get_institution_logo_svg
+from ui.theme import render_chart
 from connectors.etoro_service import EtoroService
 
 
@@ -395,9 +397,38 @@ def _render_accounts_grid(
                         st.markdown(card_bottom_html, unsafe_allow_html=True)
 
 
+@st.dialog("Expenses — Fullscreen Flow", width="large")
+def _expenses_fullscreen_dialog(start_d: str, end_d: str) -> None:
+    dlg_conn = database.connect(DB_PATH)
+    try:
+        render_cash_flow_sankey(
+            dlg_conn,
+            key_prefix="modal_sankey",
+            start_date=start_d,
+            end_date=end_d,
+            height=560,
+        )
+    finally:
+        dlg_conn.close()
+
+
+@st.dialog("Investments Exposure — Fullscreen Market Carpet", width="large")
+def _investments_fullscreen_dialog() -> None:
+    dlg_conn = database.connect(DB_PATH)
+    try:
+        df = get_consolidated_holdings_df(dlg_conn)
+        if not df.empty:
+            fig = build_investments_market_carpet(df, height=560)
+            render_chart(fig, use_container_width=True, key="modal_market_carpet")
+        else:
+            st.info("No investment holdings tracked.")
+    finally:
+        dlg_conn.close()
+
+
 @st.fragment
 def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
-    """Render cash flow Sankey diagram with interactive drill-down inside an isolated fragment."""
+    """Render Expenses Sankey diagram and Investments Sector/Themes Market Carpet heatmap side-by-side."""
     should_close = False
     db_conn = conn
     if db_conn is None:
@@ -409,14 +440,31 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
 
     try:
         today = date.today()
-        start_date = today.replace(day=1).isoformat()
-        end_date = today.isoformat()
-        month_label = today.strftime("%B %Y")
+        today_iso = today.isoformat()
+        prev_salary_date = TransactionRepository.get_latest_salary_date(db_conn, today_iso)
+        if prev_salary_date:
+            start_date = prev_salary_date
+            try:
+                dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                period_sub = f"Since last salary ({dt.strftime('%d %b %Y')} – {today.strftime('%d %b %Y')})"
+            except Exception:
+                period_sub = f"Since last salary ({start_date} – {today_iso})"
+        else:
+            start_date = today.replace(day=1).isoformat()
+            period_sub = f"Month-to-date ({today.strftime('%B %Y')})"
 
-        with section_header(
-            "Cash Flow Topology",
-            f"Month-to-date cash flows ({month_label}) • Click any node or link in the diagram to filter",
-        ):
+        end_date = today_iso
+
+        col_expenses, col_investments = st.columns(2, gap="medium")
+
+        with col_expenses:
+            c_exp_head, c_exp_act = st.columns([0.88, 0.12], vertical_alignment="center")
+            with c_exp_head:
+                section_header("Expenses", f"{period_sub} • Interactive drilldown")
+            with c_exp_act:
+                if st.button("⛶", key="expand_expenses_flow_btn", help="Expand Expenses to Fullscreen"):
+                    _expenses_fullscreen_dialog(start_date, end_date)
+
             spend_df = TransactionRepository.get_recent_spending_df(
                 db_conn, start_date=start_date, end_date=end_date
             )
@@ -426,11 +474,30 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
                     key_prefix="dashboard_sankey",
                     start_date=start_date,
                     end_date=end_date,
+                    height=360,
                 )
             else:
                 empty_state(
                     "No Recent Spending",
-                    f"No expense transactions recorded month-to-date ({month_label}). Import your statements in the 'Import' page to view spending breakdowns.",
+                    f"No expense transactions recorded since last salary ({period_sub}). Import your statements in the 'Import' page to view spending breakdowns.",
+                )
+
+        with col_investments:
+            c_inv_head, c_inv_act = st.columns([0.88, 0.12], vertical_alignment="center")
+            with c_inv_head:
+                section_header("Investments Exposure", "Sector & themes breakdown • Market carpet heatmap")
+            with c_inv_act:
+                if st.button("⛶", key="expand_invest_carpet_btn", help="Expand Market Carpet to Fullscreen"):
+                    _investments_fullscreen_dialog()
+
+            consolidated_df = get_consolidated_holdings_df(db_conn)
+            if not consolidated_df.empty:
+                carpet_fig = build_investments_market_carpet(consolidated_df, height=360)
+                render_chart(carpet_fig, use_container_width=True, key="dashboard_market_carpet")
+            else:
+                empty_state(
+                    "No Investment Holdings",
+                    "No investment portfolio holdings found. Connect eToro or add broker holdings to view exposure.",
                 )
     finally:
         if should_close:

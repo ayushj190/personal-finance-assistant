@@ -272,5 +272,97 @@ class TestInvestmentsHoldings(unittest.TestCase):
             self.assertIn("🎯 Goals & Planning", tab_labels[3])
 
 
+    def test_active_positions_calculation_with_copy_portfolio_distinct_assets(self):
+        """Active positions counts distinct assets across copy portfolios and direct holdings."""
+        from ui.pages.investments import _render_portfolio_fragment
+
+        h1 = {
+            "account_id": self.acc_id,
+            "ticker": "VWCE.DE",
+            "name": "Vanguard All-World",
+            "asset_type": "etf",
+            "quantity": 10.0,
+            "cost_basis_minor": 100000,
+            "currency": "EUR",
+        }
+        h2 = {
+            "account_id": self.acc_id,
+            "ticker": "COPY:jeppe",
+            "name": "Jeppe Kirk",
+            "asset_type": "other",
+            "quantity": 1.0,
+            "cost_basis_minor": 200000,
+            "currency": "USD",
+        }
+        HoldingRepository.upsert_holdings(self.conn, [h1, h2])
+        holdings_df = HoldingRepository.get_v_holdings_df(self.conn)
+        copy_df = holdings_df[holdings_df["ticker"].str.startswith("COPY:")].copy()
+        direct_df = holdings_df[~holdings_df["ticker"].str.startswith("COPY:")].copy()
+
+        # Mirrors cache has 3 distinct positions for COPY:jeppe: AAPL, MSFT, TSLA
+        mirrors_map = {
+            "COPY:jeppe": {
+                "positions": [
+                    {"symbol": "AAPL", "amount_usd": 500, "pnl_usd": 50},
+                    {"symbol": "MSFT", "amount_usd": 500, "pnl_usd": 50},
+                    {"symbol": "TSLA", "amount_usd": 500, "pnl_usd": 50},
+                ]
+            }
+        }
+
+        distinct_assets = set()
+        for _, row in holdings_df.iterrows():
+            t = str(row["ticker"])
+            if t.startswith("COPY:"):
+                m = mirrors_map.get(t, {})
+                positions = m.get("positions", [])
+                if positions:
+                    for p in positions:
+                        sym = p.get("symbol")
+                        if sym:
+                            distinct_assets.add(sym)
+                else:
+                    distinct_assets.add(t)
+            elif t:
+                distinct_assets.add(t)
+
+        # 1 direct + 3 copy positions = 4 distinct assets (not 2)
+        self.assertEqual(len(distinct_assets), 4)
+
+        fn = getattr(_render_portfolio_fragment, "__wrapped__", _render_portfolio_fragment)
+        with patch("ui.pages.investments.kpi_card") as mock_kpi:
+            with patch("ui.pages.investments.is_hidden", return_value=False):
+                fn(
+                    holdings_df, copy_df, direct_df, pd.DataFrame(), 0.89, active_positions_count=len(distinct_assets)
+                )
+                mock_kpi.assert_any_call("Active Positions", "4 assets", subtext="⏱️ 2 quote delayed")
+
+    def test_investments_privacy_masking_active_positions_and_percentages(self):
+        """Active positions and percentages are masked when is_hidden is True."""
+        from ui.pages.investments import _render_portfolio_fragment
+
+        h1 = {
+            "account_id": self.acc_id,
+            "ticker": "VWCE.DE",
+            "name": "Vanguard All-World",
+            "asset_type": "etf",
+            "quantity": 10.0,
+            "cost_basis_minor": 100000,
+            "currency": "EUR",
+        }
+        HoldingRepository.upsert_holdings(self.conn, [h1])
+        holdings_df = HoldingRepository.get_v_holdings_df(self.conn)
+        copy_df = pd.DataFrame()
+        direct_df = holdings_df.copy()
+
+        fn = getattr(_render_portfolio_fragment, "__wrapped__", _render_portfolio_fragment)
+        with patch("ui.pages.investments.kpi_card") as mock_kpi:
+            with patch("ui.pages.investments.is_hidden", return_value=True):
+                fn(
+                    holdings_df, copy_df, direct_df, pd.DataFrame(), 0.89, active_positions_count=5
+                )
+                mock_kpi.assert_any_call("Active Positions", "**** assets", subtext="⏱️ **** quote delayed")
+
+
 if __name__ == "__main__":
     unittest.main()

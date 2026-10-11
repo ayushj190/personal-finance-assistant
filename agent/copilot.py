@@ -54,15 +54,78 @@ TOOL_MAP = {
 }
 
 
+import traceback
+
+
+def _format_friendly_error(tool_name: str, exc: Exception) -> tuple[str, str]:
+    """Return friendly message and remedy for tool errors."""
+    err_str = str(exc)
+    if "not authorized" in err_str.lower() or "authorization" in err_str.lower():
+        return (
+            f"The '{tool_name}' query was blocked by the read only database authorizer to keep your financial ledger secure.",
+            "Copilot query tools cannot alter, insert, or delete ledger records.",
+        )
+    if "locked" in err_str.lower() or "busy" in err_str.lower():
+        return (
+            f"The database was temporarily busy while running '{tool_name}'.",
+            "Please try running your question again in a few moments.",
+        )
+    if isinstance(exc, (ValueError, TypeError)):
+        return (
+            f"Invalid parameters were provided for tool '{tool_name}'.",
+            "Check that dates, limits, and numeric values are formatted correctly.",
+        )
+    if isinstance(exc, FileNotFoundError):
+        return (
+            f"A required local database or file for '{tool_name}' could not be found.",
+            "Verify that your local database exists and migrations have run.",
+        )
+    return (
+        f"An error occurred while executing '{tool_name}': {err_str}",
+        "Check technical diagnostics below or retry your request.",
+    )
+
+
 def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     fn = TOOL_MAP.get(tool_name)
     if not fn:
-        return {"success": False, "message": f"Unknown tool '{tool_name}'"}
+        return {
+            "success": False,
+            "message": f"Unknown tool '{tool_name}'.",
+            "error": f"Tool '{tool_name}' is not registered in TOOL_MAP.",
+            "diagnostics": {
+                "tool": tool_name,
+                "arguments": arguments,
+                "error_type": "UnknownToolError",
+                "error_details": f"Tool '{tool_name}' is not recognized.",
+            },
+        }
 
     try:
-        return fn(**arguments)
+        res = fn(**arguments)
+        if isinstance(res, dict) and not res.get("success", True):
+            if "diagnostics" not in res:
+                res["diagnostics"] = {
+                    "tool": tool_name,
+                    "arguments": arguments,
+                    "error_type": "ToolReturnedFailure",
+                    "error_details": res.get("message", "Tool returned failure status"),
+                }
+        return res
     except Exception as e:
-        return {"success": False, "message": f"Tool execution error: {str(e)}"}
+        friendly_msg, remedy = _format_friendly_error(tool_name, e)
+        return {
+            "success": False,
+            "message": f"{friendly_msg} {remedy}",
+            "error": str(e),
+            "diagnostics": {
+                "tool": tool_name,
+                "arguments": arguments,
+                "error_type": type(e).__name__,
+                "error_details": str(e),
+                "traceback": traceback.format_exc(),
+            },
+        }
 
 
 def run_copilot(
@@ -160,6 +223,7 @@ def run_copilot(
     captured_df = None
     captured_form = None
     captured_citations = []
+    captured_diagnostics = []
 
     for tc in tool_calls:
         fn_info = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", {})
@@ -183,6 +247,8 @@ def run_copilot(
             captured_citations.extend(result["citations"])
         elif result.get("article"):
             captured_citations.append(result["article"])
+        if result.get("diagnostics"):
+            captured_diagnostics.append(result["diagnostics"])
 
         # Append assistant tool call & tool result to message history for final summarization
         messages.append({
@@ -205,4 +271,5 @@ def run_copilot(
         "df": captured_df,
         "form_request": captured_form,
         "citations": captured_citations,
+        "diagnostics": captured_diagnostics,
     }

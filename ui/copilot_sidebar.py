@@ -1,5 +1,7 @@
 import streamlit as st
 from agent.copilot_task import CopilotTask
+from services.llm_client import check_ollama_status
+from ui.theme import render_chart
 
 
 def render_copilot_sidebar() -> None:
@@ -21,16 +23,24 @@ def render_copilot_sidebar() -> None:
         with col_acts:
             with st.popover("⚡ Actions", use_container_width=True):
                 if st.button("🎯 Assess Risk", use_container_width=True, disabled=is_busy):
-                    st.session_state["pending_copilot_prompt"] = "Help me determine my investment risk tolerance and build a risk profile."
+                    prompt = "Help me determine my investment risk tolerance and build a risk profile."
+                    st.session_state.copilot_history.append({"role": "user", "content": prompt})
+                    st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
                 if st.button("🏷️ Categorize", use_container_width=True, disabled=is_busy):
-                    st.session_state["pending_copilot_prompt"] = "Categorize any uncategorized transactions using AI."
+                    prompt = "Categorize any uncategorized transactions using AI."
+                    st.session_state.copilot_history.append({"role": "user", "content": prompt})
+                    st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
                 if st.button("⚖️ Check Drift", use_container_width=True, disabled=is_busy):
-                    st.session_state["pending_copilot_prompt"] = "Review my current portfolio balance against my target allocation and risk profile."
+                    prompt = "Review my current portfolio balance against my target allocation and risk profile."
+                    st.session_state.copilot_history.append({"role": "user", "content": prompt})
+                    st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
                 if st.button("💡 App Guide", use_container_width=True, disabled=is_busy):
-                    st.session_state["pending_copilot_prompt"] = "How do I configure bank connections and use this app?"
+                    prompt = "How do I configure bank connections and use this app?"
+                    st.session_state.copilot_history.append({"role": "user", "content": prompt})
+                    st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
                 st.divider()
                 if st.button("🗑️ Clear Chat", use_container_width=True):
@@ -74,7 +84,7 @@ def render_copilot_sidebar() -> None:
                         unsafe_allow_html=True,
                     )
                     if msg.get("figure"):
-                        st.plotly_chart(msg["figure"], use_container_width=True, theme=None)
+                        render_chart(msg["figure"], use_container_width=True)
                     if msg.get("df") is not None and not msg["df"].empty:
                         st.dataframe(msg["df"], use_container_width=True, hide_index=True)
                     if msg.get("citations"):
@@ -92,6 +102,21 @@ def render_copilot_sidebar() -> None:
                                     st.caption(f"Ref: `{cit['juriconnect_ref']}`")
                                 with st.expander("Verbatim statutory text"):
                                     st.markdown(cit.get("content", ""))
+                                st.divider()
+                    if msg.get("diagnostics"):
+                        with st.expander(f"🛠️ Troubleshooting & Technical Diagnostics ({len(msg['diagnostics'])})", expanded=False):
+                            for diag in msg["diagnostics"]:
+                                tool_name = diag.get("tool", "Unknown Tool")
+                                err_type = diag.get("error_type", "Notice")
+                                err_details = diag.get("error_details", "")
+                                st.markdown(f"**Tool:** `{tool_name}` • **Type:** `{err_type}`")
+                                if err_details:
+                                    st.code(err_details, language="text")
+                                if diag.get("arguments"):
+                                    st.caption(f"Arguments: `{diag['arguments']}`")
+                                if diag.get("traceback"):
+                                    with st.expander("Technical Traceback", expanded=False):
+                                        st.code(diag["traceback"], language="python")
                                 st.divider()
 
             active_task: CopilotTask | None = st.session_state.get("copilot_active_task")
@@ -118,6 +143,11 @@ def render_copilot_sidebar() -> None:
                         st.session_state.copilot_history.append({
                             "role": "assistant",
                             "content": f"⚠️ {err_text}",
+                            "diagnostics": [{
+                                "tool": "CopilotTask",
+                                "error_type": "RuntimeError",
+                                "error_details": err_text,
+                            }],
                         })
                         st.session_state.pop("copilot_active_task", None)
                         st.rerun(scope="app")
@@ -129,6 +159,7 @@ def render_copilot_sidebar() -> None:
                             df = active_task.df
                             form_req = getattr(active_task, "form_request", None)
                             cits = getattr(active_task, "citations", None)
+                            diags = getattr(active_task, "diagnostics", None)
 
                         text_so_far = "".join(chunks_snapshot)
                         if curr_status != "completed":
@@ -147,7 +178,7 @@ def render_copilot_sidebar() -> None:
                             if text_so_far:
                                 st.markdown(text_so_far)
                             if fig:
-                                st.plotly_chart(fig, use_container_width=True, theme=None)
+                                render_chart(fig, use_container_width=True)
                             if df is not None and not df.empty:
                                 st.dataframe(df, use_container_width=True, hide_index=True)
                             if cits:
@@ -166,6 +197,21 @@ def render_copilot_sidebar() -> None:
                                         with st.expander("Verbatim statutory text"):
                                             st.markdown(cit.get("content", ""))
                                         st.divider()
+                            if diags:
+                                with st.expander(f"🛠️ Troubleshooting & Technical Diagnostics ({len(diags)})", expanded=False):
+                                    for diag in diags:
+                                        tool_name = diag.get("tool", "Unknown Tool")
+                                        err_type = diag.get("error_type", "Notice")
+                                        err_details = diag.get("error_details", "")
+                                        st.markdown(f"**Tool:** `{tool_name}` • **Type:** `{err_type}`")
+                                        if err_details:
+                                            st.code(err_details, language="text")
+                                        if diag.get("arguments"):
+                                            st.caption(f"Arguments: `{diag['arguments']}`")
+                                        if diag.get("traceback"):
+                                            with st.expander("Technical Traceback", expanded=False):
+                                                st.code(diag["traceback"], language="python")
+                                        st.divider()
 
                             st.session_state.copilot_history.append({
                                 "role": "assistant",
@@ -173,6 +219,7 @@ def render_copilot_sidebar() -> None:
                                 "figure": fig,
                                 "df": df,
                                 "citations": cits,
+                                "diagnostics": diags,
                             })
                             st.session_state.pop("copilot_active_task", None)
 
@@ -191,6 +238,28 @@ def render_copilot_sidebar() -> None:
     if uploaded_file_to_process and not is_busy:
         user_msg = f"Uploaded statement: `{uploaded_file_to_process.name}`"
         st.session_state.copilot_history.append({"role": "user", "content": user_msg})
+
+        ollama_status = check_ollama_status()
+        if not ollama_status.get("online", False):
+            err_msg = (
+                "⚠️ Local Ollama is offline or unreachable.\n\n"
+                "Please start Ollama on your machine:\n"
+                "```bash\n"
+                "ollama serve\n"
+                "```\n"
+                "Once Ollama is running, retry processing your statement."
+            )
+            st.session_state.copilot_history.append({
+                "role": "assistant",
+                "content": err_msg,
+                "diagnostics": [{
+                    "tool": "OllamaHealthCheck",
+                    "error_type": "ConnectionRefused",
+                    "error_details": ollama_status.get("error") or "Ollama daemon unreachable.",
+                }],
+            })
+            st.rerun(scope="app")
+
         bytes_data = uploaded_file_to_process.read()
         file_info = [{"name": uploaded_file_to_process.name, "bytes": bytes_data}]
         task = CopilotTask(
@@ -203,7 +272,33 @@ def render_copilot_sidebar() -> None:
         st.rerun(scope="app")
 
     elif user_prompt and not is_busy:
-        st.session_state.copilot_history.append({"role": "user", "content": user_prompt})
+        if chat_input_val:
+            st.session_state.copilot_history.append({"role": "user", "content": chat_input_val})
+        elif pending_prompt:
+            if not st.session_state.copilot_history or st.session_state.copilot_history[-1].get("content") != pending_prompt:
+                st.session_state.copilot_history.append({"role": "user", "content": pending_prompt})
+
+        ollama_status = check_ollama_status()
+        if not ollama_status.get("online", False):
+            err_msg = (
+                "⚠️ Local Ollama is offline or unreachable.\n\n"
+                "Please start Ollama on your machine:\n"
+                "```bash\n"
+                "ollama serve\n"
+                "```\n"
+                "Once Ollama is running, submit your question again."
+            )
+            st.session_state.copilot_history.append({
+                "role": "assistant",
+                "content": err_msg,
+                "diagnostics": [{
+                    "tool": "OllamaHealthCheck",
+                    "error_type": "ConnectionRefused",
+                    "error_details": ollama_status.get("error") or "Ollama daemon unreachable.",
+                }],
+            })
+            st.rerun(scope="app")
+
         task = CopilotTask(
             prompt=user_prompt,
             history=st.session_state.copilot_history[:-1],

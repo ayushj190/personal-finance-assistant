@@ -280,5 +280,58 @@ class TestDashboardPage(unittest.TestCase):
         self.assertIn("No Recent Spending", empty_titles)
 
 
+    def test_get_latest_salary_date(self):
+        """Verify get_latest_salary_date retrieves the most recent salary date on or before date."""
+        from db.repositories import TransactionRepository
+
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+        """)
+        self.conn.execute("INSERT INTO categories VALUES (1, 'Salary')")
+        self.conn.execute("ALTER TABLE transactions ADD COLUMN category_id INTEGER")
+        self.conn.execute("ALTER TABLE transactions ADD COLUMN description_raw TEXT")
+        self.conn.execute("""
+            INSERT INTO transactions (account_id, booking_date, amount_eur_minor, is_internal_transfer, category_id, description_raw)
+            VALUES (1, '2026-09-24', 450000, 0, 1, 'Salary payout')
+        """)
+
+        # Should find 2026-09-24
+        s_date = TransactionRepository.get_latest_salary_date(self.conn, "2026-10-10")
+        self.assertEqual(s_date, "2026-09-24")
+
+    @patch("ui.pages.dashboard.render_chart")
+    @patch("ui.pages.dashboard.render_cash_flow_sankey")
+    @patch("ui.pages.dashboard.get_consolidated_holdings_df")
+    @patch("ui.pages.dashboard.TransactionRepository.get_recent_spending_df")
+    @patch("streamlit.columns")
+    def test_render_analytics_section_dual_columns(
+        self,
+        mock_cols,
+        mock_spend_df,
+        mock_holdings_df,
+        mock_render_sankey,
+        mock_render_chart,
+    ):
+        """Verify analytics section renders Expenses Sankey and Investments Market Carpet side-by-side."""
+        import pandas as pd
+
+        mock_cols.side_effect = lambda spec, **kw: [
+            MagicMock() for _ in range(len(spec) if isinstance(spec, (list, tuple)) else int(spec))
+        ]
+        mock_spend_df.return_value = pd.DataFrame([{"category": "Groceries", "amount_eur": 50.0}])
+        mock_holdings_df.return_value = pd.DataFrame([
+            {"sector": "Technology", "display_label": "ASML", "value_eur": 1000.0}
+        ])
+
+        fn = getattr(_render_analytics_section, "__wrapped__", _render_analytics_section)
+        fn(conn=self.conn)
+
+        mock_render_sankey.assert_called_once()
+        mock_render_chart.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

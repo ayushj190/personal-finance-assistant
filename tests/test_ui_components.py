@@ -25,7 +25,10 @@ class TestUIComponents(unittest.TestCase):
             self.assertEqual(mask_if_hidden("$100.50"), "$****")
             self.assertEqual(mask_if_hidden(
                 "Est. +€2.50 accrued"), "Est. +€**** accrued")
-            self.assertEqual(mask_if_hidden("12.5% return"), "12.5% return")
+            self.assertEqual(mask_if_hidden("12.5% return"), "****% return")
+            self.assertEqual(mask_if_hidden("+5.0%"), "+****%")
+            self.assertEqual(mask_if_hidden("-3.2%"), "-****%")
+            self.assertEqual(mask_if_hidden("10 assets"), "**** assets")
 
     def test_mask_if_not_hidden(self):
         with patch("streamlit.session_state", {"hide_amounts": False}):
@@ -66,6 +69,24 @@ class TestUIComponents(unittest.TestCase):
         self.assertEqual(clean_account_name(accounts[2], accounts), "ABN AMRO")
         self.assertEqual(clean_account_name(accounts[3], accounts), "Revolut (USD)")
         self.assertEqual(clean_account_name(accounts[4], accounts), "Revolut (EUR)")
+
+    def test_transactions_privacy_masking(self):
+        """Transactions page masks both amounts and merchant names when hide_amounts is True."""
+        import pandas as pd
+        from ui.components import format_money, is_hidden
+
+        df = pd.DataFrame([
+            {"id": 1, "booking_date": "2026-10-01", "account": "Checking", "amount_eur": 45.50, "merchant": "Albert Heijn", "category": "Groceries", "is_internal_transfer": False}
+        ])
+
+        with patch("streamlit.session_state", {"hide_amounts": True}):
+            self.assertTrue(is_hidden())
+            df_display = df.copy()
+            df_display["amount_eur"] = df_display["amount_eur"].map(lambda x: format_money(x))
+            df_display["merchant"] = "****"
+
+            self.assertEqual(df_display.iloc[0]["amount_eur"], "€****")
+            self.assertEqual(df_display.iloc[0]["merchant"], "****")
 
 
 if __name__ == "__main__":

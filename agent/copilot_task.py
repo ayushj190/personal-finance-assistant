@@ -25,6 +25,7 @@ class CopilotTask:
         self.df: Any = None
         self.form_request: Any = None
         self.citations: Any = None
+        self.diagnostics: list[dict[str, Any]] = []
         self.error: str | None = None
         self._lock = threading.Lock()
         self.thread: threading.Thread | None = None
@@ -53,6 +54,7 @@ class CopilotTask:
                 self.df = res.get("df")
                 self.form_request = res.get("form_request")
                 self.citations = res.get("citations")
+                self.diagnostics = res.get("diagnostics") or []
                 self.status = "typing"
 
             stream = res.get("stream", [])

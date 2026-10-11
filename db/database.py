@@ -17,6 +17,67 @@ def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+READONLY_ALLOWED_ACTIONS = {
+    sqlite3.SQLITE_SELECT,
+    sqlite3.SQLITE_READ,
+    sqlite3.SQLITE_FUNCTION,
+    sqlite3.SQLITE_PRAGMA,
+}
+
+READONLY_DENIED_ACTIONS = {
+    sqlite3.SQLITE_INSERT,
+    sqlite3.SQLITE_UPDATE,
+    sqlite3.SQLITE_DELETE,
+    sqlite3.SQLITE_CREATE_TABLE,
+    sqlite3.SQLITE_DROP_TABLE,
+    sqlite3.SQLITE_ALTER_TABLE,
+    sqlite3.SQLITE_ATTACH,
+    sqlite3.SQLITE_DETACH,
+}
+
+
+def readonly_authorizer(
+    action_code: int,
+    param1: str | None,
+    param2: str | None,
+    db_name: str | None,
+    trigger_name: str | None,
+) -> int:
+    """SQLite engine authorizer callback permitting only read operations."""
+    if action_code in READONLY_ALLOWED_ACTIONS:
+        if action_code == sqlite3.SQLITE_PRAGMA:
+            if param1 and param1.lower() in {
+                "foreign_keys",
+                "foreign_key_list",
+                "table_info",
+                "index_list",
+                "index_info",
+                "database_list",
+                "user_version",
+                "table_xinfo",
+                "compile_options",
+            }:
+                return sqlite3.SQLITE_OK
+            if param2 is None or param2 == "":
+                return sqlite3.SQLITE_OK
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
+
+
+def connect_readonly(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
+    """Connect to database with read only authorizer and URI mode=ro."""
+    path_str = str(db_path)
+    if path_str == ":memory:":
+        conn = sqlite3.connect("file::memory:?mode=ro", uri=True)
+    else:
+        resolved_path = Path(db_path).resolve().as_posix()
+        conn = sqlite3.connect(f"file:{resolved_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.set_authorizer(readonly_authorizer)
+    return conn
+
+
 from db.migrations.runner import run_migrations
 
 

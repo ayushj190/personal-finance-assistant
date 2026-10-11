@@ -8,7 +8,7 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 
 | File | Owns |
 |---|---|
-| `agent/copilot.py` | Copilot turn coordination, system prompt definitions, and tool dispatch mapping |
+| `agent/copilot.py` | Copilot turn coordination, upfront Ollama connectivity check, system prompts, and tool dispatch mapping |
 | `agent/tool_schemas.py` | JSON schema definitions for LLM tool function calling (`COPILOT_TOOLS_SCHEMA`) |
 | `agent/tools.py` | Implementation of native deterministic functions invoked by the Copilot |
 | `agent/copilot_task.py` | Background thread wrapper handling asynchronous tool calls and token streams |
@@ -19,6 +19,7 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 - Every tool function must return a serializable dictionary containing a `success` boolean and an explanatory message.
 - Prefer deterministic service routines in `services/` over LLM token predictions for math and tax calculations.
 - Maintain strict typing and parameter documentation in `COPILOT_TOOLS_SCHEMA` for any newly added tool.
+- Execute all copilot database tools through `db.database.connect_readonly()` to guarantee strictly read only access.
 
 ## Gotchas
 

@@ -160,6 +160,37 @@ class TransactionRepository:
         return pd.read_sql_query(spend_query, conn)
 
     @staticmethod
+    def get_latest_salary_date(
+        conn: sqlite3.Connection, before_date: Optional[str] = None
+    ) -> Optional[str]:
+        """Find the booking date of the most recent salary transaction on or before before_date."""
+        query = """
+        SELECT t.booking_date
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE (
+            c.name = 'Salary'
+            OR LOWER(t.description_raw) LIKE '%salaris%'
+            OR LOWER(t.description_raw) LIKE '%salary%'
+            OR LOWER(t.description_raw) LIKE '%payroll%'
+        )
+          AND t.amount_eur_minor >= 50000
+          AND t.is_internal_transfer = 0
+        """
+        params: list[Any] = []
+        if before_date:
+            query += " AND t.booking_date <= ?"
+            params.append(before_date)
+        query += " ORDER BY t.booking_date DESC, t.id DESC LIMIT 1"
+        try:
+            row = conn.execute(query, params).fetchone()
+            if row and row["booking_date"]:
+                return str(row["booking_date"])[:10]
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
     def get_v_transactions(conn: sqlite3.Connection, limit: int = 500) -> list[dict[str, Any]]:
         cur = conn.execute(
             "SELECT * FROM v_transactions ORDER BY booking_date DESC LIMIT ?",

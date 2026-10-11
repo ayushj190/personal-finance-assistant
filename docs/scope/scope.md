@@ -20,7 +20,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 2 | Dashboard Overhaul & Rerun Fixes | Slice 1 | done |
 | 3 | Spending & Budgeting Streamline | Slice 2 | done |
 | 4 | Investments & Holdings Simplification | Slice 3 | done |
-| 5 | Copilot Calming & Tool Hardening | Slice 4 | planned |
+| 5 | Copilot Calming & Tool Hardening | Slice 4 | done |
 | 6 | Dutch Financial Law Vector Vault | Slice 5 | done |
 
 ## Brownfield context
@@ -102,10 +102,19 @@ spec [0006](../specs/0006-investments-holdings-simplification/index.md) · code 
 
 ## Slice 4: Copilot Calming & Tool Hardening
 
-### 5. Copilot Calming & Tool Hardening · needs a decision
+### 5. Copilot Calming & Tool Hardening · done
 Tame the copilot sidebar into an on demand assistant without unprompted background runs, and make query tool errors recover gracefully.
 **Done when:** copilot runs only on user request, background automation stays quiet, and failed tool queries display friendly troubleshooting notices.
-- [ ] Design it (spec): `/architect copilot calming & tool hardening`
+spec [0007](../specs/0007-copilot-calming-tool-hardening/index.md) · code in agent/ and ui/copilot_sidebar.py
+- [x] Design it (spec): `/architect copilot calming & tool hardening`
+- [x] Build it: /develop copilot calming & tool hardening
+  - [x] Implement read only SQLite connection with engine authorizer (satisfies AC-3)
+  - [x] Upfront Ollama health check and transparent quick action logging (satisfies AC-2, AC-6)
+  - [x] Structured tool exception recovery and informative empty dataset guidance (satisfies AC-4, AC-5, AC-7)
+  - [x] Isolate background sync to ensure quiet on demand copilot operation (satisfies AC-1)
+  - [x] Add comprehensive automated test suite for authorizer, error recovery, and calming (satisfies AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7)
+- [x] Verify it: /check verify copilot calming & tool hardening
+- [x] Test it: /test copilot calming & tool hardening
 
 ## Slice 5: Dutch Financial Law Vector Vault
 

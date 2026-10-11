@@ -175,6 +175,12 @@ def mortgage_config_dialog(existing_lib_id=None):
 def set_category_budget_dialog(conn=None):
     """Modal dialog to configure monthly spending budget caps for expense categories."""
     close_on_exit = False
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+        except Exception:
+            conn = None
+
     if conn is None:
         conn = database.connect(DB_PATH)
         close_on_exit = True
@@ -280,6 +286,12 @@ def set_category_budget_dialog(conn=None):
 def assign_mortgage_dialog(conn=None, tx_id=None):
     """Modal dialog to link an uncategorized transaction directly to a mortgage liability."""
     close_on_exit = False
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+        except Exception:
+            conn = None
+
     if conn is None:
         conn = database.connect(DB_PATH)
         close_on_exit = True

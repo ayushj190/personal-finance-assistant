@@ -69,6 +69,7 @@ def render():
     if is_hidden():
         df_display["amount_eur"] = df_display["amount_eur"].map(
             lambda x: format_money(x))
+        df_display["merchant"] = "****"
         amount_col_cfg = st.column_config.TextColumn(
             "Amount (€)", disabled=True)
     else:
@@ -125,7 +126,7 @@ def render():
         for idx, row in edited_df.iterrows():
             orig_cat = df.loc[idx, "category"]
             new_cat = row["category"]
-            merchant = row["merchant"]
+            merchant = df.loc[idx, "merchant"]
 
             if new_cat and new_cat != orig_cat and merchant:
                 new_cat_id = cat_name_to_id.get(new_cat)

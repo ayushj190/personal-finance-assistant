@@ -18,8 +18,8 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "year": {"type": "integer", "description": "4-digit year like 2026"},
-                    "month": {"type": "integer", "description": "Month number (1-12)"},
+                    "year": {"type": "integer", "description": "4-digit year like 2026", "minimum": 1900, "maximum": 2100},
+                    "month": {"type": "integer", "description": "Month number (1-12)", "minimum": 1, "maximum": 12},
                 },
             },
         },
@@ -32,7 +32,7 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {"type": "integer", "description": "Number of transactions to return (default 15)"},
+                    "limit": {"type": "integer", "description": "Number of transactions to return (default 15, max 100)", "minimum": 1, "maximum": 100},
                     "category": {"type": "string", "description": "Category name filter (e.g. Groceries, Dining)"},
                 },
             },
@@ -46,7 +46,7 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "year": {"type": "integer", "description": "Filter by 4-digit year"},
+                    "year": {"type": "integer", "description": "Filter by 4-digit year", "minimum": 1900, "maximum": 2100},
                 },
             },
         },
@@ -234,8 +234,8 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "capital_eur": {"type": "number", "description": "Lump sum amount in EUR to allocate (e.g. 5000, 10000)"},
-                    "horizon_years": {"type": "integer", "description": "Investment horizon in years (default 10)"},
+                    "capital_eur": {"type": "number", "description": "Lump sum amount in EUR to allocate (e.g. 5000, 10000)", "minimum": 1},
+                    "horizon_years": {"type": "integer", "description": "Investment horizon in years (default 10)", "minimum": 1, "maximum": 50},
                 },
                 "required": ["capital_eur"],
             },
@@ -249,8 +249,8 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "gross_income": {"type": "number", "description": "Optional gross annual income override"},
-                    "factor_a": {"type": "number", "description": "Optional Factor A (pensioenaangroei from UPO)"},
+                    "gross_income": {"type": "number", "description": "Optional gross annual income override", "minimum": 0},
+                    "factor_a": {"type": "number", "description": "Optional Factor A (pensioenaangroei from UPO)", "minimum": 0},
                 },
             },
         },
@@ -263,7 +263,7 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "target_allocation": {"type": "number", "description": "Prospective amount in EUR to invest in green funds"},
+                    "target_allocation": {"type": "number", "description": "Prospective amount in EUR to invest in green funds", "minimum": 0},
                 },
             },
         },

@@ -16,6 +16,7 @@ from services.fiscal_service import (
 )
 from ui.charts import build_monthly_spending_bar, build_spending_donut, render_cash_flow_sankey
 from ui.components import format_money, is_hidden, kpi_card, section_header
+from ui.theme import render_chart
 from ui.dialogs import assign_mortgage_dialog, set_category_budget_dialog
 from ui.filters import build_where_clause, render_filters
 
@@ -109,11 +110,11 @@ def _render_kpi_ribbon(
         with c1:
             kpi_card("Total Expenses", "€****", subtext=header_title)
         with c2:
-            kpi_card("Fixed Expenses", "€****", subtext="**% of total")
+            kpi_card("Fixed Expenses", "€****", subtext="****% of total")
         with c3:
-            kpi_card("Discretionary", "€****", subtext="**% of total")
+            kpi_card("Discretionary", "€****", subtext="****% of total")
         with c4:
-            kpi_card("Uncategorized", "€****", subtext="**% of total")
+            kpi_card("Uncategorized", "€****", subtext="****% of total")
     else:
         fixed_pct = (fixed_spent / total_spent * 100) if total_spent > 0 else 0.0
         disc_pct = (disc_spent / total_spent * 100) if total_spent > 0 else 0.0
@@ -199,6 +200,7 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
                     top_merchants["Spent (€)"] = top_merchants["Spent (€)"].map(
                         lambda x: format_money(x)
                     )
+                    top_merchants["Merchant"] = "****"
                     spent_cfg = st.column_config.TextColumn("Spent (€)", disabled=True)
                 else:
                     spent_cfg = st.column_config.NumberColumn(
@@ -237,6 +239,7 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
                         "Annual Cost (€)",
                     ]
                     if is_hidden():
+                        rec_df["Merchant"] = "****"
                         rec_df["Cost / Cycle"] = rec_df["Cost / Cycle"].map(
                             lambda x: format_money(x)
                         )
@@ -324,7 +327,7 @@ def _render_budget_tracker_fragment(
                 disp_b["Budget (€)"] = "€****"
                 disp_b["Spent (€)"] = "€****"
                 disp_b["Remaining (€)"] = "€****"
-                disp_b["% Used"] = "***"
+                disp_b["% Used"] = "****%"
                 disp_b["Category"] = "****"
             else:
                 disp_b["Budget (€)"] = disp_b["Budget (€)"].map(
@@ -397,9 +400,7 @@ def _render_budget_tracker_fragment(
                 margin=dict(t=35, l=55, r=20, b=25),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            if is_hidden():
-                f_fig.update_traces(hovertemplate="Censored<extra></extra>")
-            st.plotly_chart(f_fig, use_container_width=True)
+            render_chart(f_fig, use_container_width=True)
 
 
 def _render_uncategorized_triage(
@@ -536,7 +537,7 @@ def _render_uncategorized_triage(
         with col_link_mort:
             if st.button("🏠 Assign Top Item to Mortgage", key="btn_link_top_mortgage"):
                 top_tx_id = int(uncat_df.iloc[0]["id"])
-                assign_mortgage_dialog(conn, tx_id=top_tx_id)
+                assign_mortgage_dialog(tx_id=top_tx_id)
 
 
 def _render_sankey_flow(
@@ -606,7 +607,7 @@ def _render_monthly_trend(monthly_df: pd.DataFrame) -> None:
                 for col in ["Total (€)", "Uncategorized (€)"]:
                     tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
                 for col in ["MoM Change (%)", "Fixed (%)", "Disc. (%)"]:
-                    tbl_df[col] = tbl_df[col].map(lambda x: "***")
+                    tbl_df[col] = tbl_df[col].map(lambda x: "****%")
                 st.dataframe(tbl_df, use_container_width=True, hide_index=True)
             else:
                 st.dataframe(
@@ -697,10 +698,10 @@ def render():
     col_act1, col_act2, _ = st.columns([1, 1, 3])
     with col_act1:
         if st.button("✏️ Set Budgets", use_container_width=True, key="btn_open_budget_dialog"):
-            set_category_budget_dialog(conn)
+            set_category_budget_dialog()
     with col_act2:
         if st.button("🏠 Link Mortgage", use_container_width=True, key="btn_open_mortgage_dialog"):
-            assign_mortgage_dialog(conn)
+            assign_mortgage_dialog()
 
     # AC-6: Analytics Section inside isolated Streamlit fragment
     _render_analytics_fragment(display_df, selected_scope, conn)

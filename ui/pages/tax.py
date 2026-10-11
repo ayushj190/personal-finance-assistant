@@ -5,6 +5,7 @@ import plotly.express as px
 from config import DB_PATH
 from db import database
 from ui.components import section_header, kpi_card, is_hidden
+from ui.theme import render_chart
 from services.tax_report_service import generate_dutch_tax_statement
 from services.tax_optimizer import (
     calculate_jaarruimte,
@@ -196,9 +197,7 @@ def render():
             ])
             fig1 = px.pie(df_box1, names='Category', values='Amount', title='Income Breakdown', hole=0.4)
             fig1.update_layout(margin=dict(t=40, b=0, l=0, r=0))
-            if is_hidden():
-                fig1.update_traces(hovertemplate="Censored<extra></extra>")
-            st.plotly_chart(fig1, use_container_width=True)
+            render_chart(fig1, use_container_width=True)
 
         with col2:
             # Box 3 Breakdown Pie
@@ -209,9 +208,7 @@ def render():
             if (cash_bal + investments_bal) > 0:
                 fig2 = px.pie(df_box3, names='Category', values='Amount', title='Asset Taxability (Box 3)', hole=0.4)
                 fig2.update_layout(margin=dict(t=40, b=0, l=0, r=0))
-                if is_hidden():
-                    fig2.update_traces(hovertemplate="Censored<extra></extra>")
-                st.plotly_chart(fig2, use_container_width=True)
+                render_chart(fig2, use_container_width=True)
 
         # 5. Official Belastingdienst Tax Filing Statement & Export
     with section_header("📋 Tax Filing Statement (Aangifte Inkomstenbelasting)", "Itemized summary for your annual tax declaration"):
@@ -280,9 +277,7 @@ def render():
             yaxis=dict(tickprefix="€", tickformat="~s", automargin=True),
             xaxis=dict(automargin=True),
         )
-        if is_hidden():
-            fig_sim.update_traces(hovertemplate="Censored<extra></extra>")
-        st.plotly_chart(fig_sim, use_container_width=True)
+        render_chart(fig_sim, use_container_width=True)
 
     # 7. Green Funds & Pillar 3 Pension Analysis
     with section_header("🌱 Green Funds & Pillar 3 Pension (Jaarruimte)", "Optimize tax deductions under Dutch regulations"):

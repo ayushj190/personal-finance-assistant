@@ -18,8 +18,38 @@ from ui.theme import (
     COLOR_LIABILITY,
     COLOR_UNCATEGORIZED,
     hex_to_rgba,
+    mask_chart_if_hidden,
     render_chart,
 )
+
+# Aligned Investment Asset Class and Sector Color Maps
+ASSET_TYPE_COLORS = {
+    "STOCK": "#38BDF8",
+    "ETF": "#2DD4BF",
+    "CRYPTO": "#34D399",
+    "COMMODITY": "#FBBF24",
+    "BOND": "#A78BFA",
+    "CASH": "#94A3B8",
+    "OTHER": "#CBD5E1",
+}
+
+SECTOR_COLORS = {
+    "Technology": "#38BDF8",
+    "Broad Market ETF": "#2DD4BF",
+    "Financial Services": "#818CF8",
+    "Energy": "#FB7185",
+    "Consumer & Entertainment": "#F472B6",
+    "Healthcare": "#10B981",
+    "Industrials & Materials": "#FB923C",
+    "Real Estate": "#FBBF24",
+    "Cryptocurrency": "#34D399",
+    "Gold & Metals": "#F59E0B",
+    "Bonds & Fixed Income": "#A78BFA",
+    "Defense & Aerospace": "#C084FC",
+    "Other / Diversified": "#64748B",
+    "Diversified": "#64748B",
+    "Other": "#94A3B8",
+}
 
 
 def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
@@ -106,6 +136,7 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
             orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
         ),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -158,6 +189,7 @@ def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None
         showlegend=True if drilldown_category else False,
         transition=dict(duration=500, easing="cubic-in-out"),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -205,6 +237,7 @@ def build_drift_bar_chart(drift_data: list[dict[str, Any]], drift_band_pct: floa
             orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
         ),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -253,6 +286,7 @@ def build_mortgage_amortization_chart(schedule_df: pd.DataFrame) -> go.Figure:
             orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
         ),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -288,6 +322,7 @@ def build_mortgage_interest_principal_bar(schedule_df: pd.DataFrame) -> go.Figur
             orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
         ),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -341,6 +376,7 @@ def build_monthly_spending_bar(monthly_df: pd.DataFrame) -> go.Figure:
         ),
         xaxis=dict(title="Month", automargin=True),
     )
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -484,6 +520,7 @@ def prepare_cash_flow_sankey_data(
 def build_cash_flow_sankey(
     data: dict[str, Any],
     drilldown_flow: str = "Full Flow",
+    height: int = 450,
 ) -> go.Figure:
     """Build a non-crossing, drill-down enabled Sankey diagram."""
     gross_salary = float(data.get("gross_salary", 0.0))
@@ -532,7 +569,56 @@ def build_cash_flow_sankey(
 
     drill = (drilldown_flow or "Full Flow").strip()
 
-    if drill == "Fixed Expenses":
+    if drill == "Net Income":
+        # Upstream Gross Salary and Taxes are hidden. Focus entirely on Net Income outflows.
+        add_node("Net Income", "#06B6D4", x=0.01, y=0.5)
+        if drawdown > 0:
+            add_node("Savings Drawdown", "#F43F5E", x=0.01, y=0.85)
+
+        if fixed_spent > 0:
+            add_node("Fixed Expenses", "#FB7185", x=0.50, y=0.18)
+        if disc_spent > 0:
+            add_node("Discretionary", "#FBBF24", x=0.50, y=0.55)
+        if sav > 0:
+            add_node("Savings & Investments", "#38BDF8", x=0.50, y=0.82)
+        if uncat_spent > 0:
+            add_node("Uncategorized", "#94A3B8", x=0.50, y=0.92)
+        if unallocated > 0:
+            add_node("Unallocated Cash", "#A78BFA", x=0.50, y=0.98)
+
+        num_f = max(1, len(fixed_cats))
+        for i, (cat, val) in enumerate(fixed_cats.items()):
+            c_col = fixed_palette[i % len(fixed_palette)]
+            y_pos = 0.02 + (i / max(1, num_f - 1)) * 0.32 if num_f > 1 else 0.16
+            add_node(cat, c_col, x=0.98, y=y_pos)
+
+        num_d = max(1, len(disc_cats))
+        for j, (cat, val) in enumerate(disc_cats.items()):
+            c_col = disc_palette[j % len(disc_palette)]
+            y_pos = 0.42 + (j / max(1, num_d - 1)) * 0.48 if num_d > 1 else 0.65
+            add_node(cat, c_col, x=0.98, y=y_pos)
+
+        if drawdown > 0 and "Net Income" in node_idx:
+            add_flow("Savings Drawdown", "Net Income", drawdown, "#F43F5E", "#06B6D4")
+
+        if fixed_spent > 0 and "Net Income" in node_idx:
+            add_flow("Net Income", "Fixed Expenses", fixed_spent, "#06B6D4", "#FB7185")
+        if disc_spent > 0 and "Net Income" in node_idx:
+            add_flow("Net Income", "Discretionary", disc_spent, "#06B6D4", "#FBBF24")
+        if sav > 0 and "Net Income" in node_idx:
+            add_flow("Net Income", "Savings & Investments", sav, "#06B6D4", "#38BDF8")
+        if uncat_spent > 0 and "Net Income" in node_idx:
+            add_flow("Net Income", "Uncategorized", uncat_spent, "#06B6D4", "#94A3B8")
+        if unallocated > 0 and "Net Income" in node_idx:
+            add_flow("Net Income", "Unallocated Cash", unallocated, "#06B6D4", "#A78BFA")
+
+        for cat, val in fixed_cats.items():
+            add_flow("Fixed Expenses", cat, val, "#FB7185", "#FB7185")
+
+        for cat, val in disc_cats.items():
+            add_flow("Discretionary", cat, val, "#FBBF24", "#FBBF24")
+
+    elif drill == "Fixed Expenses":
         # Upstream is hidden. Fixed Expenses -> child categories
         add_node("Fixed Expenses", "#FB7185", x=0.02, y=0.5)
         num_f = max(1, len(fixed_cats))
@@ -586,11 +672,6 @@ def build_cash_flow_sankey(
             add_node("Net Income", "#06B6D4", x=0.28, y=0.55)
 
         # Stage 2 (x=0.62): Buckets ordered vertically to match terminal categories
-        # 1. Fixed Expenses (top)
-        # 2. Discretionary (middle)
-        # 3. Savings & Investments (lower)
-        # 4. Uncategorized (bottom)
-        # 5. Unallocated (bottom-most)
         if fixed_spent > 0:
             add_node("Fixed Expenses", "#FB7185", x=0.62, y=0.18)
         if disc_spent > 0:
@@ -603,14 +684,12 @@ def build_cash_flow_sankey(
             add_node("Unallocated Cash", "#A78BFA", x=0.62, y=0.98)
 
         # Stage 3 (x=0.98): Terminal Categories
-        # Top half: Fixed categories
         num_f = max(1, len(fixed_cats))
         for i, (cat, val) in enumerate(fixed_cats.items()):
             c_col = fixed_palette[i % len(fixed_palette)]
             y_pos = 0.02 + (i / max(1, num_f - 1)) * 0.32 if num_f > 1 else 0.16
             add_node(cat, c_col, x=0.98, y=y_pos)
 
-        # Bottom half: Discretionary categories
         num_d = max(1, len(disc_cats))
         for j, (cat, val) in enumerate(disc_cats.items()):
             c_col = disc_palette[j % len(disc_palette)]
@@ -672,6 +751,7 @@ def build_cash_flow_sankey(
 
     title_map = {
         "Full Flow": "🌊 Full Cash Flow (Income → Net → Expense Buckets → Categories)",
+        "Net Income": "💸 Net Income Outflows (Gross Salary & Taxes Hidden • Click Net Income to restore)",
         "Fixed Expenses": "🔒 Fixed Expenses Breakdown (Committed Outflows)",
         "Discretionary": "🛍️ Discretionary Spend Breakdown (Flexible Outflows)",
         "Taxes & Net": "🏛️ Gross Salary & Dutch Box 1 Tax Allocation",
@@ -682,7 +762,7 @@ def build_cash_flow_sankey(
     fig.update_layout(
         title=dict(text=title_text, font=dict(size=14)),
         font=dict(size=12),
-        height=450,
+        height=height,
         margin=dict(t=40, l=15, r=15, b=20),
     )
 
@@ -699,6 +779,7 @@ def build_cash_flow_sankey(
             ),
         )
 
+    mask_chart_if_hidden(fig)
     return fig
 
 
@@ -710,6 +791,7 @@ def render_cash_flow_sankey(
     end_date: str | None = None,
     display_df: pd.DataFrame | None = None,
     salary_day: int = 25,
+    height: int = 450,
 ) -> None:
     """Render interactive non-crossing Sankey diagram with direct diagram click-to-drilldown."""
     drill_key = f"{key_prefix}_drilldown_state"
@@ -736,7 +818,7 @@ def render_cash_flow_sankey(
         st.info("No expense or income transactions recorded for this period to display flow topology.")
         return
 
-    fig = build_cash_flow_sankey(sankey_data, drilldown_flow=current_drill)
+    fig = build_cash_flow_sankey(sankey_data, drilldown_flow=current_drill, height=height)
 
     # Render diagram with direct click-to-drilldown (no separate buttons)
     try:
@@ -758,20 +840,23 @@ def render_cash_flow_sankey(
                     target_drill = "Full Flow"
                 elif current_drill != "Full Flow" and (
                     clicked == current_drill
+                    or (current_drill == "Net Income" and clicked == "Net Income")
                     or (current_drill == "Fixed Expenses" and clicked == "Fixed Expenses")
                     or (current_drill == "Discretionary" and clicked == "Discretionary")
                     or (current_drill == "Savings" and clicked == "Savings & Investments")
-                    or (current_drill == "Taxes & Net" and clicked in ("Gross Salary", "Taxes (Box 1)", "Net Income"))
+                    or (current_drill == "Taxes & Net" and clicked in ("Gross Salary", "Taxes (Box 1)"))
                 ):
                     # Clicking the active root node in a drilled-down view toggles back to Full Flow
                     target_drill = "Full Flow"
+                elif clicked == "Net Income":
+                    target_drill = "Net Income"
                 elif clicked == "Fixed Expenses" or clicked in sankey_data.get("fixed_cats", {}):
                     target_drill = "Fixed Expenses"
                 elif clicked == "Discretionary" or clicked in sankey_data.get("disc_cats", {}):
                     target_drill = "Discretionary"
                 elif clicked in ("Savings & Investments", "Emergency & Reserves", "Portfolio Wealth", "Savings"):
                     target_drill = "Savings"
-                elif clicked in ("Gross Salary", "Taxes (Box 1)", "Net Income", "Taxes & Net"):
+                elif clicked in ("Gross Salary", "Taxes (Box 1)", "Taxes & Net"):
                     target_drill = "Taxes & Net"
 
                 if target_drill != current_drill:
@@ -783,3 +868,68 @@ def render_cash_flow_sankey(
             use_container_width=True,
             key=f"{key_prefix}_chart_widget",
         )
+
+
+def build_investments_market_carpet(
+    consolidated_df: pd.DataFrame,
+    height: int = 350,
+) -> go.Figure:
+    """Build a market carpet (treemap heatmap) of investment sector and theme exposures."""
+    if consolidated_df.empty:
+        return go.Figure()
+
+    df = consolidated_df.copy()
+    if "sector" not in df.columns:
+        df["sector"] = "Other"
+    df["sector"] = df["sector"].fillna("Other")
+
+    if "display_label" not in df.columns:
+        df["display_label"] = df.get("name", df.get("ticker", "Asset"))
+    df["display_label"] = df["display_label"].fillna("Asset")
+
+    # Group by sector and display_label to guarantee uniqueness per leaf
+    grouped = (
+        df.groupby(["sector", "display_label"], as_index=False)["value_eur"]
+        .sum()
+        .sort_values(by="value_eur", ascending=False)
+    )
+    grouped = grouped[grouped["value_eur"] > 0]
+    if grouped.empty:
+        return go.Figure()
+
+    fig = px.treemap(
+        grouped,
+        path=["sector", "display_label"],
+        values="value_eur",
+        color="sector",
+        color_discrete_map=SECTOR_COLORS,
+    )
+
+    if is_hidden():
+        fig.update_traces(
+            textinfo="label",
+            texttemplate="<b>%{label}</b><br>€****",
+            hovertemplate="Censored<extra></extra>",
+            marker=dict(line=dict(width=1.5, color="#0F172A")),
+        )
+    else:
+        fig.update_traces(
+            textinfo="label+value",
+            texttemplate="<b>%{label}</b><br>€%{value:,.0f}",
+            hovertemplate=(
+                "<b>%{label}</b><br>"
+                "Sector / Theme: %{parent}<br>"
+                "Value: €%{value:,.2f}<br>"
+                "Weight: %{percentRoot:.1%}<extra></extra>"
+            ),
+            marker=dict(line=dict(width=1.5, color="#0F172A")),
+        )
+
+    fig.update_layout(
+        height=height,
+        margin=dict(t=25, l=10, r=10, b=15),
+        showlegend=False,
+    )
+    mask_chart_if_hidden(fig)
+    return fig
+

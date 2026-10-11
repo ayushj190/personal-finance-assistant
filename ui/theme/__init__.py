@@ -44,6 +44,7 @@ from ui.theme.charts import (
     FINANCIAL_COLOR_MAP,
     get_financial_color,
     hex_to_rgba,
+    mask_chart_if_hidden,
     register_plotly_theme,
     render_chart,
 )
@@ -118,5 +119,6 @@ __all__ = [
     "hex_to_rgba",
     "register_plotly_theme",
     "render_chart",
+    "mask_chart_if_hidden",
     "inject_custom_css",
 ]

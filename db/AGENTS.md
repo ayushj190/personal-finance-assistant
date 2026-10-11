@@ -20,6 +20,7 @@ The database layer manages SQLite persistence for the personal finance assistant
 
 - Store monetary values as integer minor units (cents) to avoid precision loss.
 - Always acquire connections through `database.connect()` to guarantee WAL mode and active foreign keys.
+- Use `database.connect_readonly()` with SQLite authorizer when read only query guarantees are required (e.g. AI Copilot tools).
 - Use parameterized query bindings exclusively (`?` or named parameters) to prevent SQL syntax errors and injection risks.
 - Ensure all connection instances are closed properly or managed using `with` context blocks.
 - Track active and closed lifecycle status on holdings (`v_holdings` filters active only) and reconcile statement imports atomically.

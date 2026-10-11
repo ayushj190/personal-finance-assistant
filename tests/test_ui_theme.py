@@ -206,6 +206,21 @@ class TestPlotlyTheme(unittest.TestCase):
             self.assertEqual(called_fig.layout.plot_bgcolor, "rgba(0,0,0,0)")
             self.assertIsNotNone(called_fig.layout.template)
 
+    def test_render_chart_privacy_masking(self):
+        """When hide_amounts is active, money axes and tooltips in charts are masked."""
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=["Jan", "Feb"], y=[100, 200], text=["15.0%", "25.0%"]))
+        fig.update_layout(yaxis=dict(title="Expenses (€)", tickprefix="€"))
+
+        with patch("streamlit.session_state", {"hide_amounts": True}):
+            with patch("streamlit.plotly_chart") as mock_chart:
+                render_chart(fig)
+                mock_chart.assert_called_once()
+                called_fig = mock_chart.call_args[0][0]
+                self.assertFalse(called_fig.layout.yaxis.showticklabels)
+                self.assertEqual(called_fig.data[0].hovertemplate, "Censored<extra></extra>")
+                self.assertEqual(list(called_fig.data[0].text), ["****%", "****%"])
+
 
 class TestUIComponentsHelpers(unittest.TestCase):
     def test_finance_card_context_manager(self):

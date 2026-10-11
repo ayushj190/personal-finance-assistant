@@ -22,7 +22,13 @@ def mask_if_hidden(text: str | None) -> str:
     if not is_hidden():
         return str(text)
     # Mask any currency amount (e.g. €123.45, +€1,000, -$50.00) with symbol + ****
-    return re.sub(r'([+\-]?)(\$|€|£|TRY\s*)[0-9,]+(\.[0-9]+)?', r'\1\2****', str(text))
+    s = re.sub(r'([+\-]?)(\$|€|£|TRY\s*)[0-9,]+(\.[0-9]+)?', r'\1\2****', str(text))
+    # Mask percentage values (e.g. 12.5%, +12.5%, -5.0%, **%) with symbol + ****%
+    s = re.sub(r'([+\-]?)(\d+(?:,\d+)*(?:\.\d+)?|\*+)\s*%', r'\1****%', s)
+    # Mask asset counts and quote delayed counts in metrics/tooltips
+    s = re.sub(r'(\b\d+\b)\s+assets', r'**** assets', s)
+    s = re.sub(r'(\b\d+\b)\s+quote delayed', r'**** quote delayed', s)
+    return s
 
 
 def status_badge(text: str, kind: str = "success") -> str:
@@ -36,7 +42,7 @@ def kpi_card(
 ) -> None:
     if is_hidden():
         value_str = mask_if_hidden(value_str)
-        if delta_str and any(c in delta_str for c in ["€", "$", "£"]):
+        if delta_str:
             delta_str = mask_if_hidden(delta_str)
         if subtext:
             subtext = mask_if_hidden(subtext)
@@ -81,7 +87,8 @@ def section_divider() -> None:
 def section_header(title: str, subtitle: str | None = None, badge: str | None = None):
     with st.container(border=True):
         badge_text = f" `{badge}`" if badge else ""
-        st.subheader(f"{title}{badge_text}", help=subtitle)
+        sub = mask_if_hidden(subtitle) if is_hidden() and subtitle else subtitle
+        st.subheader(f"{title}{badge_text}", help=sub)
         yield
 
 

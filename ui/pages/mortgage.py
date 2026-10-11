@@ -6,7 +6,8 @@ from config import DB_PATH
 from db import database
 from services.mortgage import calculate_mortgage_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
-from ui.components import format_money, is_hidden, kpi_card, section_header
+from ui.components import format_money, is_hidden, kpi_card, mask_if_hidden, section_header
+from ui.theme import render_chart
 
 
 def render():
@@ -113,20 +114,19 @@ def render():
     with c4:
         kpi_card("Total Lifetime Interest", f"€{total_interest_all_time:,.2f}")
 
+    prog_text = mask_if_hidden(f"Repayment Progress: {pct_repaid:.1f}%")
     st.progress(min(max(pct_repaid / 100.0, 0.0), 1.0),
-                text=f"Repayment Progress: {pct_repaid:.1f}%")
+                text=prog_text)
 
     # Amortization curve
     with section_header("Amortization Schedule",
                    "Evolution of loan balance and principal paydown over 30 years"):
-        st.plotly_chart(build_mortgage_amortization_chart(
-            schedule_df), use_container_width=True, theme=None)
+        render_chart(build_mortgage_amortization_chart(schedule_df))
 
         # Monthly breakdown: interest vs principal
     with section_header("Monthly Payment Composition",
                    "Principal vs Interest per monthly installment"):
-        st.plotly_chart(build_mortgage_interest_principal_bar(
-            schedule_df.head(60)), use_container_width=True, theme=None)
+        render_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)))
 
         # Actual Mortgage Payments & Bank Debits
     with section_header(
@@ -174,6 +174,8 @@ def render():
 
             matched_df = pd.DataFrame(matched_records)
             if is_hidden():
+                if "Merchant" in matched_df.columns:
+                    matched_df["Merchant"] = "****"
                 for c in ["Paid (€)", "Scheduled (€)", "Principal (€)", "Interest (€)"]:
                     matched_df[c] = matched_df[c].map(lambda x: format_money(x) if isinstance(
                         x, (int, float)) and x > 0 else ("-" if x == 0.0 else x))

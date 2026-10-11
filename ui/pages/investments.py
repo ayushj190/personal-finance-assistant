@@ -10,8 +10,8 @@ from connectors.market_data_service import classify_asset, enrich_ticker_metadat
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
 from services.dividend_service import calculate_dividend_projections
-from services.portfolio import calculate_drift
-from ui.charts import build_drift_bar_chart
+from services.portfolio import calculate_drift, get_consolidated_holdings_df
+from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_drift_bar_chart
 from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.theme import render_chart
 
@@ -124,6 +124,7 @@ def _render_portfolio_fragment(
     direct_df: pd.DataFrame,
     consolidated_df: pd.DataFrame,
     usd_to_eur: float,
+    active_positions_count: int | None = None,
 ) -> None:
     # 1. 4-KPI ribbon (AC-1, AC-7)
     total_value = float(holdings_df["value_eur"].sum())
@@ -141,8 +142,18 @@ def _render_portfolio_fragment(
         pnl_str = f"{'+' if total_pnl >= 0 else ''}{format_money(total_pnl)}"
         kpi_card("Unrealized P&L", pnl_str, delta_str=f"{pnl_pct:+.1f}%")
     with c4:
-        sub = f"⏱️ {unquoted_count} quote delayed" if unquoted_count > 0 else "All quotes live"
-        kpi_card("Active Positions", f"{len(holdings_df)} assets", subtext=sub)
+        sub = (
+            ("⏱️ **** quote delayed" if is_hidden() else f"⏱️ {unquoted_count} quote delayed")
+            if unquoted_count > 0
+            else "All quotes live"
+        )
+        if active_positions_count is None:
+            if not consolidated_df.empty and "ticker" in consolidated_df.columns:
+                active_positions_count = consolidated_df["ticker"].nunique()
+            else:
+                active_positions_count = len(holdings_df)
+        pos_str = "**** assets" if is_hidden() else f"{active_positions_count} assets"
+        kpi_card("Active Positions", pos_str, subtext=sub)
 
     # 2. Exposure Visualizer (AC-3: Donut chart and horizontal exposure bar)
     if not consolidated_df.empty:
@@ -205,7 +216,7 @@ def _render_portfolio_fragment(
                     y="sector",
                     orientation="h",
                     text=sec_df["weight_pct"].map(
-                        lambda x: "****" if is_hidden() else f"{x:.1f}%"
+                        lambda x: "****%" if is_hidden() else f"{x:.1f}%"
                     ),
                     color="sector",
                     color_discrete_map=SECTOR_COLORS,
@@ -282,9 +293,9 @@ def _render_portfolio_fragment(
                 "Current Price",
                 "Value (€)",
                 "P&L (€)",
-                "P&L (%)",
             ]:
                 out_df[col] = "****"
+            out_df["P&L (%)"] = "****%"
         else:
             out_df["Units"] = out_df["Units"].map(lambda x: f"{x:,.4f}")
             for col in ["Avg Open", "Current Price"]:
@@ -329,7 +340,7 @@ def _render_portfolio_fragment(
                 disp_perf["Market Price"] = "****"
                 disp_perf["Position Value (€)"] = "€****"
                 disp_perf["Total P&L (€)"] = "€****"
-                disp_perf["Return (%)"] = "****"
+                disp_perf["Return (%)"] = "****%"
             else:
                 disp_perf["Market Price"] = disp_perf["Market Price"].map(
                     lambda x: f"{x:,.2f}" if pd.notnull(x) and x > 0 else "Delayed"
@@ -455,9 +466,14 @@ def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
             "Drift (pp)",
             "Action Needed",
         ]
-        drift_df["Actual %"] = drift_df["Actual %"].map(lambda x: f"{x:.1f}%")
-        drift_df["Target %"] = drift_df["Target %"].map(lambda x: f"{x:.1f}%")
-        drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
+        if is_hidden():
+            drift_df["Actual %"] = "****%"
+            drift_df["Target %"] = "****%"
+            drift_df["Drift (pp)"] = "**** pp"
+        else:
+            drift_df["Actual %"] = drift_df["Actual %"].map(lambda x: f"{x:.1f}%")
+            drift_df["Target %"] = drift_df["Target %"].map(lambda x: f"{x:.1f}%")
+            drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
         drift_df["Action Needed"] = drift_df["Action Needed"].map(
             lambda x: "⚠️ Rebalance" if x else "✅ On Target"
         )
@@ -536,7 +552,7 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                     ]
                     if is_hidden():
                         disp_h["Value (€)"] = "€****"
-                        disp_h["Est. Yield"] = "****"
+                        disp_h["Est. Yield"] = "****%"
                         disp_h["Annual Div (€)"] = "€****"
                         disp_h["Asset"] = "****"
                         disp_h["Ticker"] = "****"
@@ -716,88 +732,13 @@ def render() -> None:
         fx_close = HoldingRepository.get_latest_fx_quote(conn, "EURUSD=X")
         usd_to_eur = (1.0 / fx_close) if fx_close else 0.892
 
-        # Build consolidated exposure items
-        cache_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "data"
-            / "etoro_mirrors_cache.json"
+        consolidated_df = get_consolidated_holdings_df(conn)
+
+        active_positions_count = (
+            int(consolidated_df["ticker"].nunique())
+            if not consolidated_df.empty and "ticker" in consolidated_df.columns
+            else len(holdings_df)
         )
-        meta_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "data"
-            / "ticker_metadata.json"
-        )
-        mirrors_data = load_cached_json(cache_path)
-        mirrors_map = {m["ticker"]: m for m in mirrors_data} if mirrors_data else {}
-        meta_map = load_cached_json(meta_path) or {}
-
-        consolidated_items = []
-        for _, row in holdings_df.iterrows():
-            t = row["ticker"]
-            if t.startswith("COPY:"):
-                m = mirrors_map.get(t, {})
-                positions = m.get("positions", [])
-                copy_user = m.get("username") or t.replace("COPY:", "")
-                source_name = f"Copy: {copy_user}"
-                for p in positions:
-                    sym = p.get("symbol") or f"ID_{p.get('instrument_id')}"
-                    p_name = p.get("name") or sym
-                    m_info = meta_map.get(sym, {})
-                    a_type, sec = classify_asset(sym, p_name, m_info)
-                    reg = m_info.get("country") or "Unknown"
-                    cur = m_info.get("currency") or "USD"
-                    exc = m_info.get("exchange") or "Unknown"
-
-                    val_usd = float(p.get("amount_usd", 0.0)) + float(
-                        p.get("pnl_usd", 0.0)
-                    )
-                    val_eur = val_usd * usd_to_eur
-                    consolidated_items.append({
-                        "ticker": sym,
-                        "name": p_name,
-                        "value_eur": val_eur,
-                        "asset_class": "investment",
-                        "asset_type": a_type,
-                        "asset_type_display": a_type.upper(),
-                        "region": reg,
-                        "sector": sec,
-                        "currency": cur,
-                        "exchange": exc,
-                        "source": source_name,
-                        "display_label": p_name if p_name and not p_name.startswith("ID_") else sym,
-                    })
-            else:
-                m_info = meta_map.get(t, {})
-                d_name = row.get("name") or t
-                a_type, sec = classify_asset(t, d_name, m_info)
-                reg = m_info.get("country") or row.get("region") or "Unknown"
-                cur = m_info.get("currency") or row.get("currency") or "EUR"
-                exc = m_info.get("exchange") or "Unknown"
-                consolidated_items.append({
-                    "ticker": t,
-                    "name": d_name,
-                    "value_eur": row.get("value_eur", 0.0),
-                    "asset_class": row.get("asset_class") or "investment",
-                    "asset_type": a_type,
-                    "asset_type_display": a_type.upper(),
-                    "region": reg,
-                    "sector": sec,
-                    "currency": cur,
-                    "exchange": exc,
-                    "source": "Direct Holdings",
-                    "display_label": d_name if d_name else t,
-                })
-
-        all_syms = [
-            item["ticker"]
-            for item in consolidated_items
-            if not item["ticker"].startswith("ID_")
-        ]
-        names_map = {item["ticker"]: item["name"] for item in consolidated_items}
-        if all_syms:
-            enrich_ticker_metadata(list(set(all_syms)), names_map=names_map)
-
-        consolidated_df = pd.DataFrame(consolidated_items)
 
         # 4 top level tabs (AC-1)
         t_port, t_alloc, t_inc, t_goals = st.tabs([
@@ -809,7 +750,12 @@ def render() -> None:
 
         with t_port:
             _render_portfolio_fragment(
-                holdings_df, copy_df, direct_df, consolidated_df, usd_to_eur
+                holdings_df,
+                copy_df,
+                direct_df,
+                consolidated_df,
+                usd_to_eur,
+                active_positions_count=active_positions_count,
             )
 
         with t_alloc:

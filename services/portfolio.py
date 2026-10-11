@@ -1,4 +1,12 @@
+import json
+from pathlib import Path
+import sqlite3
 from typing import Any
+import pandas as pd
+
+from config import DATA_DIR
+from connectors.market_data_service import classify_asset, enrich_ticker_metadata
+from db.repositories import HoldingRepository
 
 
 def calculate_drift(
@@ -110,3 +118,105 @@ def full_rebalance(
         deltas[b] = target_val - cur_val
 
     return deltas
+
+
+def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Build consolidated portfolio holdings DataFrame, resolving direct assets and mirror copy trades."""
+    try:
+        holdings_df = HoldingRepository.get_v_holdings_df(conn)
+    except Exception:
+        return pd.DataFrame()
+
+    if holdings_df.empty:
+        return pd.DataFrame()
+
+    fx_close = HoldingRepository.get_latest_fx_quote(conn, "EURUSD=X")
+    usd_to_eur = (1.0 / fx_close) if fx_close else 0.892
+
+    cache_path = DATA_DIR / "etoro_mirrors_cache.json"
+    meta_path = DATA_DIR / "ticker_metadata.json"
+
+    mirrors_data = []
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                mirrors_data = json.load(f)
+        except Exception:
+            mirrors_data = []
+
+    mirrors_map = {m["ticker"]: m for m in mirrors_data if isinstance(m, dict) and "ticker" in m}
+
+    meta_map = {}
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta_map = json.load(f)
+        except Exception:
+            meta_map = {}
+
+    consolidated_items = []
+    for _, row in holdings_df.iterrows():
+        t = row["ticker"]
+        if str(t).startswith("COPY:"):
+            m = mirrors_map.get(t, {})
+            positions = m.get("positions", [])
+            copy_user = m.get("username") or str(t).replace("COPY:", "")
+            source_name = f"Copy: {copy_user}"
+            for p in positions:
+                inst_id = p.get("instrument_id")
+                sym = p.get("symbol") or f"ID_{inst_id}"
+                p_name = p.get("name") or sym
+                m_info = meta_map.get(sym, {})
+                a_type, sec = classify_asset(sym, p_name, m_info)
+                reg = m_info.get("country") or "Unknown"
+                cur = m_info.get("currency") or "USD"
+                exc = m_info.get("exchange") or "Unknown"
+
+                val_usd = float(p.get("amount_usd", 0.0)) + float(p.get("pnl_usd", 0.0))
+                val_eur = val_usd * usd_to_eur
+                consolidated_items.append({
+                    "ticker": sym,
+                    "name": p_name,
+                    "value_eur": val_eur,
+                    "asset_class": "investment",
+                    "asset_type": a_type,
+                    "asset_type_display": a_type.upper(),
+                    "region": reg,
+                    "sector": sec,
+                    "currency": cur,
+                    "exchange": exc,
+                    "source": source_name,
+                    "display_label": p_name if p_name and not p_name.startswith("ID_") else sym,
+                })
+        else:
+            m_info = meta_map.get(t, {})
+            d_name = row.get("name") or t
+            a_type, sec = classify_asset(t, d_name, m_info)
+            reg = m_info.get("country") or row.get("region") or "Unknown"
+            cur = m_info.get("currency") or row.get("currency") or "EUR"
+            exc = m_info.get("exchange") or "Unknown"
+            consolidated_items.append({
+                "ticker": t,
+                "name": d_name,
+                "value_eur": row.get("value_eur", 0.0),
+                "asset_class": row.get("asset_class") or "investment",
+                "asset_type": a_type,
+                "asset_type_display": a_type.upper(),
+                "region": reg,
+                "sector": sec,
+                "currency": cur,
+                "exchange": exc,
+                "source": "Direct Holdings",
+                "display_label": d_name if d_name else t,
+            })
+
+    all_syms = [
+        item["ticker"]
+        for item in consolidated_items
+        if not item["ticker"].startswith("ID_")
+    ]
+    names_map = {item["ticker"]: item["name"] for item in consolidated_items}
+    if all_syms:
+        enrich_ticker_metadata(list(set(all_syms)), names_map=names_map)
+
+    return pd.DataFrame(consolidated_items)
