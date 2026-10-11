@@ -21,6 +21,13 @@ class TestEtoroService(unittest.TestCase):
         self.assertEqual(holding.ticker, "COPY:Michalhla")
         self.assertEqual(holding.cost_basis_minor, 902400)
 
+    def test_accounts_structure(self):
+        service = EtoroService()
+        accounts = service.fetch_accounts()
+        cash_acc = next((a for a in accounts if a.external_id == "etoro_cash_eur"), None)
+        self.assertIsNotNone(cash_acc)
+        self.assertEqual(cash_acc.iban, "MT49CFTE280040000000000023")
+
 
 if __name__ == "__main__":
     unittest.main()

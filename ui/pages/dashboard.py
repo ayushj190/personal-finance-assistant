@@ -1,5 +1,6 @@
 from datetime import date, datetime
 import json
+import sqlite3
 from typing import Any
 import pandas as pd
 import streamlit as st
@@ -8,9 +9,9 @@ import streamlit.components.v1 as components
 from config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
-from services.analytics import calculate_burn_and_runway, detect_recurring_charges, calculate_current_net_worth
+from services.analytics import calculate_current_net_worth, detect_recurring_charges
 from ui.charts import build_spending_donut
-from ui.components import empty_state, format_money, is_hidden, kpi_card, section_header, status_badge
+from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
 from ui.logos import get_institution_logo_svg
 from ui.theme import render_chart
 from connectors.etoro_service import EtoroService
@@ -20,6 +21,7 @@ from connectors.etoro_service import EtoroService
 def fetch_cached_news():
     etoro = EtoroService()
     return etoro.fetch_news(limit=10), etoro.is_configured()
+
 
 def get_account_status(acc: dict[str, Any], sync_logs: list[dict[str, Any]]) -> tuple[str, str]:
     """Derive status badge label and kind for any bank or investment account."""
@@ -77,37 +79,58 @@ def clean_account_name(acc: dict[str, Any], all_accounts: list[dict[str, Any]]) 
     return inst
 
 
-def render():
-    conn = database.connect(DB_PATH)
+def _calculate_monthly_cash_flow(conn: sqlite3.Connection, days: int = 30) -> float:
+    """Calculate net cash flow (income minus expenses) over specified trailing days."""
+    try:
+        query = f"""
+        SELECT COALESCE(SUM(amount_eur_minor), 0) / 100.0 AS net_flow
+        FROM transactions
+        WHERE is_internal_transfer = 0
+          AND booking_date >= date('now', '-{days} days')
+        """
+        row = conn.execute(query).fetchone()
+        return float(row["net_flow"] if row else 0.0)
+    except Exception:
+        return 0.0
 
-    # 1. Accounts & Balances
-    accounts = AccountRepository.get_active_accounts(conn)
-    if not accounts:
-        conn.close()
-        empty_state(
-            "No Accounts Found",
-            "Get started by importing your bank or brokerage statements in the 'Import' page, or connect an API in 'Settings'.",
-        )
-        return
 
-    # Convert to list of dicts for compatible template access
-    accounts_dicts = [
-        {
-            "id": a.id,
-            "provider": a.provider,
-            "institution": a.institution,
-            "name": a.name,
-            "currency": a.currency,
-            "asset_class": a.asset_class,
-            "external_id": a.external_id,
-            "iban": a.iban,
-            "apy": a.apy,
-            "is_active": a.is_active,
-        }
-        for a in accounts
-    ]
+def _calculate_accrued_subtexts(
+    accounts: list[Any], latest_snapshots: dict[int, Any], today: date
+) -> dict[int, str]:
+    """Calculate accrued interest subtext for accounts with an APY."""
+    acc_subtexts: dict[int, str] = {}
+    for acc in accounts:
+        row = latest_snapshots.get(acc.id)
+        subtext = ""
+        if row:
+            base_bal_eur = row["balance_eur_minor"] / 100.0
+            apy = acc.apy
+            if apy and apy > 0:
+                snap_date_str = str(row["snapshot_date"])[:10]
+                try:
+                    snap_date = datetime.strptime(snap_date_str, "%Y-%m-%d").date()
+                    days = (today - snap_date).days
+                    if days > 0:
+                        daily_rate = (apy / 100.0) / 365.0
+                        accrued = base_bal_eur * (daily_rate * days)
+                        subtext = f"+€{accrued:,.2f} accrued ({apy}% APY)"
+                except Exception:
+                    pass
+        acc_subtexts[acc.id] = subtext
+    return acc_subtexts
 
-    # 0. Scrolling Ticker Tape Widget (relocated from Investments page)
+
+@st.fragment
+def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
+    """Render TradingView scrolling ticker tape inside an isolated fragment."""
+    should_close = False
+    if conn is None:
+        try:
+            conn = database.connect(DB_PATH)
+            should_close = True
+        except Exception:
+            return
+
     all_tickers = []
     try:
         h_tickers = HoldingRepository.get_distinct_tickers(conn)
@@ -135,6 +158,9 @@ def render():
                 all_tickers.append(t)
     except Exception:
         pass
+    finally:
+        if should_close:
+            conn.close()
 
     deduped_tickers = list(dict.fromkeys(all_tickers))
     symbols = []
@@ -169,76 +195,99 @@ def render():
     """
     components.html(tape_html, height=44)
 
-    # Fetch sync logs to derive status for all bank & investment accounts
-    sync_logs = AccountRepository.get_recent_sync_logs(conn, limit=50)
 
-    # Compute current balances
-    nw_data = calculate_current_net_worth(conn)
-    acc_balances = nw_data["acc_balances"]
-    liquid_cash = nw_data["liquid_cash"]
-    invested = nw_data["invested"]
-    home_equity = nw_data["home_equity"]
-    net_worth = nw_data["net_worth"]
+def _render_kpi_ribbon(
+    conn: sqlite3.Connection,
+    nw_data: dict[str, Any],
+    liabilities: list[Any] | None = None,
+) -> None:
+    """Render top 4-KPI ribbon for Net Worth, Liquid Cash, Investments, and Monthly Cash Flow."""
+    liquid_cash = nw_data.get("liquid_cash", 0.0)
+    invested = nw_data.get("invested", 0.0)
+    home_equity = nw_data.get("home_equity", 0.0)
+    net_worth = nw_data.get("net_worth", 0.0)
 
-    acc_subtexts: dict[int, str] = {}
-    today = date.today()
-    latest_snapshots = AccountRepository.get_all_latest_snapshots(conn)
-
-    for acc in accounts:
-        row = latest_snapshots.get(acc.id)
-        subtext = ""
-        if row:
-            base_bal_eur = row["balance_eur_minor"] / 100.0
-            apy = acc.apy
-            if apy and apy > 0:
-                snap_date_str = str(row["snapshot_date"])[:10]
-                try:
-                    snap_date = datetime.strptime(
-                        snap_date_str, "%Y-%m-%d").date()
-                    days = (today - snap_date).days
-                    if days > 0:
-                        daily_rate = (apy / 100.0) / 365.0
-                        accrued = base_bal_eur * (daily_rate * days)
-                        subtext = f"+€{accrued:,.2f} accrued ({apy}% APY)"
-                except Exception:
-                    pass
-        acc_subtexts[acc.id] = subtext
-
-    # Liability balance & Property Asset
-    liabilities = LiabilityRepository.get_all_liabilities(conn)
     lib_row = liabilities[0] if liabilities else None
+    nw_sub = (
+        f"Assets minus liabilities (Home equity: {format_money(home_equity)})"
+        if lib_row
+        else "Assets minus liabilities"
+    )
 
-    # Monthly cashflow for runway calculation
-    monthly_expenses = TransactionRepository.get_monthly_expenses(conn)
-    burn_rate, runway_months, runway_days = calculate_burn_and_runway(
-        monthly_expenses, liquid_cash)
+    monthly_cash_flow = _calculate_monthly_cash_flow(conn, days=30)
+    flow_sub = "Net cash flow (last 30 days)"
 
-    # Standardized 4-KPI Ribbon
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        nw_sub = f"Assets minus liabilities (Home equity: {format_money(home_equity)})" if lib_row else "Assets minus liabilities"
         kpi_card("Net Worth", format_money(net_worth), subtext=nw_sub)
     with c2:
-        kpi_card("Liquid Cash", format_money(liquid_cash),
-                 subtext="Checking & cash reserves")
-
+        kpi_card("Liquid Cash", format_money(liquid_cash), subtext="Checking & cash reserves")
     with c3:
-        kpi_card("Investments", format_money(invested),
-                 subtext="Securities & portfolio holdings")
+        kpi_card("Investments", format_money(invested), subtext="Securities & portfolio holdings")
     with c4:
-        runway_txt = f"{runway_months:.1f} mo" if runway_months < 60 else "5+ yrs"
-        kpi_card("Runway", runway_txt,
-                 subtext=f"{int(runway_days)} days buffer")
+        kpi_card("Monthly Cash Flow", format_money(monthly_cash_flow), subtext=flow_sub)
 
-    # Accounts & Balances Grid - Compact, authentic logos, top-right settings cog
-    with section_header("Accounts & Balances",
-                   "Real-time balances and connection statuses across connected institutions"):
 
-        currency_symbols = {"EUR": "€", "USD": "$", "TRY": "₺", "GBP": "£"}
+@st.fragment
+def _render_accounts_grid(
+    accounts: list[Any],
+    nw_data: dict[str, Any],
+    sync_logs: list[dict[str, Any]] | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Render tokenized accounts grid with namespaced keys and popover adjustment forms."""
+    if not accounts:
+        return
 
+    if sync_logs is None:
+        sync_logs = []
+
+    accounts_dicts = [
+        {
+            "id": a.id,
+            "provider": a.provider,
+            "institution": a.institution,
+            "name": a.name,
+            "currency": a.currency,
+            "asset_class": a.asset_class,
+            "external_id": a.external_id,
+            "iban": a.iban,
+            "apy": a.apy,
+            "is_active": a.is_active,
+        }
+        for a in accounts
+    ]
+
+    acc_balances = nw_data.get("acc_balances", {})
+    today = date.today()
+
+    latest_snapshots: dict[int, Any] = {}
+    should_close = False
+    db_conn = conn
+    if db_conn is None:
+        try:
+            db_conn = database.connect(DB_PATH)
+            should_close = True
+        except Exception:
+            db_conn = None
+
+    if db_conn is not None:
+        try:
+            latest_snapshots = AccountRepository.get_all_latest_snapshots(db_conn)
+        finally:
+            if should_close:
+                db_conn.close()
+
+    acc_subtexts = _calculate_accrued_subtexts(accounts, latest_snapshots, today)
+    currency_symbols = {"EUR": "€", "USD": "$", "TRY": "₺", "GBP": "£"}
+
+    with section_header(
+        "Accounts & Balances",
+        "Real-time balances and connection statuses across connected institutions",
+    ):
         COLS_PER_ROW = 4
         for i in range(0, len(accounts), COLS_PER_ROW):
-            row_accounts = accounts[i:i + COLS_PER_ROW]
+            row_accounts = accounts[i : i + COLS_PER_ROW]
             cols = st.columns(COLS_PER_ROW)
             for idx, acc in enumerate(row_accounts):
                 col = cols[idx]
@@ -251,15 +300,22 @@ def render():
                     sync_logs,
                 )
                 disp_name = clean_account_name(
-                    {"institution": acc.institution, "name": acc.name, "currency": acc.currency, "asset_class": acc.asset_class},
+                    {
+                        "institution": acc.institution,
+                        "name": acc.name,
+                        "currency": acc.currency,
+                        "asset_class": acc.asset_class,
+                    },
                     accounts_dicts,
                 )
                 logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
 
                 with col:
                     with st.container(border=True):
-                        # Top Row: Authentic Vector Logo + Clean Bank Name + Status Dot & Settings Cog
-                        c_header_info, c_header_cog = st.columns([0.88, 0.12], gap=0, vertical_alignment="center", wrap=False)
+                        # Top Row: Vector Logo + Account Name + Status Dot + Settings Popover Cog
+                        c_header_info, c_header_cog = st.columns(
+                            [0.88, 0.12], gap=0, vertical_alignment="center", wrap=False
+                        )
                         with c_header_info:
                             st.markdown(
                                 f"""<div class='account-card-marker'>
@@ -270,7 +326,12 @@ def render():
                                 unsafe_allow_html=True,
                             )
                         with c_header_cog:
-                            with st.popover("", icon=":material/settings:", help="Account Settings"):
+                            with st.popover(
+                                "",
+                                icon=":material/settings:",
+                                help="Account Settings",
+                                key=f"dashboard_acc_{acc.id}_popover",
+                            ):
                                 st.markdown(f"**{acc.name}**")
                                 st.write(f"**Institution:** {acc.institution}")
                                 st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
@@ -279,7 +340,7 @@ def render():
 
                                 if acc.asset_class == "cash":
                                     st.divider()
-                                    with st.form(f"adjust_bal_dash_{acc.id}"):
+                                    with st.form(f"dashboard_acc_{acc.id}_adjust_form"):
                                         st.caption(f"Adjust balance ({sym})")
                                         new_adj_bal = st.number_input(
                                             f"New Balance ({sym})",
@@ -287,22 +348,37 @@ def render():
                                             min_value=0.0,
                                             step=50.0,
                                             format="%.2f",
-                                            key=f"dash_bal_in_{acc.id}",
+                                            key=f"dashboard_acc_{acc.id}_bal_in",
                                         )
-                                        if st.form_submit_button("Update Balance", type="primary", use_container_width=True):
+                                        if st.form_submit_button(
+                                            "Update Balance",
+                                            type="primary",
+                                            use_container_width=True,
+                                            key=f"dashboard_acc_{acc.id}_submit_btn",
+                                        ):
                                             val_min = int(round(new_adj_bal * 100))
-                                            database.upsert_snapshots(conn, [{
-                                                "account_id": acc.id,
-                                                "snapshot_date": today.isoformat(),
-                                                "balance_minor": val_min,
-                                                "balance_eur_minor": val_min,
-                                            }])
-                                            st.rerun()
+                                            save_conn = database.connect(DB_PATH)
+                                            try:
+                                                database.upsert_snapshots(
+                                                    save_conn,
+                                                    [
+                                                        {
+                                                            "account_id": acc.id,
+                                                            "snapshot_date": today.isoformat(),
+                                                            "balance_minor": val_min,
+                                                            "balance_eur_minor": val_min,
+                                                        }
+                                                    ],
+                                                )
+                                            finally:
+                                                save_conn.close()
+                                            st.rerun(scope="app")
 
-                        # Balance and fixed Subtext Slot (guarantees identical standard card alignment)
+                        # Balance and fixed Subtext Slot
                         val_display = "****" if is_hidden() else f"{bal:,.2f}"
                         if sub:
-                            sub_content = f"<span style='color: #10B981; font-weight: 600;'>✨ {sub}</span>"
+                            masked_sub = mask_if_hidden(sub) if is_hidden() else sub
+                            sub_content = f"<span style='color: #10B981; font-weight: 600;'>✨ {masked_sub}</span>"
                         elif acc.apy:
                             sub_content = f"<span style='color: var(--text-muted); font-weight: 500;'>📈 APY: {acc.apy}%</span>"
                         else:
@@ -314,86 +390,119 @@ def render():
                         </div>"""
                         st.markdown(card_body_html, unsafe_allow_html=True)
 
-        # Lower Grid: Spending Donut + Recurring Bills
+
+@st.fragment
+def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
+    """Render spending donut chart drilldown and upcoming recurring bills inside an isolated fragment."""
+    should_close = False
+    db_conn = conn
+    if db_conn is None:
+        try:
+            db_conn = database.connect(DB_PATH)
+            should_close = True
+        except Exception:
+            return
+
+    try:
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
             with section_header("Spending by Category", "Last 30 days expenses"):
-                spend_df = TransactionRepository.get_recent_spending_df(conn, days=30)
+                spend_df = TransactionRepository.get_recent_spending_df(db_conn, days=30)
                 if not spend_df.empty:
                     drill_key = "donut_drilldown_dashboard"
                     if drill_key not in st.session_state:
                         st.session_state[drill_key] = None
 
                     if st.session_state[drill_key]:
-                        if st.button("← Back to Categories"):
+                        if st.button("← Back to Categories", key="dashboard_donut_back_btn"):
                             st.session_state[drill_key] = None
-                            st.rerun()
+                            st.rerun(scope="fragment")
 
-                    fig = build_spending_donut(spend_df, drilldown_category=st.session_state[drill_key])
-            
-                    selection = render_chart(
-                        fig, 
-                        use_container_width=True, 
-                        on_select="rerun", 
-                        selection_mode="points"
+                    fig = build_spending_donut(
+                        spend_df, drilldown_category=st.session_state[drill_key]
                     )
 
-                    if selection and hasattr(selection, "selection") and selection.selection.get("points"):
+                    selection = render_chart(
+                        fig,
+                        use_container_width=True,
+                        on_select="rerun",
+                        selection_mode="points",
+                        key="dashboard_spending_donut_chart",
+                    )
+
+                    clicked_label = None
+                    if (
+                        selection
+                        and hasattr(selection, "selection")
+                        and selection.selection.get("points")
+                    ):
                         clicked_point = selection.selection["points"][0]
                         clicked_label = clicked_point.get("label") or clicked_point.get("x")
-                        if isinstance(clicked_label, str):
-                            clicked_label = clicked_label.replace("&amp;", "&")
-                
-                        # Only drill down if we are at the top level
-                        if st.session_state[drill_key] is None and clicked_label:
-                            st.session_state[drill_key] = clicked_label
-                            st.rerun()
-                    elif selection and isinstance(selection, dict) and selection.get("selection", {}).get("points"):
+                    elif (
+                        selection
+                        and isinstance(selection, dict)
+                        and selection.get("selection", {}).get("points")
+                    ):
                         clicked_point = selection["selection"]["points"][0]
                         clicked_label = clicked_point.get("label") or clicked_point.get("x")
+
+                    if clicked_label:
                         if isinstance(clicked_label, str):
                             clicked_label = clicked_label.replace("&amp;", "&")
-                
-                        if st.session_state[drill_key] is None and clicked_label:
+                        if st.session_state.get(drill_key) is None:
                             st.session_state[drill_key] = clicked_label
-                            st.rerun()
+                            st.rerun(scope="fragment")
                 else:
-                    st.caption("No expense transactions found in the last 30 days.")
+                    empty_state(
+                        "No Recent Spending",
+                        "No expense transactions recorded in the last 30 days. Import your statements in the 'Import' page to view spending breakdowns.",
+                    )
 
         with col_right:
-            with section_header("Upcoming Recurring Bills",
-                           "Detected automatically from transactions"):
-                all_tx_rows = TransactionRepository.get_v_transactions(conn, limit=500)
+            with section_header(
+                "Upcoming Recurring Bills",
+                "Detected automatically from transactions",
+            ):
+                all_tx_rows = TransactionRepository.get_v_transactions(db_conn, limit=500)
                 recurring = detect_recurring_charges(all_tx_rows)
                 if recurring:
                     rec_df = pd.DataFrame(recurring[:10])[
-                        ["merchant", "cadence", "amount_eur", "next_expected_date"]]
+                        ["merchant", "cadence", "amount_eur", "next_expected_date"]
+                    ]
                     rec_df.columns = ["Merchant", "Cadence", "Amount", "Next Expected"]
                     if is_hidden():
-                        rec_df["Amount"] = rec_df["Amount"].map(
-                            lambda x: format_money(x))
+                        rec_df["Amount"] = rec_df["Amount"].map(lambda x: format_money(x))
                         amt_cfg = st.column_config.TextColumn("Amount", disabled=True)
                     else:
                         amt_cfg = st.column_config.NumberColumn(
-                            "Amount", format="€%.2f", disabled=True)
+                            "Amount", format="€%.2f", disabled=True
+                        )
                     st.dataframe(
                         rec_df,
                         use_container_width=True,
                         hide_index=True,
                         column_config={
                             "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
-                            "Amount": amt_cfg
-                        }
+                            "Amount": amt_cfg,
+                        },
                     )
                 else:
-                    st.caption("No recurring subscriptions detected yet.")
+                    empty_state(
+                        "No Recurring Bills",
+                        "No recurring subscriptions or bills detected yet. As you import recurring bank transactions, they will appear here.",
+                    )
+    finally:
+        if should_close:
+            db_conn.close()
 
-            # Market News (Moved to bottom)
-    with section_header("Market News",
-                   "Latest updates from eToro feed"):
+
+@st.fragment
+def _render_market_news_fragment() -> None:
+    """Render cached market news inside an isolated fragment."""
+    with section_header("Market News", "Latest updates from eToro feed"):
         news, is_configured = fetch_cached_news()
-    
+
         if news:
             with st.container(height=300, border=True):
                 for item in news:
@@ -404,13 +513,13 @@ def render():
                         else:
                             st.write("👤")
                     with c2:
-                        text = item['text']
+                        text = item["text"]
                         if len(text) > 200:
                             text = text[:200] + "..."
                         st.markdown(
                             f"**@{item['username']}** <span style='color: gray; font-size: 0.8em;'>• {item['created'][:10]}</span><br/>"
-                            f"<span style='font-size: 0.9em;'>{text}</span>", 
-                            unsafe_allow_html=True
+                            f"<span style='font-size: 0.9em;'>{text}</span>",
+                            unsafe_allow_html=True,
                         )
                     st.divider()
         else:
@@ -419,4 +528,39 @@ def render():
             else:
                 st.info("No news available right now.")
 
+
+def render() -> None:
+    """Primary dashboard entrypoint."""
+    conn = database.connect(DB_PATH)
+    try:
+        # 1. Accounts check (AC-6)
+        accounts = AccountRepository.get_active_accounts(conn)
+        if not accounts:
+            empty_state(
+                "No Accounts Found",
+                "Get started by importing your bank or brokerage statements in the 'Import' page, or connect an API in 'Settings'.",
+            )
+            return
+
+        # 0. Scrolling Ticker Tape Widget (AC-3)
+        _render_ticker_fragment(conn)
+
+        # 1. Compute current net worth balances
+        nw_data = calculate_current_net_worth(conn)
+        liabilities = LiabilityRepository.get_all_liabilities(conn)
+        sync_logs = AccountRepository.get_recent_sync_logs(conn, limit=50)
+
+        # 2. Standardized 4-KPI Ribbon (AC-1)
+        _render_kpi_ribbon(conn, nw_data, liabilities)
+
+        # 3. Accounts & Balances Grid (AC-4, AC-5)
+        _render_accounts_grid(accounts, nw_data, sync_logs, conn)
+
+        # 4. Lower Grid: Spending Donut + Recurring Bills (AC-2, AC-6)
+        _render_analytics_section(conn)
+
+        # 5. Market News (AC-3)
+        _render_market_news_fragment()
+
+    finally:
         conn.close()

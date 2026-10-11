@@ -3,7 +3,37 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-from ui.theme.tokens import COLOR_PALETTE
+from ui.theme.tokens import (
+    COLOR_CASH,
+    COLOR_DISCRETIONARY,
+    COLOR_FIXED,
+    COLOR_INCOME,
+    COLOR_INVESTMENT,
+    COLOR_LIABILITY,
+    COLOR_PALETTE,
+    COLOR_SAVINGS,
+    COLOR_UNCATEGORIZED,
+    FONT_FAMILY_SANS,
+    SEMANTIC_FINANCIAL_COLORS,
+)
+
+# Semantic financial color mapping for chart series and categories (AC-2, AC-6)
+FINANCIAL_COLOR_MAP = SEMANTIC_FINANCIAL_COLORS
+
+
+def hex_to_rgba(hex_code: str, alpha: float = 1.0) -> str:
+    """Convert hex color (#RRGGBB) to rgba string with transparency."""
+    cleaned = hex_code.lstrip("#")
+    if len(cleaned) == 6:
+        r, g, b = (int(cleaned[i : i + 2], 16) for i in (0, 2, 4))
+        return f"rgba({r}, {g}, {b}, {alpha})"
+    return hex_code
+
+
+def get_financial_color(category_or_signal: str, default: str = COLOR_UNCATEGORIZED) -> str:
+    """Retrieve standardized semantic financial color for an asset class or expense bucket."""
+    normalized = category_or_signal.strip().lower() if category_or_signal else ""
+    return FINANCIAL_COLOR_MAP.get(normalized, default)
 
 
 def register_plotly_theme() -> None:
@@ -18,9 +48,11 @@ def register_plotly_theme() -> None:
     template.layout.plot_bgcolor = "rgba(0,0,0,0)"
     template.layout.colorway = COLOR_PALETTE
 
+    chart_font_family = FONT_FAMILY_SANS.replace('"', "")
+
     if current_theme == "light":
         template.layout.font = dict(
-            family="Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+            family=chart_font_family,
             color="#0F172A",
             size=13,
         )
@@ -46,7 +78,7 @@ def register_plotly_theme() -> None:
         )
     else:
         template.layout.font = dict(
-            family="Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+            family=chart_font_family,
             color="#F8FAFC",
             size=13,
         )
@@ -94,3 +126,4 @@ def render_chart(figure_or_data: Any, *args: Any, **kwargs: Any) -> Any:
             figure_or_data.layout.template = "pfa_theme"
 
     return st.plotly_chart(figure_or_data, *args, **kwargs)
+

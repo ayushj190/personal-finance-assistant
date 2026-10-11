@@ -103,6 +103,7 @@ class EtoroService:
                 name="eToro Money (Cash)",
                 currency="EUR",
                 asset_class="cash",
+                iban="MT49CFTE280040000000000023",
                 balance_minor=cash_balance_minor,
             ),
         ]
@@ -355,6 +356,11 @@ class EtoroService:
                             break
 
                         for item in items:
+                            status = str(item.get("status") or "").lower()
+                            # eToro cash transactions: skip failed, declined, or pre-authorization checks
+                            if status and status != "settled":
+                                continue
+
                             raw_date = item.get("postedAt")
                             if not raw_date:
                                 continue
@@ -380,16 +386,37 @@ class EtoroService:
                             if amt_minor == 0:
                                 continue
 
-                            # Extract merchant / counterparty
+                            # Transaction type & details
+                            tx_type = str(item.get("transactionType") or "").lower()
                             card_details = item.get(
                                 "cardTransactionDetails") or {}
                             counterparty = item.get("counterparty") or {}
                             merchant = card_details.get(
                                 "merchantName") or counterparty.get("name")
-                            desc = merchant or item.get(
-                                "transactionType") or "eToro Cash Transaction"
+                            if merchant:
+                                desc = merchant
+                            elif tx_type == "card":
+                                desc = "Card Payment"
+                            else:
+                                desc = item.get("transactionType") or "Transaction"
+
                             curr = item.get("currency") or "EUR"
                             ext_id = str(item.get("id"))
+
+                            # Extract IBAN from bank transfer details if present
+                            bank_details = item.get("bankTransferTransactionDetails") or {}
+                            cp_iban = None
+                            for ident in bank_details.get("bankIdentifier") or []:
+                                if ident.get("name") == "iban" and ident.get("value"):
+                                    cp_iban = ident.get("value")
+                                    break
+
+                            # Determine transfer classification
+                            is_transfer = None
+                            if tx_type == "card":
+                                is_transfer = False
+                            elif tx_type == "internaltransfer":
+                                is_transfer = True
 
                             txs.append(
                                 RawTransaction(
@@ -399,7 +426,9 @@ class EtoroService:
                                     currency=curr,
                                     description=desc,
                                     counterparty_name=merchant,
+                                    counterparty_iban=cp_iban,
                                     external_ref=ext_id,
+                                    is_transfer=is_transfer,
                                 )
                             )
 
@@ -446,6 +475,7 @@ class EtoroService:
                                     description=f"Closed Trade P&L (Instrument #{inst_id})",
                                     counterparty_name="eToro",
                                     external_ref=f"etoro_trade_{pos_id}",
+                                    is_transfer=False,
                                 )
                             )
                 except Exception as e:

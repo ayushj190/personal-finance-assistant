@@ -14,6 +14,7 @@ from ui.theme import (
     COLOR_INVESTMENT,
     COLOR_LIABILITY,
     COLOR_UNCATEGORIZED,
+    hex_to_rgba,
 )
 
 
@@ -42,7 +43,7 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
             name="Cash",
             stackgroup="positive",
             line=dict(width=0.5, color=COLOR_CASH),
-            fillcolor="rgba(45, 212, 191, 0.4)",
+            fillcolor=hex_to_rgba(COLOR_CASH, 0.4),
         )
     )
     fig.add_trace(
@@ -53,7 +54,7 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
             name="Investments",
             stackgroup="positive",
             line=dict(width=0.5, color=COLOR_INVESTMENT),
-            fillcolor="rgba(56, 189, 248, 0.4)",
+            fillcolor=hex_to_rgba(COLOR_INVESTMENT, 0.4),
         )
     )
     if any(l > 0 for l in liabilities):
@@ -64,7 +65,7 @@ def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
                 mode="lines",
                 name="Liabilities",
                 line=dict(width=1, color=COLOR_LIABILITY, dash="dash"),
-                fillcolor="rgba(251, 113, 133, 0.2)",
+                fillcolor=hex_to_rgba(COLOR_LIABILITY, 0.2),
             )
         )
 
@@ -186,7 +187,7 @@ def build_mortgage_amortization_chart(schedule_df: pd.DataFrame) -> go.Figure:
             name="Remaining Balance",
             line=dict(color=COLOR_LIABILITY, width=2.5),
             fill="tozeroy",
-            fillcolor="rgba(251, 113, 133, 0.15)",
+            fillcolor=hex_to_rgba(COLOR_LIABILITY, 0.15),
         )
     )
     fig.add_trace(

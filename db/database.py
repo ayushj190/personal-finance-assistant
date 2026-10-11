@@ -194,7 +194,20 @@ def get_category_map(conn: sqlite3.Connection) -> dict[str, int]:
 def get_own_ibans(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute(
         "SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''").fetchall()
-    return {r["iban"].replace(" ", "").upper() for r in rows}
+    ibans = {r["iban"].replace(" ", "").upper() for r in rows}
+    try:
+        val = get_setting(conn, "own_ibans")
+        if val:
+            if isinstance(val, str):
+                for part in val.split(","):
+                    if part.strip():
+                        ibans.add(part.strip().replace(" ", "").upper())
+            elif isinstance(val, (list, set)):
+                for part in val:
+                    ibans.add(str(part).strip().replace(" ", "").upper())
+    except Exception:
+        pass
+    return ibans
 
 
 def save_risk_profile(

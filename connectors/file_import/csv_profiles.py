@@ -37,6 +37,10 @@ def parse_etoro_money(text: str, default_account_id: str = "etoro_cash_eur") -> 
 
     reader = csv.DictReader(lines, delimiter="\t")
     for row in reader:
+        status = (row.get("Status") or row.get("State") or "").strip().lower()
+        if status in ("failed", "declined", "cancelled", "rejected", "reversed"):
+            continue
+
         name = row.get("Name", "").strip()
         date_str = row.get("Date", "").strip()
         amount_str = row.get("Amount", "").strip()
@@ -223,6 +227,10 @@ def parse_etoro_statement_transactions(text: str, default_account_id: str = "eto
     txs: list[RawTransaction] = []
 
     for row in reader:
+        status = (row.get("Status") or row.get("State") or "").strip().lower()
+        if status in ("failed", "declined", "cancelled", "rejected", "reversed"):
+            continue
+
         date_str = row.get("Date") or row.get("Date and Time")
         if not date_str:
             continue

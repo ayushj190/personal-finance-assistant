@@ -1,17 +1,26 @@
-:root, .stApp {
-            --background-color: #0a110d !important;
-            --secondary-background-color: #101c15 !important;
-            --text-color: #ecfdf5 !important;
-            --primary-color: #10b981 !important;
-            --tab-border: #162a1f !important;
-            --tab-inactive-bg: #0d1711 !important;
-            --button-border: #1e3325 !important;
-            --button-bg: #101c15 !important;
-            --text-muted: #94a3b8 !important;
-            background-color: #0a110d !important;
-            color: #ecfdf5 !important;
-            font-family: 'Inter', sans-serif !important;
-        }
+:root, .stApp, [data-theme="dark"], body.dark {
+    /* Core Semantic Surfaces, Borders and Text */
+    --bg-primary: #0a110d;
+    --bg-surface: #101c15;
+    --bg-surface-elevated: #1e3325;
+    --border-subtle: #1e3325;
+    --text-primary: #ecfdf5;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+
+    /* Legacy CSS custom properties maintained for compatibility */
+    --background-color: #0a110d !important;
+    --secondary-background-color: #101c15 !important;
+    --text-color: #ecfdf5 !important;
+    --primary-color: #10b981 !important;
+    --tab-border: #162a1f !important;
+    --tab-inactive-bg: #0d1711 !important;
+    --button-border: #1e3325 !important;
+    --button-bg: #101c15 !important;
+    background-color: #0a110d !important;
+    color: #ecfdf5 !important;
+    font-family: var(--font-family-sans, 'Inter', sans-serif) !important;
+}
 
         /* Sidebar in Dark Mode */
         section[data-testid="stSidebar"] {

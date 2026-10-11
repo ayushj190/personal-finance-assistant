@@ -1,8 +1,87 @@
+:root, .stApp {
+    /* 8px Modular Spacing Scale with Half-Steps */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+
+    /* Border Radii */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+
+    /* Typography Scale */
+    --font-family-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-family-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+
+    /* Semantic Financial Signals */
+    --color-income: #34D399;
+    --color-fixed: #FB7185;
+    --color-discretionary: #FBBF24;
+    --color-savings: #2DD4BF;
+    --color-cash: #2DD4BF;
+    --color-investment: #38BDF8;
+    --color-liability: #FB7185;
+    --color-uncategorized: #94A3B8;
+}
+
+/* Standard Card Container Pattern (AC-5) */
+.stCard, .finance-card {
+    background-color: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-lg) !important;
+    margin-bottom: var(--space-lg) !important;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out !important;
+}
+
+.finance-card:hover {
+    border-color: var(--primary-color) !important;
+}
+
+/* Metric Card Callout Pattern (AC-5) */
+.metric-card {
+    background-color: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-md) var(--space-lg) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+}
+
+/* Section Divider Pattern (AC-5) */
+.section-divider {
+    height: 1px !important;
+    background-color: var(--border-subtle) !important;
+    margin: var(--space-xl) 0 !important;
+    border: none !important;
+}
+
+/* Tabular figures for monetary values and ledger balances (AC-4) */
+.tabular-nums,
+[data-testid="stMetricValue"],
+.metric-value,
+.finance-amount {
+    font-family: var(--font-family-mono) !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: -0.01em !important;
+}
+
 .block-container,
-        div[data-testid="stMainBlockContainer"] {
-            padding: 1rem 2rem 2rem 2rem !important;
-            max-width: 100% !important;
-        }
+div[data-testid="stMainBlockContainer"] {
+    padding: 1rem 2rem 2rem 2rem !important;
+    max-width: 100% !important;
+}
 
         /* Top App Bar Sticky Header Container */
         div.st-key-top_app_bar {

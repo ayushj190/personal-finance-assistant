@@ -35,12 +35,15 @@ def process_and_save_transactions(
     for tx in raw_txs:
         date_str = tx.booking_date.isoformat()
         norm_merchant = clean_merchant(tx.counterparty_name or tx.description)
-        is_transfer = detect_internal_transfer(
-            description=tx.description,
-            counterparty_name=tx.counterparty_name,
-            counterparty_iban=tx.counterparty_iban,
-            own_ibans=own_ibans,
-        )
+        if tx.is_transfer is not None:
+            is_transfer = tx.is_transfer
+        else:
+            is_transfer = detect_internal_transfer(
+                description=tx.description,
+                counterparty_name=tx.counterparty_name,
+                counterparty_iban=tx.counterparty_iban,
+                own_ibans=own_ibans,
+            )
 
         tuple_key = f"{date_str}|{tx.amount_minor}|{tx.currency}|{norm_merchant}"
         idx = batch_counts.get(tuple_key, 0)
@@ -238,6 +241,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                         "name": acc.name,
                         "currency": acc.currency,
                         "asset_class": acc.asset_class,
+                        "iban": acc.iban,
                     },
                 )
                 if acc.balance_minor is not None:

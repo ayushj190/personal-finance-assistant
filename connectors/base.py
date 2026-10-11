@@ -27,6 +27,7 @@ class RawTransaction:
     counterparty_name: str | None = None
     counterparty_iban: str | None = None
     mcc: str | None = None
+    is_transfer: bool | None = None
 
 
 @dataclass(frozen=True)

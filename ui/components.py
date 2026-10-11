@@ -45,6 +45,38 @@ def kpi_card(
 
 import contextlib
 
+
+@contextlib.contextmanager
+def finance_card(title: str | None = None, subtitle: str | None = None):
+    """Semantic card container pattern using CSS variables and standard spacing."""
+    with st.container(border=True):
+        if title:
+            if subtitle:
+                st.markdown(
+                    f"<div style='margin-bottom: var(--space-sm);'><strong>{title}</strong>"
+                    f"<div style='color: var(--text-muted); font-size: var(--font-size-sm);'>{subtitle}</div></div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"**{title}**")
+        yield
+
+
+def metric_callout(
+    label: str,
+    value: str,
+    delta: str | None = None,
+    subtext: str | None = None,
+) -> None:
+    """Standardized metric callout helper respecting privacy mask and tabular figures."""
+    kpi_card(title=label, value_str=value, delta_str=delta, subtext=subtext)
+
+
+def section_divider() -> None:
+    """Render a clean semantic section divider matching theme tokens."""
+    st.markdown("<hr class='section-divider'/>", unsafe_allow_html=True)
+
+
 @contextlib.contextmanager
 def section_header(title: str, subtitle: str | None = None, badge: str | None = None):
     with st.container(border=True):
@@ -55,3 +87,4 @@ def section_header(title: str, subtitle: str | None = None, badge: str | None = 
 
 def empty_state(title: str, message: str) -> None:
     st.info(f"### 📊 {title}\n\n{message}")
+

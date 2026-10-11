@@ -49,12 +49,35 @@ class TestNormalization(unittest.TestCase):
         # Matched own IBAN
         self.assertTrue(detect_internal_transfer(
             "Overboeking", counterparty_iban="NL91ABNA0417164300", own_ibans=own_ibans))
+        # Own IBAN embedded in raw description
+        self.assertTrue(detect_internal_transfer(
+            "SEPA Overboeking IBAN: NL91ABNA0417164300 BIC: ABNANL2A", own_ibans=own_ibans))
+
         # Keyword matches
         self.assertTrue(detect_internal_transfer("eToro Trading Platform WDL"))
+        self.assertTrue(detect_internal_transfer("eToro Trading Platform DPT"))
         self.assertTrue(detect_internal_transfer("Trade Republic Top-Up"))
         self.assertTrue(detect_internal_transfer("Top-Up Revolut"))
         self.assertTrue(detect_internal_transfer(
             "Overboeking naar spaarrekening"))
+
+        # User name matches (transfers between own accounts)
+        self.assertTrue(detect_internal_transfer("Transfer", counterparty_name="J DOE"))
+        self.assertTrue(detect_internal_transfer("SEPA Overboeking Naam: J DOE Kenmerk: NOTPROVIDED"))
+        self.assertTrue(detect_internal_transfer("Transfer", counterparty_name="Ayush Kumar Joshi"))
+
+        # Guards: Closed trade P&L and dividends must NEVER be internal transfers
+        self.assertFalse(detect_internal_transfer("Closed Trade P&L (Instrument #6636)", counterparty_name="eToro"))
+        self.assertFalse(detect_internal_transfer("Dividend Payment", counterparty_name="eToro"))
+
+        # Guard: SEPA Direct debits (Incasso) are merchant debits, not own transfers even if debtor is user
+        self.assertFalse(detect_internal_transfer(
+            "SEPA Incasso algemeen doorlopend Incassant: NL03ZZZ301243580000 Naam: NS GROEP Voor: J DOE",
+            counterparty_name="NS GROEP",
+        ))
+
+        # Guard: POS card payments are retail spending
+        self.assertFalse(detect_internal_transfer("BEA, Betaalpas Squad (the),PAS543 NR:RBF6LY"))
 
         # Ordinary merchant should NOT be transfer
         self.assertFalse(detect_internal_transfer("Albert Heijn Supermarket"))

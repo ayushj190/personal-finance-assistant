@@ -35,11 +35,16 @@ NOISE_PATTERNS = [
     re.compile(r"\bKENMERK\s*:?\s*[A-Z0-9-]+\b", re.IGNORECASE),
 ]
 
+USER_NAME_PATTERN = re.compile(
+    r"\b(ayush\s*(kumar\s*)?joshi|a\.?\s*k\.?\s*joshi|ak\s*joshi)\b",
+    re.IGNORECASE,
+)
+
 TRANSFER_KEYWORDS = re.compile(
-    r"\b(top-?up|revolut|trade\s*republic|trading\s*republic|trbk|etoro|spaarrekening|"
+    r"\b(top-?up|revolut|trade\s*republic|trading\s*republic|trbk|spaarrekening|"
     r"savings\s*account|overboeking\s*naar\s*spaarrekening|naar\s*betaalrekening|"
     r"eigen\s*rekening|internal\s*transfer|trading\s*platform\s*wdl|"
-    r"trading\s*platform\s*dep|brokerage|ayush\s*kumar\s*joshi|ayush\s*joshi)\b",
+    r"trading\s*platform\s*dep|trading\s*platform\s*dpt|etoro\s*trading\s*platform|brokerage)\b",
     re.IGNORECASE,
 )
 
@@ -92,12 +97,52 @@ def detect_internal_transfer(
     counterparty_iban: str | None = None,
     own_ibans: set[str] | None = None,
 ) -> bool:
+    desc = description or ""
+    cp_name = counterparty_name or ""
+
+    # Guard 1: Direct debits (SEPA Incasso) are payments to creditors, not internal transfers
+    if re.search(r"\b(sepa\s+incasso|incassant)\b", desc, re.IGNORECASE):
+        return False
+
+    # Guard 2: Investment trading activity, returns, and dividends are not transfers
+    if re.search(
+        r"\b(closed\s*trade\s*p&?l|dividend|investment\s*return|market\s*interest)\b",
+        desc,
+        re.IGNORECASE,
+    ):
+        return False
+
+    # Guard 3: POS card payments are retail spending
+    if re.search(
+        r"\b(bea,?\s*betaalpas|card\s*payment|pinbetaling|contactless)\b",
+        desc,
+        re.IGNORECASE,
+    ):
+        return False
+
+    # 1. Counterparty IBAN matches known user IBANs
     if counterparty_iban and own_ibans:
         clean_iban = counterparty_iban.replace(" ", "").upper()
         if clean_iban in own_ibans:
             return True
 
-    text_to_check = f"{description} {counterparty_name or ''}"
+    # 2. Raw description contains one of user's own IBANs (e.g. SEPA text with savings/brokerage IBAN)
+    if own_ibans and desc:
+        clean_desc = desc.replace(" ", "").upper()
+        for own_iban in own_ibans:
+            if own_iban in clean_desc:
+                return True
+
+    # 3. Counterparty name or SEPA Naam matches user's own name
+    if cp_name and USER_NAME_PATTERN.search(cp_name):
+        return True
+
+    sepa_match = re.search(r"Naam:\s*([^,;\n]+?)(?:\s+(?:Machtiging|Omschrijving|IBAN|BIC|Kenmerk|$))", desc, re.IGNORECASE)
+    if sepa_match and USER_NAME_PATTERN.search(sepa_match.group(1).strip()):
+        return True
+
+    # 4. Standard transfer keywords
+    text_to_check = f"{desc} {cp_name}"
     if TRANSFER_KEYWORDS.search(text_to_check):
         return True
 

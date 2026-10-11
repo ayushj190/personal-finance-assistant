@@ -29,6 +29,17 @@ class TestFileImport(unittest.TestCase):
         self.assertEqual(txs[3].amount_minor, -350)
         self.assertIn("GBP", txs[3].description)
 
+    def test_etoro_money_tsv_skips_failed(self):
+        sample_tsv = (
+            "Name\tDate\tAmount\tCurrency\tLocal Amount\tMoney Out\tStatus\n"
+            "STORE UTRECHT NL\t03/10/2026 13:17:09\t-7.49\tEUR\t-7.49\t-7.49\tSettled\n"
+            "FAILED STORE NL\t03/10/2026 13:16:00\t-7.49\tEUR\t-7.49\t-7.49\tFailed\n"
+            "DECLINED CAFE\t03/10/2026 13:15:00\t-5.00\tEUR\t-5.00\t-5.00\tDeclined\n"
+        )
+        fmt, txs = parse_statement(sample_tsv, default_account_id="etoro_cash_eur")
+        self.assertEqual(len(txs), 1)
+        self.assertEqual(txs[0].amount_minor, -749)
+
     def test_revolut_csv_format(self):
         csv_sample = """Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
 CARD_PAYMENT,Current,2026-03-01 12:00:00,2026-03-01 12:05:00,Albert Heijn,-24.50,0.00,EUR,COMPLETED,100.00
