@@ -66,6 +66,8 @@ class Holding:
     region: Optional[str] = None
     sector: Optional[str] = None
     cost_basis_minor: Optional[int] = None
+    status: str = "active"
+    closed_at: Optional[str] = None
 
     @property
     def cost_basis(self) -> float:

@@ -12,7 +12,7 @@ The UI layer houses the Streamlit presentation tier for the personal finance ass
 | `ui/sankey_component/` | Interactive bi-directional Sankey cash flow custom component with Plotly drilldown |
 | `ui/copilot_sidebar.py` | Non blocking Copilot assistant panel, message threads, and quick actions |
 | `ui/pages/dashboard.py` | High level net worth KPIs, cash flow trends, and account summaries |
-| `ui/pages/investments.py` | Direct holdings, copy portfolios, exposure treemaps, and asset drift analysis |
+| `ui/pages/investments.py` | Tabbed portfolio holdings, native allocation donut & exposure bars, drift analysis, dividends, and FIRE goals |
 | `ui/pages/spending.py` | Expense categorization views, monthly burn rates, and budget allocations |
 | `ui/pages/transactions.py` | Searchable transaction ledger, inline filters, and manual edits |
 | `ui/dialogs.py` | Modal dialog popups for adding manual accounts, debts, and holdings |

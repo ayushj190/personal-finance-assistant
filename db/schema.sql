@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS holdings (
   quantity        REAL NOT NULL,
   cost_basis_minor INTEGER,                      -- total, native currency
   currency        TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
+  closed_at       TEXT,
   updated_at      TEXT NOT NULL,
   UNIQUE (account_id, ticker)
 );

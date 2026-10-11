@@ -19,7 +19,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 1 | UI Theme & Layout Token Foundation | Foundation | done |
 | 2 | Dashboard Overhaul & Rerun Fixes | Slice 1 | done |
 | 3 | Spending & Budgeting Streamline | Slice 2 | done |
-| 4 | Investments & Holdings Simplification | Slice 3 | planned |
+| 4 | Investments & Holdings Simplification | Slice 3 | done |
 | 5 | Copilot Calming & Tool Hardening | Slice 4 | planned |
 | 6 | Dutch Financial Law Vector Vault | Slice 5 | done |
 
@@ -86,10 +86,19 @@ spec [0004](../specs/0004-spending-budgeting-streamline/index.md) · code in ui/
 
 ## Slice 3: Investments & Holdings Simplification
 
-### 4. Investments & Holdings Simplification · needs a decision
+### 4. Investments & Holdings Simplification · done
 Organize portfolio holdings into a clean hierarchy, tame noisy visual drilldowns, and resolve statement import desync glitches.
 **Done when:** holdings display clear performance numbers without visual clutter, and statement imports update portfolio records without desync.
-- [ ] Design it (spec): `/architect investments & holdings simplification`
+spec [0006](../specs/0006-investments-holdings-simplification/index.md) · code in ui/pages/investments.py
+- [x] Design it (spec): `/architect investments & holdings simplification`
+- [x] Build it: /develop investments & holdings simplification
+  - [x] Add holdings position status migration and v_holdings view filter (satisfies AC-5)
+  - [x] Implement atomic statement reconciliation repository method (satisfies AC-5, AC-6)
+  - [x] Rebuild portfolio tab with clean allocation donut and exposure bar (satisfies AC-2, AC-3, AC-4, AC-7)
+  - [x] Distribute rebalancing, income, and goals into isolated tabs (satisfies AC-1)
+  - [x] Add automated unit tests for lifecycle, reconciliation, and fallbacks (satisfies AC-1, AC-2, AC-5, AC-6, AC-7)
+- [x] Verify it: /check verify investments & holdings simplification
+- [x] Test it: /test investments & holdings simplification
 
 ## Slice 4: Copilot Calming & Tool Hardening
 

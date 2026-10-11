@@ -127,22 +127,42 @@ def upsert_holdings(conn: sqlite3.Connection, holdings: Iterable[dict[str, Any]]
     query = """
     INSERT INTO holdings (
         account_id, ticker, isin, name, asset_type, region, sector,
-        quantity, cost_basis_minor, currency, updated_at
+        quantity, cost_basis_minor, currency, status, closed_at, updated_at
     ) VALUES (
         :account_id, :ticker, :isin, :name, :asset_type, :region, :sector,
-        :quantity, :cost_basis_minor, :currency, :updated_at
+        :quantity, :cost_basis_minor, :currency, :status, :closed_at, :updated_at
     ) ON CONFLICT(account_id, ticker) DO UPDATE SET
         quantity = excluded.quantity,
         cost_basis_minor = excluded.cost_basis_minor,
         updated_at = excluded.updated_at,
+        status = excluded.status,
+        closed_at = excluded.closed_at,
         name = COALESCE(excluded.name, holdings.name),
         isin = COALESCE(excluded.isin, holdings.isin),
         asset_type = COALESCE(excluded.asset_type, holdings.asset_type),
         region = COALESCE(excluded.region, holdings.region),
         sector = COALESCE(excluded.sector, holdings.sector);
     """
+    records = []
+    for h in holdings:
+        rec = {
+            "account_id": h["account_id"],
+            "ticker": h["ticker"],
+            "isin": h.get("isin"),
+            "name": h.get("name"),
+            "asset_type": h.get("asset_type", "stock"),
+            "region": h.get("region"),
+            "sector": h.get("sector"),
+            "quantity": float(h.get("quantity", 0.0)),
+            "cost_basis_minor": h.get("cost_basis_minor"),
+            "currency": h.get("currency", "EUR"),
+            "status": h.get("status", "active"),
+            "closed_at": h.get("closed_at"),
+            "updated_at": h.get("updated_at") or pd.Timestamp.now().isoformat(),
+        }
+        records.append(rec)
     with conn:
-        conn.executemany(query, holdings)
+        conn.executemany(query, records)
 
 
 def upsert_market_quotes(conn: sqlite3.Connection, quotes: Iterable[dict[str, Any]]) -> None:

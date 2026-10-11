@@ -5,6 +5,7 @@ from config import DB_PATH
 from connectors.file_import.detect import FileFormat, parse_statement, parse_statement_holdings, parse_statement_balance
 from connectors.market_data_service import update_quotes
 from db import database
+from db.repositories import HoldingRepository
 from services.sync_service import import_statement_content
 
 
@@ -165,8 +166,11 @@ def render():
                         }
                         for h in raw_holdings
                     ]
-                    database.upsert_holdings(conn, prepared_h)
-                    msg_parts.append(f"{len(raw_holdings)} holdings saved")
+                    rec_stats = HoldingRepository.reconcile_account_holdings(conn, inv_acc_id, prepared_h)
+                    msg = f"{rec_stats['upserted']} holdings reconciled"
+                    if rec_stats['closed'] > 0:
+                        msg += f" ({rec_stats['closed']} closed)"
+                    msg_parts.append(msg)
                     try:
                         tickers = [h.ticker for h in raw_holdings if h.ticker]
                         update_quotes(tickers, db_conn=conn)

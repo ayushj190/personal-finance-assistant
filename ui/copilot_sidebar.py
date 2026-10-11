@@ -13,7 +13,7 @@ def render_copilot_sidebar() -> None:
     header_container = st.container(key="sticky_sidebar_header")
     with header_container:
         st.markdown(
-            "<h3 style='margin-top: 0.2rem; margin-bottom: 0.8rem;'>Personal Finance Assistant</h3>",
+            "<h1 style='margin-top: 0.0rem; margin-bottom: 0.5rem;'>Personal Finance Assistant</h1>",
             unsafe_allow_html=True,
         )
 
