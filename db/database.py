@@ -281,12 +281,44 @@ def set_setting(conn: sqlite3.Connection, key: str, value: Any) -> None:
 
 
 def add_custom_category(conn: sqlite3.Connection, name: str, kind: str, parent_id: int | None = None) -> int:
-    """Add a new custom expense category."""
+    """Add a new custom expense category or return existing id."""
     clean_name = name.strip()
     with conn:
+        if parent_id is None:
+            existing = conn.execute(
+                "SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND parent_id IS NULL",
+                (clean_name,),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                "SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND parent_id = ?",
+                (clean_name, parent_id),
+            ).fetchone()
+        if existing:
+            return int(existing["id"] if isinstance(existing, sqlite3.Row) else existing[0])
+
         cur = conn.execute(
             "INSERT INTO categories (name, parent_id, kind) VALUES (?, ?, ?)",
             (clean_name, parent_id, kind),
         )
         return cur.lastrowid
+
+
+def delete_transaction(conn: sqlite3.Connection, transaction_id: int) -> bool:
+    """Delete a single transaction by ID."""
+    with conn:
+        cur = conn.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        return cur.rowcount > 0
+
+
+def delete_transactions(conn: sqlite3.Connection, transaction_ids: Iterable[int]) -> int:
+    """Delete multiple transactions by IDs."""
+    ids = [int(i) for i in transaction_ids]
+    if not ids:
+        return 0
+    placeholders = ",".join("?" for _ in ids)
+    with conn:
+        cur = conn.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", ids)
+        return cur.rowcount
+
 

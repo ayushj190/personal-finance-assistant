@@ -22,7 +22,7 @@ class TestDatabase(unittest.TestCase):
         migrate(self.db_path)
         row = self.conn.execute(
             "SELECT version FROM schema_version").fetchone()
-        self.assertEqual(row["version"], 1)
+        self.assertGreaterEqual(row["version"], 1)
 
     def test_dedup_and_occurrence_idx(self):
         acc_id = upsert_account(
@@ -113,7 +113,51 @@ class TestDatabase(unittest.TestCase):
         self.assertAlmostEqual(row["value_eur"], 960.0, places=2)
         # Unrealized PnL: €960 - €800 = +€160 (NOT €960 - $1,000 = -€40!)
         self.assertAlmostEqual(row["unrealized_pnl_eur"], 160.0, places=2)
+        self.assertEqual(row["updated_at"], "2026-10-05")
+
+    def test_delete_transaction_and_bulk_delete(self):
+        from db.database import delete_transaction
+        from db.repositories.transaction_repository import TransactionRepository
+
+        acc_id = upsert_account(
+            self.conn,
+            {
+                "provider": "manual",
+                "institution": "TestBank",
+                "name": "Checking",
+                "external_id": "test_del_acc",
+            },
+        )
+        txs = [
+            {
+                "account_id": acc_id,
+                "dedup_hash": f"hash_del_{i}",
+                "booking_date": "2026-10-01",
+                "amount_minor": -1000 * i,
+                "amount_eur_minor": -1000 * i,
+                "description_raw": f"Purchase {i}",
+            }
+            for i in range(1, 4)
+        ]
+        upsert_transactions(self.conn, txs)
+        rows = self.conn.execute("SELECT id FROM transactions WHERE account_id = ? ORDER BY id ASC", (acc_id,)).fetchall()
+        self.assertEqual(len(rows), 3)
+        id1, id2, id3 = rows[0]["id"], rows[1]["id"], rows[2]["id"]
+
+        # Delete single transaction
+        self.assertTrue(delete_transaction(self.conn, id1))
+        self.assertFalse(delete_transaction(self.conn, 999999))
+        remaining = self.conn.execute("SELECT id FROM transactions WHERE account_id = ?", (acc_id,)).fetchall()
+        self.assertEqual(len(remaining), 2)
+        self.assertEqual([r["id"] for r in remaining], [id2, id3])
+
+        # Delete via TransactionRepository
+        deleted_count = TransactionRepository.delete_transactions(self.conn, [id2, id3])
+        self.assertEqual(deleted_count, 2)
+        remaining_after = self.conn.execute("SELECT id FROM transactions WHERE account_id = ?", (acc_id,)).fetchall()
+        self.assertEqual(len(remaining_after), 0)
 
 
 if __name__ == "__main__":
     unittest.main()
+

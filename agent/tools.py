@@ -1,14 +1,14 @@
 from datetime import date, datetime
-import sys
-import io
 from typing import Any
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 from agent.chart_renderer import render_chart
+from agent.tool_schemas import COPILOT_TOOLS_SCHEMA
 from config import DB_PATH
-import plotly.express as px
 from services.rag_service import search_knowledge_base, ingest_user_document
+from services.legal_vault_service import search_legal_vault, lookup_article
 from services.tax_optimizer import (
     calculate_jaarruimte,
     calculate_groenfondsen_arbitrage,
@@ -25,7 +25,7 @@ from connectors.market_data_service import update_quotes, fetch_yfinance_quote
 from db import database
 from services.llm_client import classify_merchants, search_brave
 from services.mortgage import sync_liability_schedule
-from services.sync_service import import_statement_content, process_and_save_transactions
+from services.sync_service import import_statement_content
 from services.analytics import calculate_current_net_worth
 
 
@@ -612,20 +612,109 @@ def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
         conn.close()
 
 
-def tool_search_financial_knowledge_base(query: str, category: str | None = None) -> dict[str, Any]:
-    """Search the local knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces, or mortgages."""
-    results = search_knowledge_base(query, top_k=3, category=category)
+def tool_search_dutch_law_vault(
+    query: str,
+    category: str | None = None,
+    effective_year: int | None = None,
+) -> dict[str, Any]:
+    """Search the Dutch Financial Law Vector Vault using hybrid FTS5 and sqlite-vec RRF search."""
+    results = search_legal_vault(query, category=category, top_k=4, effective_year=effective_year)
     if not results:
+        # Graceful fallback to legacy knowledge base if no statutory article matches
+        legacy_res = search_knowledge_base(query, top_k=3, category=category)
+        if legacy_res:
+            citations = [
+                {
+                    "article_ref": r.get("id", "Guidance"),
+                    "statute_title": r.get("title", "Dutch Tax & Mortgage Guidance"),
+                    "summary": r.get("content", "")[:220],
+                    "content": r.get("content", ""),
+                    "score": r.get("score", 0.75),
+                    "effective_year": 2026,
+                }
+                for r in legacy_res
+            ]
+            return {
+                "success": True,
+                "results": legacy_res,
+                "citations": citations,
+                "message": f"Retrieved {len(legacy_res)} articles from knowledge base.",
+            }
         return {
             "success": False,
             "results": [],
-            "message": f"No specific guidance found for query '{query}'.",
+            "citations": [],
+            "message": f"No statutory articles found for query '{query}'.",
         }
+
+    citations = [
+        {
+            "chunk_id": r.chunk_id,
+            "article_ref": r.article_ref,
+            "chunk_title": r.chunk_title,
+            "statute_title": r.doc_title,
+            "category": r.category,
+            "effective_year": r.effective_year,
+            "summary": r.summary,
+            "content": r.content,
+            "juriconnect_ref": r.juriconnect_ref,
+            "source_url": r.source_url,
+            "score": r.score,
+        }
+        for r in results
+    ]
+
     return {
         "success": True,
-        "results": results,
-        "message": f"Retrieved {len(results)} relevant articles.",
+        "results": [
+            {
+                "id": f"{r.doc_id}_{r.chunk_id}",
+                "title": f"{r.article_ref} ({r.doc_title})",
+                "category": r.category,
+                "content": r.content,
+                "score": r.score,
+            }
+            for r in results
+        ],
+        "citations": citations,
+        "message": f"Retrieved {len(results)} statutory citations from Dutch Financial Law Vault.",
     }
+
+
+def tool_lookup_tax_law_article(article_ref: str) -> dict[str, Any]:
+    """Look up an exact Dutch statutory tax code or legal article reference (e.g. 'Art. 3.16', 'Art. 5.2', 'Art. 3.120')."""
+    res = lookup_article(article_ref)
+    if not res:
+        return {
+            "success": False,
+            "message": f"Article reference '{article_ref}' not found in the Dutch Financial Law Vault.",
+        }
+
+    citation = {
+        "chunk_id": res.chunk_id,
+        "article_ref": res.article_ref,
+        "chunk_title": res.chunk_title,
+        "statute_title": res.doc_title,
+        "category": res.category,
+        "effective_year": res.effective_year,
+        "summary": res.summary,
+        "content": res.content,
+        "juriconnect_ref": res.juriconnect_ref,
+        "source_url": res.source_url,
+        "score": res.score,
+    }
+
+    return {
+        "success": True,
+        "article": citation,
+        "citations": [citation],
+        "message": f"Found statutory article {res.article_ref} from {res.doc_title}.",
+    }
+
+
+def tool_search_financial_knowledge_base(query: str, category: str | None = None) -> dict[str, Any]:
+    """Search the local knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces, or mortgages."""
+    return tool_search_dutch_law_vault(query, category=category)
 
 
 def tool_search_web(query: str) -> dict[str, Any]:
@@ -902,297 +991,37 @@ def tool_request_profile_form(form_type: str) -> dict[str, Any]:
     }
 
 
-COPILOT_TOOLS_SCHEMA = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_current_net_worth",
-            "description": "Calculate and return real-time net worth (cash, investments, home equity, total).",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_spending_by_category",
-            "description": "Get total spending broken down by category for a specific month and year (e.g. year=2026, month=10), or overall.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "year": {"type": "integer", "description": "4-digit year like 2026"},
-                    "month": {"type": "integer", "description": "Month number (1-12)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_recent_transactions",
-            "description": "Retrieve recent transactions optionally filtered by category.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Number of transactions to return (default 15)"},
-                    "category": {"type": "string", "description": "Category name filter (e.g. Groceries, Dining)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_monthly_cashflow",
-            "description": "Get monthly income, expenses, and savings summary.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "year": {"type": "integer", "description": "Filter by 4-digit year"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_investments",
-            "description": "Analyze investment portfolio asset classes, holdings by type, target drift, and risk profile alignment.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_tax_situation",
-            "description": "Retrieve gross income and wealth balances for Dutch Box 1 and Box 3 calculations.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_mortgage",
-            "description": "Analyze active mortgages, interest rate periods, and upcoming repayment schedules.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_financial_knowledge_base",
-            "description": "Search local unstructured knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces (jaarruimte/lijfrente), or mortgage rules.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query about tax, mortgage, or financial concepts"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_web",
-            "description": "Search web for news, company descriptions, or current market info.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Web search query"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_market_data",
-            "description": "Fetch live market price and fundamentals for a stock or ETF ticker (e.g. AAPL, VWCE.DE).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string", "description": "Ticker symbol"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "toggle_privacy_mode",
-            "description": "Toggle or set privacy mode to hide/show amounts.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "enable": {"type": "boolean", "description": "True to hide amounts, False to show"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "set_theme",
-            "description": "Switch app theme between 'dark' and 'light'.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "theme": {"type": "string", "enum": ["dark", "light"]},
-                },
-                "required": ["theme"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "set_active_allocation_profile",
-            "description": "Set the active investment asset allocation profile by name.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "profile_name": {"type": "string", "description": "Name of the allocation profile"},
-                },
-                "required": ["profile_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_savings_rate",
-            "description": "Update APY interest rate or balance for a savings/cash account.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "institution_or_name": {"type": "string", "description": "Bank or account name"},
-                    "apy_pct": {"type": "number", "description": "Annual interest percentage yield"},
-                    "balance_eur": {"type": "number", "description": "Optional updated balance"},
-                },
-                "required": ["institution_or_name", "apy_pct"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "add_mortgage_payment",
-            "description": "Record extra principal repayment on a mortgage.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "loan_name": {"type": "string", "description": "Name or lender of the loan"},
-                    "amount_eur": {"type": "number", "description": "Extra repayment amount in EUR"},
-                    "paid_date": {"type": "string", "description": "YYYY-MM-DD date"},
-                    "recalc": {"type": "string", "enum": ["lower_payment", "shorter_term"]},
-                },
-                "required": ["loan_name", "amount_eur"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_risk_profile",
-            "description": "Retrieve user's investment risk profile.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "auto_categorize_uncategorized_transactions",
-            "description": "Automatically categorize uncategorized transactions using AI.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Max transactions to categorize (default 50)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "request_profile_form",
-            "description": "Request UI dialog form for 'tax_profile' or 'risk_profile'.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "form_type": {"type": "string", "enum": ["tax_profile", "risk_profile", "mortgage_config"]},
-                },
-                "required": ["form_type"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "simulate_tax_optimization",
-            "description": "Simulate 4-way capital trade-off (Mortgage Prepayment vs Pillar 3 Jaarruimte vs Groenfonds vs Taxable ETF) with interactive trajectory chart.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "capital_eur": {"type": "number", "description": "Lump sum amount in EUR to allocate (e.g. 5000, 10000)"},
-                    "horizon_years": {"type": "integer", "description": "Investment horizon in years (default 10)"},
-                },
-                "required": ["capital_eur"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate_pension_room",
-            "description": "Calculate official Dutch Pillar 3 pension gap (Jaarruimte), immediate Box 1 tax refund, and compound tax shield.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "gross_income": {"type": "number", "description": "Optional gross annual income override"},
-                    "factor_a": {"type": "number", "description": "Optional Factor A (pensioenaangroei from UPO)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_green_fund_strategy",
-            "description": "Analyze Dutch Groenfondsen double tax benefit (Box 3 exemption up to €71k/€142k and 0.1% Box 1 credit) with certified fund list.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "target_allocation": {"type": "number", "description": "Prospective amount in EUR to invest in green funds"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "diagnose_tax_leaks",
-            "description": "Proactively scan accounts, liabilities, and income for Dutch tax inefficiencies (cash drag, unused HRA/prepayments, top bracket deductions).",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ingest_financial_document",
-            "description": "Index a custom financial text document (e.g. UPO pension statement, mortgage advice note) into local RAG knowledge base.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "doc_title": {"type": "string", "description": "Title of the document"},
-                    "content": {"type": "string", "description": "Full text or summary of the document"},
-                    "category": {"type": "string", "description": "Category (e.g. pension, mortgage, tax, custom)"},
-                },
-                "required": ["doc_title", "content"],
-            },
-        },
-    },
+__all__ = [
+    "COPILOT_TOOLS_SCHEMA",
+    "tool_get_current_net_worth",
+    "tool_toggle_privacy_mode",
+    "tool_set_theme",
+    "tool_set_active_allocation_profile",
+    "tool_update_savings_rate",
+    "tool_add_mortgage_payment",
+    "tool_save_risk_profile",
+    "tool_get_risk_profile",
+    "tool_analyze_investments",
+    "tool_parse_and_import_file",
+    "tool_auto_categorize_uncategorized_transactions",
+    "tool_get_spending_by_category",
+    "tool_get_recent_transactions",
+    "tool_get_monthly_cashflow",
+    "tool_search_dutch_law_vault",
+    "tool_lookup_tax_law_article",
+    "tool_search_financial_knowledge_base",
+    "tool_search_web",
+    "tool_analyze_market_data",
+    "tool_save_tax_profile",
+    "tool_simulate_tax_optimization",
+    "tool_calculate_pension_room",
+    "tool_analyze_green_fund_strategy",
+    "tool_diagnose_tax_leaks",
+    "tool_ingest_financial_document",
+    "tool_analyze_tax_situation",
+    "tool_analyze_mortgage",
+    "tool_request_profile_form",
 ]
+
 
 

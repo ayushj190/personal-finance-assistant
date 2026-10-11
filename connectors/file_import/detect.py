@@ -169,5 +169,5 @@ def parse_statement_holdings(content: str | bytes, default_account_id: str = "im
 
 
 def parse_statement_balance(content: str | bytes, default_account_id: str = "imported_account") -> int | None:
-    fmt = detect_format(content)
+    detect_format(content)
     return None

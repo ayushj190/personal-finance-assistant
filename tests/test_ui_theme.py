@@ -1,4 +1,3 @@
-import re
 import unittest
 from unittest.mock import patch
 
@@ -19,7 +18,6 @@ from ui.theme import (
     COLOR_SAVINGS,
     COLOR_UNCATEGORIZED,
     EMERALD,
-    FINANCIAL_COLOR_MAP,
     FONT_FAMILY_MONO,
     FONT_FAMILY_SANS,
     FONT_SIZE_BASE,

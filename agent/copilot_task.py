@@ -24,6 +24,7 @@ class CopilotTask:
         self.figure: Any = None
         self.df: Any = None
         self.form_request: Any = None
+        self.citations: Any = None
         self.error: str | None = None
         self._lock = threading.Lock()
         self.thread: threading.Thread | None = None
@@ -51,6 +52,7 @@ class CopilotTask:
                 self.figure = res.get("figure")
                 self.df = res.get("df")
                 self.form_request = res.get("form_request")
+                self.citations = res.get("citations")
                 self.status = "typing"
 
             stream = res.get("stream", [])

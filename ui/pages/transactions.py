@@ -62,20 +62,23 @@ def render():
     # Data Editor with Privacy Mode support
     from ui.components import format_money, is_hidden
 
+    df_display = df.copy()
+    if not df_display.empty:
+        df_display.insert(0, "select", False)
+
     if is_hidden():
-        df_display = df.copy()
         df_display["amount_eur"] = df_display["amount_eur"].map(
             lambda x: format_money(x))
         amount_col_cfg = st.column_config.TextColumn(
             "Amount (€)", disabled=True)
     else:
-        df_display = df
         amount_col_cfg = st.column_config.NumberColumn(
             "Amount (€)", format="€%.2f", disabled=True)
 
     edited_df = st.data_editor(
         df_display,
         column_config={
+            "select": st.column_config.CheckboxColumn("Select", help="Check to select transaction to delete", default=False),
             "id": None,
             "booking_date": st.column_config.DateColumn("Transaction Date"),
             "account": st.column_config.TextColumn("Account / Card", disabled=True),
@@ -90,8 +93,33 @@ def render():
         key="tx_editor",
     )
 
+    # Check for selected rows to delete
+    selected_ids = []
+    if not edited_df.empty and "select" in edited_df.columns:
+        selected_mask = edited_df["select"] == True
+        if selected_mask.any():
+            selected_ids = [int(i) for i in edited_df.loc[selected_mask, "id"].tolist()]
+
+    col_save, col_del, _ = st.columns([1, 1, 2])
+    with col_save:
+        save_pressed = st.button("Save Changes", type="primary")
+    with col_del:
+        if selected_ids:
+            delete_pressed = st.button(
+                f"🗑️ Delete Selected ({len(selected_ids)})",
+                type="secondary",
+                help="Delete checked transactions from database"
+            )
+        else:
+            delete_pressed = False
+
+    if delete_pressed and selected_ids:
+        deleted_count = database.delete_transactions(conn, selected_ids)
+        st.success(f"Successfully deleted {deleted_count} transaction(s)!")
+        st.rerun()
+
     # Check for edits
-    if st.button("Save Changes", type="primary"):
+    if save_pressed:
         # Compare original df with edited_df
         updated_rules = 0
         for idx, row in edited_df.iterrows():

@@ -35,10 +35,28 @@ class TestFileImport(unittest.TestCase):
             "STORE UTRECHT NL\t03/10/2026 13:17:09\t-7.49\tEUR\t-7.49\t-7.49\tSettled\n"
             "FAILED STORE NL\t03/10/2026 13:16:00\t-7.49\tEUR\t-7.49\t-7.49\tFailed\n"
             "DECLINED CAFE\t03/10/2026 13:15:00\t-5.00\tEUR\t-5.00\t-5.00\tDeclined\n"
+            "PENDING RESTAURANT\t03/10/2026 13:14:00\t-25.00\tEUR\t-25.00\t-25.00\tPending\n"
+            "REJECTED TRANSFER\t03/10/2026 13:13:00\t-100.00\tEUR\t-100.00\t-100.00\tRejected\n"
         )
         fmt, txs = parse_statement(sample_tsv, default_account_id="etoro_cash_eur")
         self.assertEqual(len(txs), 1)
         self.assertEqual(txs[0].amount_minor, -749)
+
+    def test_etoro_statement_skips_pending_and_rejected(self):
+        sample = """Account Activity
+Date,Type,Details,Amount,Realized Equity Change,Realized Equity,Balance
+01/10/2026 10:00:00,Deposit,Deposit via iDEAL,500.00,0.00,500.00,500.00
+01/10/2026 11:00:00,Deposit,Deposit Pending,200.00,0.00,700.00,700.00
+01/10/2026 12:00:00,Withdrawal,Withdrawal Rejected,-100.00,0.00,600.00,600.00
+
+Open Positions
+Position ID,Action,Amount,Units,Open Rate,Current Rate,Spread,Profit(USD),Open Date,Take Profit Rate,Stop Loss Rate,Rollover Fees and Dividends,Copied From,Type,ISIN,Notes
+"""
+        fmt, txs = parse_statement(sample)
+        self.assertEqual(fmt, FileFormat.ETORO_STATEMENT_CSV)
+        self.assertEqual(len(txs), 1)
+        self.assertEqual(txs[0].amount_minor, 50000)
+
 
     def test_revolut_csv_format(self):
         csv_sample = """Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance

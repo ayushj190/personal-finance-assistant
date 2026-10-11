@@ -1,5 +1,4 @@
-from datetime import datetime, date
-import threading
+from datetime import datetime
 from ui.pages import (
     dashboard,
     investments,
@@ -134,10 +133,10 @@ with st.container(key="top_app_bar"):
             on_change=_on_privacy_toggle,
         )
 
-# Render active main page first so main pages are never delayed
-active_page.run()
-
 # Global sidebar
 with st.sidebar:
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
+
+# Render active main page
+active_page.run()

@@ -1,7 +1,6 @@
 import calendar
 from datetime import date, timedelta
 import sqlite3
-from typing import Any
 
 from db import database
 

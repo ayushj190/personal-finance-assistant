@@ -4,7 +4,7 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from services.mortgage import calculate_mortgage_schedule, sync_liability_schedule
+from services.mortgage import calculate_mortgage_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
 from ui.components import format_money, is_hidden, kpi_card, section_header
 
@@ -93,7 +93,6 @@ def render():
     ORDER BY t.booking_date DESC
     """
     mortgage_tx_rows = conn.execute(tx_query, p_params).fetchall()
-    _total_bank_paid = sum(r["amount_eur"] for r in mortgage_tx_rows)
 
     home_val = (lib["home_value_minor"] / 100.0) if lib.get(
         "home_value_minor") is not None else original_principal

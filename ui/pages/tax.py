@@ -4,7 +4,7 @@ import plotly.express as px
 
 from config import DB_PATH
 from db import database
-from ui.components import format_money, section_header, kpi_card, is_hidden
+from ui.components import section_header, kpi_card, is_hidden
 from services.tax_report_service import generate_dutch_tax_statement
 from services.tax_optimizer import (
     calculate_jaarruimte,
@@ -12,7 +12,12 @@ from services.tax_optimizer import (
     simulate_capital_allocation_tradeoff,
     CERTIFIED_DUTCH_GREEN_FUNDS,
 )
-from services.rag_service import get_all_knowledge_documents, search_knowledge_base
+from services.legal_vault_service import (
+    search_legal_vault,
+    get_all_legal_documents,
+    get_all_chunks_for_document,
+    ingest_legal_corpus,
+)
 
 
 
@@ -270,8 +275,10 @@ def render():
         )
         fig_sim.update_layout(
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=10, r=10, t=50, b=10),
+            margin=dict(l=55, r=20, t=50, b=25),
             hovermode="x unified",
+            yaxis=dict(tickprefix="€", tickformat="~s", automargin=True),
+            xaxis=dict(automargin=True),
         )
         if is_hidden():
             fig_sim.update_traces(hovertemplate="Censored<extra></extra>")
@@ -300,22 +307,66 @@ def render():
         with st.expander("🌿 View Certified Dutch Green Funds List & Specifications"):
             st.dataframe(pd.DataFrame(CERTIFIED_DUTCH_GREEN_FUNDS), use_container_width=True, hide_index=True)
 
-    # 8. Dutch Financial Law Vault (RAG Explorer)
-    with section_header("📚 Dutch Financial Law Vault", "Persistent knowledge base of Dutch tax codes and mortgage regulations"):
-        search_query = st.text_input("🔍 Search Dutch tax & mortgage articles...", "", placeholder="e.g. Box 3 deemed return, hypotheekrenteaftrek, Groenfondsen...")
+    # 8. Dutch Financial Law Vault (Hybrid Vector Explorer)
+    with section_header("📚 Dutch Financial Law Vector Vault", "Local SQLite vector database with hybrid search & statutory citations"):
+        col_ctrl1, col_ctrl2 = st.columns([3, 1])
+        with col_ctrl1:
+            search_query = st.text_input(
+                "🔍 Search Dutch legislation, tax codes & court rulings...",
+                "",
+                placeholder="e.g. Art. 3.16, werkelijk rendement box 3, hypotheekrenteaftrek, Wtp jaarruimte...",
+                key="legal_vault_search_input",
+            )
+        with col_ctrl2:
+            category_opts = {
+                "All Domains": None,
+                "Box 1 Income": "tax_box1",
+                "Box 3 Wealth": "tax_box3",
+                "Pensions & Jaarruimte": "pension",
+                "Mortgages & Wft": "mortgage",
+                "Gifting & Estate": "estate",
+                "Expat 30% Facility": "expat",
+                "Green Funds": "green_funds",
+            }
+            selected_cat_label = st.selectbox("Filter Domain", list(category_opts.keys()), key="legal_vault_domain_filter")
+            selected_cat = category_opts[selected_cat_label]
+
         if search_query.strip():
-            matched_chunks = search_knowledge_base(search_query, top_k=4)
-            if matched_chunks:
-                for mc in matched_chunks:
-                    with st.expander(f"📖 {mc['title']} (Score: {mc['score']})"):
-                        st.markdown(mc["content"])
+            matched_results = search_legal_vault(search_query, category=selected_cat, top_k=6)
+            if matched_results:
+                st.caption(f"Retrieved {len(matched_results)} matching provisions via Reciprocal Rank Fusion (sqlite-vec + FTS5):")
+                for res in matched_results:
+                    match_pct = int(res.score * 100)
+                    with st.expander(f"📜 {res.article_ref} — {res.chunk_title} ({match_pct}% match)", expanded=True):
+                        st.markdown(f"**Statute**: *{res.doc_title}* | **Effective Year**: `{res.effective_year}` | **Category**: `{res.category}`")
+                        if res.summary:
+                            st.info(f"💡 **Plain Language Digest**: {res.summary}")
+                        if res.juriconnect_ref:
+                            st.caption(f"🔗 Juriconnect Reference: `{res.juriconnect_ref}`")
+                        st.markdown("**Statutory Text / Legal Ruling:**")
+                        st.markdown(res.content)
             else:
-                st.info("No matching articles found in knowledge base.")
+                st.info("No matching statutory articles found in the local vector vault for this query.")
         else:
-            all_docs = get_all_knowledge_documents()
-            st.markdown(f"**Indexed Knowledge Base Articles ({len(all_docs)} loaded):**")
-            for doc in all_docs:
-                with st.expander(f"📑 {doc['title']} — `{doc['category']}` ({doc['word_count']} words)"):
-                    st.markdown(doc["content"])
+            legal_docs = get_all_legal_documents()
+            st.markdown(f"**Statutory Knowledge Base ({len(legal_docs)} statutes indexed across 6 domains):**")
+            for doc in legal_docs:
+                chunks = get_all_chunks_for_document(doc["id"])
+                cat_badge = doc.get("category", "general")
+                with st.expander(f"🏛️ {doc['title']} ({len(chunks)} articles) — `{cat_badge}`"):
+                    st.caption(f"Official BWB ID: `{doc.get('bwb_id') or 'N/A'}` | Source: {doc.get('source_url') or 'wetten.overheid.nl'}")
+                    for ch in chunks:
+                        with st.expander(f"📄 {ch['article_ref']}: {ch['chunk_title']}", expanded=False):
+                            if ch.get("summary"):
+                                st.markdown(f"**Digest**: {ch['summary']}")
+                            st.markdown(ch.get("content", ""))
+
+        st.divider()
+        col_btn, _ = st.columns([2, 4])
+        with col_btn:
+            if st.button("🔄 Reindex Legal Knowledge Corpus", use_container_width=True):
+                ingest_res = ingest_legal_corpus(force_reindex=True)
+                st.success(f"Successfully reindexed {ingest_res.get('documents_indexed')} statutes and {ingest_res.get('chunks_indexed')} statutory chunks!")
+                st.rerun()
 
 

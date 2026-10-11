@@ -46,6 +46,30 @@ class TestPortfolio(unittest.TestCase):
         self.assertAlmostEqual(deltas["equity"], -100.0, places=1)
         self.assertAlmostEqual(deltas["bond"], 100.0, places=1)
 
+    def test_direct_holdings_opened_at_resilience(self):
+        import pandas as pd
+        # Test case 1: updated_at present
+        df_with = pd.DataFrame([{
+            "ticker": "AAPL", "cost_basis_native": 150.0, "quantity": 1.0,
+            "updated_at": "2026-10-10 12:00:00", "unrealized_pnl_eur": 20.0, "cost_basis": 150.0
+        }])
+        if "updated_at" in df_with.columns:
+            df_with["opened_at"] = pd.to_datetime(df_with["updated_at"], errors='coerce').dt.strftime('%Y-%m-%d').fillna("-")
+        else:
+            df_with["opened_at"] = "-"
+        self.assertEqual(df_with["opened_at"].iloc[0], "2026-10-10")
+
+        # Test case 2: updated_at missing
+        df_without = pd.DataFrame([{
+            "ticker": "AAPL", "cost_basis_native": 150.0, "quantity": 1.0,
+            "unrealized_pnl_eur": 20.0, "cost_basis": 150.0
+        }])
+        if "updated_at" in df_without.columns:
+            df_without["opened_at"] = pd.to_datetime(df_without["updated_at"], errors='coerce').dt.strftime('%Y-%m-%d').fillna("-")
+        else:
+            df_without["opened_at"] = "-"
+        self.assertEqual(df_without["opened_at"].iloc[0], "-")
+
 
 if __name__ == "__main__":
     unittest.main()

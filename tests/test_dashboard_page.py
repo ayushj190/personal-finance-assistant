@@ -202,6 +202,52 @@ class TestDashboardPage(unittest.TestCase):
         submit_key = mock_submit.call_args.kwargs.get("key")
         self.assertEqual(submit_key, "dashboard_acc_42_submit_btn")
 
+    @patch("ui.pages.dashboard.AccountRepository.get_all_latest_snapshots")
+    @patch("streamlit.markdown")
+    @patch("streamlit.columns")
+    @patch("streamlit.container")
+    @patch("streamlit.popover")
+    def test_account_card_markdown_no_code_block_breakout(
+        self,
+        mock_popover,
+        mock_container,
+        mock_cols,
+        mock_markdown,
+        mock_snapshots,
+    ):
+        """Verify account card markdown does not contain multi-line indentation that causes code block breakouts."""
+        mock_snapshots.return_value = {}
+        mock_cols.side_effect = lambda spec, **kw: [
+            MagicMock() for _ in range(len(spec) if isinstance(spec, (list, tuple)) else int(spec))
+        ]
+        mock_container.return_value.__enter__.return_value = MagicMock()
+        mock_popover.return_value.__enter__.return_value = MagicMock()
+
+        class DummyAcc:
+            id = 99
+            provider = "enable_banking"
+            institution = "ABN AMRO"
+            name = "Checking"
+            currency = "EUR"
+            asset_class = "cash"
+            external_id = None
+            iban = None
+            apy = None
+            is_active = 1
+
+        fn = getattr(_render_accounts_grid, "__wrapped__", _render_accounts_grid)
+        fn(
+            accounts=[DummyAcc()],
+            nw_data={"acc_balances": {99: 678.0}},
+            sync_logs=[],
+            conn=self.conn,
+        )
+
+        md_calls = [c.args[0] for c in mock_markdown.call_args_list if c.args]
+        for md_str in md_calls:
+            for line in md_str.split("\n"):
+                self.assertFalse(line.startswith("    "), f"Line has 4+ space indentation: {line}")
+
     @patch("ui.pages.dashboard.empty_state")
     @patch("ui.pages.dashboard.AccountRepository.get_active_accounts")
     def test_empty_state_zero_accounts(self, mock_get_accounts, mock_empty_state):
@@ -217,33 +263,21 @@ class TestDashboardPage(unittest.TestCase):
 
     @patch("ui.pages.dashboard.empty_state")
     @patch("ui.pages.dashboard.TransactionRepository.get_recent_spending_df")
-    @patch("ui.pages.dashboard.TransactionRepository.get_v_transactions")
-    @patch("ui.pages.dashboard.detect_recurring_charges")
-    @patch("streamlit.columns")
     def test_empty_state_zero_transactions(
         self,
-        mock_cols,
-        mock_detect,
-        mock_get_v_tx,
         mock_get_spend_df,
         mock_empty_state,
     ):
-        """AC-6: Guided empty state renders cleanly when zero spending/recurring transactions exist."""
+        """AC-6: Guided empty state renders cleanly when zero spending transactions exist."""
         import pandas as pd
 
-        mock_cols.side_effect = lambda spec, **kw: [
-            MagicMock() for _ in range(len(spec) if isinstance(spec, (list, tuple)) else int(spec))
-        ]
         mock_get_spend_df.return_value = pd.DataFrame()
-        mock_get_v_tx.return_value = []
-        mock_detect.return_value = []
 
         fn = getattr(_render_analytics_section, "__wrapped__", _render_analytics_section)
         fn(conn=self.conn)
 
         empty_titles = [call.args[0] for call in mock_empty_state.call_args_list]
         self.assertIn("No Recent Spending", empty_titles)
-        self.assertIn("No Recurring Bills", empty_titles)
 
 
 if __name__ == "__main__":

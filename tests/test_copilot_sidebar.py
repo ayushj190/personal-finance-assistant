@@ -60,5 +60,32 @@ class TestCopilotSidebar(unittest.TestCase):
         self.assertIn("Connection timed out", at.session_state["copilot_history"][0]["content"])
 
 
+    def test_copilot_sidebar_layout_css(self):
+        """Verify that copilot chat history and sidebar container have flex and scroll styles."""
+        from pathlib import Path
+        css_path = Path("ui/theme/common.css")
+        self.assertTrue(css_path.exists())
+        content = css_path.read_text(encoding="utf-8")
+        self.assertIn(".st-key-copilot_chat_history", content)
+        self.assertIn("overflow-y: auto", content)
+        self.assertIn("div:has(.st-key-copilot_chat_history)", content)
+        self.assertIn(".st-key-copilot_chat_input", content)
+        self.assertIn("box-sizing: border-box", content)
+        self.assertIn("flex-shrink: 0", content)
+        self.assertIn(".st-key-copilot_chat_history::-webkit-scrollbar-thumb", content)
+
+    def test_copilot_sidebar_multiple_messages(self):
+        """Verify that the sidebar renders with multiple messages without crashing."""
+        at = AppTest.from_function(_render_sidebar_app)
+        at.session_state["copilot_history"] = [
+            {"role": "user", "content": f"User question {i}"} if i % 2 == 0
+            else {"role": "assistant", "content": f"Assistant response {i} " + "details " * 20}
+            for i in range(8)
+        ]
+        at.run()
+        self.assertEqual(len(at.chat_message), 8)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -1,6 +1,5 @@
 import unittest
 from agent import tools
-from services.rag_service import search_knowledge_base
 
 
 class TestCopilotTools(unittest.TestCase):

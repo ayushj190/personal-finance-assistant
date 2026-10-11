@@ -8,7 +8,6 @@ import streamlit as st
 from config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from db import database
 from services import secrets_vault
-from services.mortgage import sync_liability_schedule
 from ui.components import section_header
 
 
@@ -476,10 +475,6 @@ def render():
                            "Annuity, Linear, or Interest-Only amortisation"):
                 existing_lib = conn.execute(
                     "SELECT * FROM liabilities LIMIT 1").fetchone()
-                existing_rp = None
-                if existing_lib:
-                    existing_rp = conn.execute(
-                        "SELECT * FROM liability_rate_periods WHERE liability_id = ? ORDER BY from_date ASC LIMIT 1", (existing_lib["id"],)).fetchone()
 
                 from ui.dialogs import mortgage_config_dialog
                 if st.button("⚙️ Configure Mortgage / Loan", type="primary"):

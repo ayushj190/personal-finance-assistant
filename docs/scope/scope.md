@@ -18,9 +18,10 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | E | Local Copilot Core | Context | in-progress |
 | 1 | UI Theme & Layout Token Foundation | Foundation | done |
 | 2 | Dashboard Overhaul & Rerun Fixes | Slice 1 | done |
-| 3 | Spending & Budgeting Streamline | Slice 2 | planned |
+| 3 | Spending & Budgeting Streamline | Slice 2 | done |
 | 4 | Investments & Holdings Simplification | Slice 3 | planned |
 | 5 | Copilot Calming & Tool Hardening | Slice 4 | planned |
+| 6 | Dutch Financial Law Vector Vault | Slice 5 | done |
 
 ## Brownfield context
 
@@ -70,10 +71,18 @@ spec [0003](../specs/0003-dashboard-overhaul-rerun-fixes/index.md) · code in ui
 
 ## Slice 2: Spending & Budgeting Streamline
 
-### 3. Spending & Budgeting Streamline · needs a decision
+### 3. Spending & Budgeting Streamline · done
 Clean up expense category breakdowns, move dense manual forms into dialog modals, and fix calculation inaccuracies in transaction sums.
 **Done when:** expense views present simplified spending metrics, manual entry forms open cleanly in popups, and ledger sums calculate accurately.
-- [ ] Design it (spec): `/architect spending & budgeting streamline`
+spec [0004](../specs/0004-spending-budgeting-streamline/index.md) · code in ui/pages/spending.py
+- [x] Design it (spec): `/architect spending & budgeting streamline`
+- [x] Build it: /develop spending & budgeting streamline
+  - [x] Fix ledger sums and branch budget variance rollup calculations (satisfies AC-1, AC-2, AC-3, AC-7)
+  - [x] Implement modal dialogs for category budgets and mortgage assignment (satisfies AC-4, AC-5)
+  - [x] Streamline spending layout with action triggers, fragments, and collapsible Sankey (satisfies AC-4, AC-5, AC-6)
+  - [x] Add unit test suite for calculation accuracy, rollup logic, and dialog interactions (satisfies AC-1, AC-2, AC-3, AC-7)
+- [x] Verify it: /check verify spending & budgeting streamline
+- [x] Test it: /test spending & budgeting streamline
 
 ## Slice 3: Investments & Holdings Simplification
 
@@ -88,6 +97,22 @@ Organize portfolio holdings into a clean hierarchy, tame noisy visual drilldowns
 Tame the copilot sidebar into an on demand assistant without unprompted background runs, and make query tool errors recover gracefully.
 **Done when:** copilot runs only on user request, background automation stays quiet, and failed tool queries display friendly troubleshooting notices.
 - [ ] Design it (spec): `/architect copilot calming & tool hardening`
+
+## Slice 5: Dutch Financial Law Vector Vault
+
+### 6. Dutch Financial Law Vector Vault · done
+Upgrade the financial law knowledge vault into a local SQLite vector database with hybrid search, dual embeddings, and statutory article citations.
+**Done when:** legal vault returns hybrid vector and keyword search results in single-digit milliseconds, copilot tools surface verified Dutch legal articles, and chat responses include expandable citation cards.
+spec [0005](../specs/0005-dutch-financial-law-vector-vault/index.md) · code in services/legal_vault_service.py
+- [x] Design it (spec): `/architect dutch financial law vector vault`
+- [x] Build it: /develop dutch financial law vector vault
+  - [x] Add sqlite-vec and fastembed dependencies with database schema migrations (satisfies AC-1, AC-2)
+  - [x] Dual embedding provider with Ollama and FastEmbed 384-dim CPU fallback (satisfies AC-3, AC-7)
+  - [x] Ingest curated Dutch financial legal corpus across six life domains (satisfies AC-1)
+  - [x] Hybrid search with Reciprocal Rank Fusion and copilot tool integration (satisfies AC-4, AC-5)
+  - [x] Interactive law explorer UI and copilot citation chip components (satisfies AC-6)
+- [x] Verify it: /check verify dutch financial law vector vault
+- [x] Test it: /test dutch financial law vector vault
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.

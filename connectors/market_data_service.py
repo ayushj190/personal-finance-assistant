@@ -162,9 +162,7 @@ def get_ticker_logo_url(ticker: str) -> str:
             domains = json.load(f)
     except Exception:
         domains = {}
-        
-    fallback = f"https://ui-avatars.com/api/?name={ticker}&background=random&color=fff&rounded=true#.png"
-    
+
     if ticker in domains:
         domain = domains[ticker]
         if domain:

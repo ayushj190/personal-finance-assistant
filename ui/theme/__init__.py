@@ -52,8 +52,6 @@ THEME_DIR = Path(__file__).resolve().parent
 COMMON_CSS_FILE = THEME_DIR / "common.css"
 LIGHT_CSS_FILE = THEME_DIR / "light.css"
 DARK_CSS_FILE = THEME_DIR / "dark.css"
-CUSTOM_CSS_FILE = THEME_DIR / "custom.css"
-STYLES_CSS_FILE = THEME_DIR / "styles.css"
 
 
 def inject_custom_css() -> None:
@@ -72,8 +70,6 @@ def inject_custom_css() -> None:
     common_css = ""
     if COMMON_CSS_FILE.exists():
         common_css = COMMON_CSS_FILE.read_text(encoding="utf-8")
-    elif CUSTOM_CSS_FILE.exists():
-        common_css = CUSTOM_CSS_FILE.read_text(encoding="utf-8")
 
     css = f"<style>\n{theme_css}\n{common_css}\n</style>"
     st.markdown(css, unsafe_allow_html=True)

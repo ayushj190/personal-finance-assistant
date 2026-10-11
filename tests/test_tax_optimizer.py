@@ -4,7 +4,6 @@ from services.tax_optimizer import (
     calculate_groenfondsen_arbitrage,
     simulate_capital_allocation_tradeoff,
     diagnose_tax_leakage,
-    CERTIFIED_DUTCH_GREEN_FUNDS,
 )
 
 

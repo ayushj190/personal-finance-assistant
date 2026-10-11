@@ -9,7 +9,8 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 | File | Owns |
 |---|---|
 | `agent/copilot.py` | Copilot turn coordination, system prompt definitions, and tool dispatch mapping |
-| `agent/tools.py` | Implementation of native functions called by the LLM and their JSON schema specs |
+| `agent/tool_schemas.py` | JSON schema definitions for LLM tool function calling (`COPILOT_TOOLS_SCHEMA`) |
+| `agent/tools.py` | Implementation of native deterministic functions invoked by the Copilot |
 | `agent/copilot_task.py` | Background thread wrapper handling asynchronous tool calls and token streams |
 | `agent/chart_renderer.py` | Construction of Plotly figures dynamically requested during conversational turns |
 

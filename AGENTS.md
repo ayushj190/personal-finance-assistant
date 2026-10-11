@@ -4,12 +4,12 @@
 
 - **Language / Runtime**: Python 3.11+
 - **Framework**: Streamlit
-- **Key dependencies**: SQLite3 (WAL mode), Ollama (local LLM), Plotly, Pandas, Cryptography, Keyring
+- **Key dependencies**: SQLite3 (WAL mode), Ollama (local LLM), Plotly, Pandas, Cryptography, Keyring, sqlite-vec, FastEmbed
 - **Package manager**: pip (virtual environment in `.venv`)
 
 ## Build approach
 
-<TBD, set by /scope>
+Tracer Bullet (vertical slices through each core area end to end)
 
 ## Commands
 

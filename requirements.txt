@@ -11,3 +11,5 @@ pytr
 mt-940
 openpyxl
 pypdf
+sqlite-vec
+fastembed

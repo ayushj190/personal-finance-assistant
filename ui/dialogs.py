@@ -1,7 +1,9 @@
-import streamlit as st
-from db import database
-from config import DB_PATH
 from datetime import date, datetime
+import pandas as pd
+import streamlit as st
+
+from config import DB_PATH
+from db import database
 from services.mortgage import sync_liability_schedule
 
 @st.dialog("📝 Complete Tax Profile")
@@ -167,3 +169,264 @@ def mortgage_config_dialog(existing_lib_id=None):
                 conn.close()
                 st.rerun()
     conn.close()
+
+
+@st.dialog("✏️ Set Category Budgets")
+def set_category_budget_dialog(conn=None):
+    """Modal dialog to configure monthly spending budget caps for expense categories."""
+    close_on_exit = False
+    if conn is None:
+        conn = database.connect(DB_PATH)
+        close_on_exit = True
+    try:
+        from services.budget_service import get_all_category_budgets, set_category_budget
+
+        # Fetch deduplicated parent and child categories
+        cats = conn.execute(
+            """
+            SELECT MIN(c.id) as id, c.name, c.kind, c.parent_id
+            FROM categories c
+            WHERE c.kind IN ('fixed', 'discretionary') AND c.name != 'Uncategorized'
+            GROUP BY LOWER(c.name), COALESCE(c.parent_id, -1)
+            ORDER BY c.parent_id IS NOT NULL, c.name ASC
+            """
+        ).fetchall()
+
+        if not cats:
+            st.info("No expense categories found to configure.")
+            return
+
+        budgets = get_all_category_budgets(conn)
+
+        tab_fixed, tab_disc = st.tabs(["🔒 Fixed Expenses", "🛍️ Discretionary Spend"])
+
+        for tab, tab_kind, icon in [
+            (tab_fixed, "fixed", "🔒"),
+            (tab_disc, "discretionary", "🛍️"),
+        ]:
+            with tab:
+                kind_cats = [c for c in cats if c["kind"] == tab_kind]
+                parents = [c for c in kind_cats if c["parent_id"] is None]
+                children = [c for c in kind_cats if c["parent_id"] is not None]
+
+                # Build clean hierarchical options dict
+                options_map = {}
+                for p in parents:
+                    options_map[p["id"]] = f"⭐ {p['name']} (Main)"
+                    for s in children:
+                        if s["parent_id"] == p["id"]:
+                            options_map[s["id"]] = f"   ↳ {s['name']}"
+
+                # Add orphan subcategories if any
+                for s in children:
+                    if s["id"] not in options_map:
+                        options_map[s["id"]] = f"   ↳ {s['name']}"
+
+                if not options_map:
+                    st.caption(f"No {tab_kind} categories available.")
+                    continue
+
+                with st.form(f"set_{tab_kind}_budget_form"):
+                    st.caption(f"Configure monthly spending caps for {tab_kind} categories.")
+                    selected_id = st.selectbox(
+                        "Category",
+                        options=list(options_map.keys()),
+                        format_func=lambda x: options_map[x],
+                        key=f"dialog_{tab_kind}_cat_select",
+                    )
+                    curr_val = float(budgets.get(selected_id, 0.0))
+                    new_val = st.number_input(
+                        "Monthly Spending Limit (€)",
+                        min_value=0.0,
+                        value=curr_val,
+                        step=50.0,
+                        format="%.2f",
+                        key=f"dialog_{tab_kind}_limit_input",
+                        help="Set to 0.00 to mark as unbudgeted",
+                    )
+
+                    c_save, c_cancel = st.columns(2)
+                    with c_save:
+                        save_clicked = st.form_submit_button(
+                            "Save Budget", type="primary", use_container_width=True
+                        )
+                    with c_cancel:
+                        cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
+
+                    if save_clicked:
+                        set_category_budget(conn, selected_id, new_val)
+                        st.success(f"Saved €{new_val:,.2f} limit for {options_map[selected_id]}!")
+                        st.rerun(scope="app")
+                    elif cancel_clicked:
+                        st.rerun(scope="app")
+
+                # Show current budgets table for this group
+                active_rows = []
+                for cid, cname in options_map.items():
+                    b_val = budgets.get(cid, 0.0)
+                    if b_val > 0:
+                        clean_lbl = cname.replace("⭐ ", "").replace("   ↳ ", "")
+                        active_rows.append({"Category": clean_lbl, "Monthly Limit (€)": f"€{b_val:,.2f}"})
+
+                if active_rows:
+                    st.markdown("**Active Budgets:**")
+                    st.dataframe(pd.DataFrame(active_rows), use_container_width=True, hide_index=True)
+    finally:
+        if close_on_exit:
+            conn.close()
+
+
+@st.dialog("🏠 Assign Transaction to Mortgage")
+def assign_mortgage_dialog(conn=None, tx_id=None):
+    """Modal dialog to link an uncategorized transaction directly to a mortgage liability."""
+    close_on_exit = False
+    if conn is None:
+        conn = database.connect(DB_PATH)
+        close_on_exit = True
+    try:
+        liabilities = conn.execute("SELECT * FROM liabilities ORDER BY name ASC").fetchall()
+
+        # Query uncategorized transactions
+        if tx_id:
+            uncat_rows = conn.execute(
+                """
+                SELECT t.id, t.booking_date, a.name AS account,
+                       COALESCE(NULLIF(t.merchant_normalized, ''), t.description_raw) AS merchant,
+                       -t.amount_eur_minor / 100.0 AS amount_eur,
+                       t.amount_eur_minor,
+                       t.description_raw
+                FROM transactions t
+                JOIN accounts a ON a.id = t.account_id
+                WHERE t.id = ?
+                """,
+                (tx_id,),
+            ).fetchall()
+        else:
+            uncat_rows = conn.execute(
+                """
+                SELECT t.id, t.booking_date, a.name AS account,
+                       COALESCE(NULLIF(t.merchant_normalized, ''), t.description_raw) AS merchant,
+                       -t.amount_eur_minor / 100.0 AS amount_eur,
+                       t.amount_eur_minor,
+                       t.description_raw
+                FROM transactions t
+                JOIN accounts a ON a.id = t.account_id
+                WHERE (t.category_id IS NULL OR t.category_id = (SELECT id FROM categories WHERE name = 'Uncategorized' LIMIT 1))
+                  AND t.amount_eur_minor < 0
+                  AND t.is_internal_transfer = 0
+                ORDER BY abs(t.amount_eur_minor) DESC
+                LIMIT 50
+                """
+            ).fetchall()
+
+        if not uncat_rows:
+            st.info("🎉 No uncategorized transactions available to assign.")
+            return
+
+        tx_options = {}
+        for r in uncat_rows:
+            lbl = f"{r['booking_date']} — €{r['amount_eur']:,.2f} — {str(r['merchant'])[:40]}"
+            tx_options[r["id"]] = (lbl, r)
+
+        with st.form("assign_mortgage_dialog_form"):
+            st.caption("Link this expense to your mortgage loan to sync payment schedules and category tracking.")
+            default_tx_id = tx_id if (tx_id and tx_id in tx_options) else list(tx_options.keys())[0]
+            chosen_tx_id = st.selectbox(
+                "Uncategorized Transaction",
+                options=list(tx_options.keys()),
+                index=list(tx_options.keys()).index(default_tx_id),
+                format_func=lambda x: tx_options[x][0],
+                key="dialog_mortgage_tx_select",
+            )
+            chosen_tx = tx_options[chosen_tx_id][1]
+
+            if liabilities:
+                lib_map = {lib["id"]: f"{lib['name']} ({lib['lender']})" for lib in liabilities}
+                chosen_lib_id = st.selectbox(
+                    "Target Mortgage Loan",
+                    options=list(lib_map.keys()),
+                    format_func=lambda x: lib_map[x],
+                    key="dialog_mortgage_lib_select",
+                )
+            else:
+                chosen_lib_id = None
+                st.warning("No mortgage loan configured yet. Set one up in Settings or Mortgage tab.")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                payment_kind = st.selectbox(
+                    "Payment Assignment",
+                    options=["Monthly Installment", "Extra Repayment (Boetevrij)"],
+                    key="dialog_mortgage_payment_kind",
+                )
+            with c2:
+                recalc_strat = "lower_payment"
+                if payment_kind == "Extra Repayment (Boetevrij)":
+                    recalc_strat = st.selectbox(
+                        "Recalculation Benefit",
+                        options=["lower_payment", "shorter_term"],
+                        format_func=lambda x: "Lower Monthly Payment" if x == "lower_payment" else "Shorten Loan Term",
+                        key="dialog_mortgage_recalc_strat",
+                    )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                submitted = st.form_submit_button(
+                    "Confirm Mortgage Assignment",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=chosen_lib_id is None,
+                )
+            with col2:
+                cancelled = st.form_submit_button("Cancel", use_container_width=True)
+
+            if submitted and chosen_lib_id is not None:
+                mortgage_cat = conn.execute("SELECT id FROM categories WHERE name = 'Mortgage'").fetchone()
+                if not mortgage_cat:
+                    with conn:
+                        cur = conn.execute("INSERT INTO categories (name, kind) VALUES ('Mortgage', 'fixed')")
+                        mortgage_cat_id = cur.lastrowid
+                else:
+                    mortgage_cat_id = mortgage_cat["id"]
+
+                tx_date = str(chosen_tx["booking_date"])
+                tx_amount_minor = abs(int(chosen_tx["amount_eur_minor"]))
+                tx_merchant = str(chosen_tx["merchant"] or "")
+
+                with conn:
+                    # 1. Update transaction category to Mortgage
+                    conn.execute(
+                        "UPDATE transactions SET category_id = ?, category_source = 'user' WHERE id = ?",
+                        (mortgage_cat_id, chosen_tx["id"]),
+                    )
+                    # 2. Update merchant category rule
+                    if tx_merchant:
+                        database.upsert_category_rule(conn, tx_merchant, mortgage_cat_id, source="user")
+                    # 3. Save payment match pattern on liability if unset
+                    conn.execute(
+                        "UPDATE liabilities SET payment_match_pattern = COALESCE(payment_match_pattern, ?) WHERE id = ?",
+                        (tx_merchant, chosen_lib_id),
+                    )
+                    # 4. If extra repayment, record in liability_extra_payments
+                    if payment_kind == "Extra Repayment (Boetevrij)":
+                        conn.execute(
+                            """
+                            INSERT INTO liability_extra_payments (liability_id, paid_date, amount_minor, recalc)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT(liability_id, paid_date) DO UPDATE SET
+                                amount_minor = excluded.amount_minor,
+                                recalc = excluded.recalc
+                            """,
+                            (chosen_lib_id, tx_date, tx_amount_minor, recalc_strat),
+                        )
+
+                if payment_kind == "Extra Repayment (Boetevrij)":
+                    sync_liability_schedule(conn, chosen_lib_id)
+
+                st.success(f"Successfully linked €{chosen_tx['amount_eur']:,.2f} on {tx_date} to mortgage liability!")
+                st.rerun(scope="app")
+            elif cancelled:
+                st.rerun(scope="app")
+    finally:
+        if close_on_exit:
+            conn.close()

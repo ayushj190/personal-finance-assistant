@@ -2,18 +2,16 @@ from datetime import date, datetime
 import json
 import sqlite3
 from typing import Any
-import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
 from config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
-from services.analytics import calculate_current_net_worth, detect_recurring_charges
-from ui.charts import build_spending_donut
+from services.analytics import calculate_current_net_worth
+from ui.charts import render_cash_flow_sankey
 from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
 from ui.logos import get_institution_logo_svg
-from ui.theme import render_chart
 from connectors.etoro_service import EtoroService
 
 
@@ -311,20 +309,19 @@ def _render_accounts_grid(
                 logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
 
                 with col:
-                    with st.container(border=True):
-                        # Top Row: Vector Logo + Account Name + Status Dot + Settings Popover Cog
+                    with st.container(border=True, key=f"account_card_{acc.id}"):
+                        # Top Row: Vector Logo + Account Name (top-left) and Settings Popover (top-right)
                         c_header_info, c_header_cog = st.columns(
-                            [0.88, 0.12], gap=0, vertical_alignment="center", wrap=False
+                            [0.85, 0.15], gap=0, vertical_alignment="center", wrap=False
                         )
                         with c_header_info:
-                            st.markdown(
-                                f"""<div class='account-card-marker'>
-                                    {logo_svg}
-                                    <span class='account-card-name' title='{disp_name}'>{disp_name}</span>
-                                    {status_badge(badge_txt, badge_kind)}
-                                </div>""",
-                                unsafe_allow_html=True,
+                            header_html = (
+                                f"<div class='account-card-marker'>"
+                                f"{logo_svg}"
+                                f"<span class='account-card-name' title='{disp_name}'>{disp_name}</span>"
+                                f"</div>"
                             )
+                            st.markdown(header_html, unsafe_allow_html=True)
                         with c_header_cog:
                             with st.popover(
                                 "",
@@ -374,26 +371,33 @@ def _render_accounts_grid(
                                                 save_conn.close()
                                             st.rerun(scope="app")
 
-                        # Balance and fixed Subtext Slot
+                        # Bottom Row: Currency Symbol + Balance + APY/Details (bottom-left) and Status Dot (bottom-right)
                         val_display = "****" if is_hidden() else f"{bal:,.2f}"
+                        details_html = ""
                         if sub:
                             masked_sub = mask_if_hidden(sub) if is_hidden() else sub
-                            sub_content = f"<span style='color: #10B981; font-weight: 600;'>✨ {masked_sub}</span>"
+                            details_html = f"<span class='account-card-details details-accrued' title='{masked_sub}'>✨ {masked_sub}</span>"
                         elif acc.apy:
-                            sub_content = f"<span style='color: var(--text-muted); font-weight: 500;'>📈 APY: {acc.apy}%</span>"
-                        else:
-                            sub_content = "&nbsp;"
+                            details_html = f"<span class='account-card-details details-apy' title='{acc.apy}% APY'>📈 {acc.apy}% APY</span>"
 
-                        card_body_html = f"""<div class='account-card-body'>
-                            <div class='account-balance-text'><span class='account-currency-symbol'>{sym}</span><span class='account-balance-number'>{val_display}</span></div>
-                            <div class='account-subtext-slot'>{sub_content}</div>
-                        </div>"""
-                        st.markdown(card_body_html, unsafe_allow_html=True)
+                        card_bottom_html = (
+                            f"<div class='account-card-bottom'>"
+                            f"<div class='account-card-amount-group'>"
+                            f"<span class='account-currency-symbol'>{sym}</span>"
+                            f"<span class='account-balance-number'>{val_display}</span>"
+                            f"{details_html}"
+                            f"</div>"
+                            f"<div class='account-card-status-slot'>"
+                            f"{status_badge(badge_txt, badge_kind)}"
+                            f"</div>"
+                            f"</div>"
+                        )
+                        st.markdown(card_bottom_html, unsafe_allow_html=True)
 
 
 @st.fragment
 def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
-    """Render spending donut chart drilldown and upcoming recurring bills inside an isolated fragment."""
+    """Render cash flow Sankey diagram with interactive drill-down inside an isolated fragment."""
     should_close = False
     db_conn = conn
     if db_conn is None:
@@ -404,94 +408,30 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
             return
 
     try:
-        col_left, col_right = st.columns([1, 1])
+        today = date.today()
+        start_date = today.replace(day=1).isoformat()
+        end_date = today.isoformat()
+        month_label = today.strftime("%B %Y")
 
-        with col_left:
-            with section_header("Spending by Category", "Last 30 days expenses"):
-                spend_df = TransactionRepository.get_recent_spending_df(db_conn, days=30)
-                if not spend_df.empty:
-                    drill_key = "donut_drilldown_dashboard"
-                    if drill_key not in st.session_state:
-                        st.session_state[drill_key] = None
-
-                    if st.session_state[drill_key]:
-                        if st.button("← Back to Categories", key="dashboard_donut_back_btn"):
-                            st.session_state[drill_key] = None
-                            st.rerun(scope="fragment")
-
-                    fig = build_spending_donut(
-                        spend_df, drilldown_category=st.session_state[drill_key]
-                    )
-
-                    selection = render_chart(
-                        fig,
-                        use_container_width=True,
-                        on_select="rerun",
-                        selection_mode="points",
-                        key="dashboard_spending_donut_chart",
-                    )
-
-                    clicked_label = None
-                    if (
-                        selection
-                        and hasattr(selection, "selection")
-                        and selection.selection.get("points")
-                    ):
-                        clicked_point = selection.selection["points"][0]
-                        clicked_label = clicked_point.get("label") or clicked_point.get("x")
-                    elif (
-                        selection
-                        and isinstance(selection, dict)
-                        and selection.get("selection", {}).get("points")
-                    ):
-                        clicked_point = selection["selection"]["points"][0]
-                        clicked_label = clicked_point.get("label") or clicked_point.get("x")
-
-                    if clicked_label:
-                        if isinstance(clicked_label, str):
-                            clicked_label = clicked_label.replace("&amp;", "&")
-                        if st.session_state.get(drill_key) is None:
-                            st.session_state[drill_key] = clicked_label
-                            st.rerun(scope="fragment")
-                else:
-                    empty_state(
-                        "No Recent Spending",
-                        "No expense transactions recorded in the last 30 days. Import your statements in the 'Import' page to view spending breakdowns.",
-                    )
-
-        with col_right:
-            with section_header(
-                "Upcoming Recurring Bills",
-                "Detected automatically from transactions",
-            ):
-                all_tx_rows = TransactionRepository.get_v_transactions(db_conn, limit=500)
-                recurring = detect_recurring_charges(all_tx_rows)
-                if recurring:
-                    rec_df = pd.DataFrame(recurring[:10])[
-                        ["merchant", "cadence", "amount_eur", "next_expected_date"]
-                    ]
-                    rec_df.columns = ["Merchant", "Cadence", "Amount", "Next Expected"]
-                    if is_hidden():
-                        rec_df["Amount"] = rec_df["Amount"].map(lambda x: format_money(x))
-                        amt_cfg = st.column_config.TextColumn("Amount", disabled=True)
-                    else:
-                        amt_cfg = st.column_config.NumberColumn(
-                            "Amount", format="€%.2f", disabled=True
-                        )
-                    st.dataframe(
-                        rec_df,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
-                            "Amount": amt_cfg,
-                        },
-                    )
-                else:
-                    empty_state(
-                        "No Recurring Bills",
-                        "No recurring subscriptions or bills detected yet. As you import recurring bank transactions, they will appear here.",
-                    )
+        with section_header(
+            "Cash Flow Topology",
+            f"Month-to-date cash flows ({month_label}) • Click any node or link in the diagram to filter",
+        ):
+            spend_df = TransactionRepository.get_recent_spending_df(
+                db_conn, start_date=start_date, end_date=end_date
+            )
+            if not spend_df.empty:
+                render_cash_flow_sankey(
+                    db_conn,
+                    key_prefix="dashboard_sankey",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            else:
+                empty_state(
+                    "No Recent Spending",
+                    f"No expense transactions recorded month-to-date ({month_label}). Import your statements in the 'Import' page to view spending breakdowns.",
+                )
     finally:
         if should_close:
             db_conn.close()

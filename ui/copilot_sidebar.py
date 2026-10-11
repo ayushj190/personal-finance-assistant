@@ -2,7 +2,7 @@ import streamlit as st
 from agent.copilot_task import CopilotTask
 
 
-def render_copilot_sidebar(settings_page=None) -> None:
+def render_copilot_sidebar() -> None:
     """Renders the snappy, tool-calling Copilot sidebar assistant with non-blocking fragment execution."""
     if "copilot_history" not in st.session_state:
         st.session_state.copilot_history = []
@@ -77,6 +77,22 @@ def render_copilot_sidebar(settings_page=None) -> None:
                         st.plotly_chart(msg["figure"], use_container_width=True, theme=None)
                     if msg.get("df") is not None and not msg["df"].empty:
                         st.dataframe(msg["df"], use_container_width=True, hide_index=True)
+                    if msg.get("citations"):
+                        with st.expander(f"📜 Verified Statutory Citations ({len(msg['citations'])})", expanded=False):
+                            for cit in msg["citations"]:
+                                art = cit.get("article_ref", "")
+                                stat = cit.get("statute_title", "")
+                                yr = cit.get("effective_year", 2026)
+                                sc = cit.get("score")
+                                score_badge = f" • Match: {int(sc*100)}%" if sc is not None else ""
+                                st.markdown(f"**{art}** — *{stat}* ({yr}){score_badge}")
+                                if cit.get("summary"):
+                                    st.caption(cit["summary"])
+                                if cit.get("juriconnect_ref"):
+                                    st.caption(f"Ref: `{cit['juriconnect_ref']}`")
+                                with st.expander("Verbatim statutory text"):
+                                    st.markdown(cit.get("content", ""))
+                                st.divider()
 
             active_task: CopilotTask | None = st.session_state.get("copilot_active_task")
             if active_task:
@@ -111,7 +127,8 @@ def render_copilot_sidebar(settings_page=None) -> None:
                             curr_status = active_task.status
                             fig = active_task.figure
                             df = active_task.df
-                            form_req = active_task.form_request
+                            form_req = getattr(active_task, "form_request", None)
+                            cits = getattr(active_task, "citations", None)
 
                         text_so_far = "".join(chunks_snapshot)
                         if curr_status != "completed":
@@ -133,12 +150,29 @@ def render_copilot_sidebar(settings_page=None) -> None:
                                 st.plotly_chart(fig, use_container_width=True, theme=None)
                             if df is not None and not df.empty:
                                 st.dataframe(df, use_container_width=True, hide_index=True)
+                            if cits:
+                                with st.expander(f"📜 Verified Statutory Citations ({len(cits)})", expanded=False):
+                                    for cit in cits:
+                                        art = cit.get("article_ref", "")
+                                        stat = cit.get("statute_title", "")
+                                        yr = cit.get("effective_year", 2026)
+                                        sc = cit.get("score")
+                                        score_badge = f" • Match: {int(sc*100)}%" if sc is not None else ""
+                                        st.markdown(f"**{art}** — *{stat}* ({yr}){score_badge}")
+                                        if cit.get("summary"):
+                                            st.caption(cit["summary"])
+                                        if cit.get("juriconnect_ref"):
+                                            st.caption(f"Ref: `{cit['juriconnect_ref']}`")
+                                        with st.expander("Verbatim statutory text"):
+                                            st.markdown(cit.get("content", ""))
+                                        st.divider()
 
                             st.session_state.copilot_history.append({
                                 "role": "assistant",
                                 "content": text_so_far,
                                 "figure": fig,
                                 "df": df,
+                                "citations": cits,
                             })
                             st.session_state.pop("copilot_active_task", None)
 

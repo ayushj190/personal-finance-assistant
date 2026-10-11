@@ -1,5 +1,4 @@
 """Vector brand logos for financial institutions."""
-import html
 
 _LOGOS: dict[str, str] = {
     "abn": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="{size}" height="{size}">

@@ -3,8 +3,6 @@ from typing import Any
 import pandas as pd
 from datetime import date
 
-from config import DB_PATH
-from db import database
 import streamlit as st
 
 
@@ -48,31 +46,35 @@ def calculate_budget_variance(
     init_budget_table(_conn)
     target_month = year_month or date.today().strftime("%Y-%m")
 
-    # Fetch all expense categories with parent info
+    # Fetch all expense categories with parent info (excluding Uncategorized, defensively deduped)
     categories = _conn.execute(
         """
-        SELECT c.id, c.name, c.kind, c.parent_id, COALESCE(b.monthly_limit_eur, 0.0) as budget_eur
+        SELECT MIN(c.id) as id, c.name, c.kind, c.parent_id, COALESCE(MAX(b.monthly_limit_eur), 0.0) as budget_eur
         FROM categories c
         LEFT JOIN category_budgets b ON b.category_id = c.id
         WHERE c.kind IN ('fixed', 'discretionary')
+          AND c.name != 'Uncategorized'
+        GROUP BY LOWER(c.name), COALESCE(c.parent_id, -1)
         ORDER BY c.parent_id IS NOT NULL, c.name ASC
         """
     ).fetchall()
 
+    cat_by_id = {cat["id"]: cat for cat in categories}
     children_map: dict[int, list[int]] = {}
     for cat in categories:
         p_id = cat["parent_id"]
         if p_id is not None:
             children_map.setdefault(p_id, []).append(cat["id"])
 
-    # Fetch actual spending in this date range or calendar month
+    # Fetch actual spending in integer minor units (cents)
     if start_date and end_date:
         spend_rows = _conn.execute(
             """
-            SELECT category_id, SUM(-amount_eur_minor) / 100.0 as spent_eur
+            SELECT category_id, SUM(-amount_eur_minor) as spent_minor
             FROM transactions
             WHERE is_internal_transfer = 0
               AND amount_eur_minor < 0
+              AND category_id IS NOT NULL
               AND booking_date >= ? AND booking_date <= ?
             GROUP BY category_id
             """,
@@ -81,45 +83,76 @@ def calculate_budget_variance(
     else:
         spend_rows = _conn.execute(
             """
-            SELECT category_id, SUM(-amount_eur_minor) / 100.0 as spent_eur
+            SELECT category_id, SUM(-amount_eur_minor) as spent_minor
             FROM transactions
             WHERE is_internal_transfer = 0
               AND amount_eur_minor < 0
+              AND category_id IS NOT NULL
               AND strftime('%Y-%m', booking_date) = ?
             GROUP BY category_id
             """,
             (target_month,),
         ).fetchall()
 
-    direct_spend = {r["category_id"]: float(r["spent_eur"]) for r in spend_rows if r["category_id"]}
+    direct_spend_minor = {
+        int(r["category_id"]): int(r["spent_minor"])
+        for r in spend_rows
+        if r["category_id"]
+    }
+
+    # Branch Rollup Rule:
+    # A parent category with explicit B_parent > 0 defines the branch target.
+    # If B_parent == 0, the sum of child limits defines the branch target.
+    # Parent and child targets are never summed together (eliminates double counting).
+    root_categories = [c for c in categories if c["parent_id"] is None or c["parent_id"] not in cat_by_id]
+    total_budget_minor = 0
+    total_spent_minor = 0
+    branch_budget_map: dict[int, int] = {}
+    parent_spent_map: dict[int, int] = {}
+
+    for p in root_categories:
+        p_id = p["id"]
+        p_b_minor = int(round(float(p["budget_eur"]) * 100))
+        sub_ids = children_map.get(p_id, [])
+        c_b_minor = sum(
+            int(round(float(cat_by_id[s]["budget_eur"]) * 100))
+            for s in sub_ids
+            if s in cat_by_id
+        )
+        eff_b_minor = p_b_minor if p_b_minor > 0 else c_b_minor
+        branch_budget_map[p_id] = eff_b_minor
+        total_budget_minor += eff_b_minor
+
+        p_s_minor = direct_spend_minor.get(p_id, 0) + sum(
+            direct_spend_minor.get(s, 0) for s in sub_ids
+        )
+        parent_spent_map[p_id] = p_s_minor
+        total_spent_minor += p_s_minor
 
     rows = []
-    total_budget = 0.0
-    total_spent = 0.0
-
     for cat in categories:
         c_id = cat["id"]
         c_name = cat["name"]
-        budget = float(cat["budget_eur"])
         p_id = cat["parent_id"]
+        is_parent = (p_id is None or p_id not in cat_by_id)
 
-        if p_id is None:
-            spent = direct_spend.get(c_id, 0.0) + sum(direct_spend.get(sub_id, 0.0) for sub_id in children_map.get(c_id, []))
-            total_budget += budget
-            total_spent += spent
+        if is_parent:
+            b_minor = branch_budget_map.get(c_id, int(round(float(cat["budget_eur"]) * 100)))
+            s_minor = parent_spent_map.get(c_id, direct_spend_minor.get(c_id, 0))
         else:
-            spent = direct_spend.get(c_id, 0.0)
-            if budget > 0:
-                total_budget += budget
+            b_minor = int(round(float(cat["budget_eur"]) * 100))
+            s_minor = direct_spend_minor.get(c_id, 0)
 
-        pct = (spent / budget * 100.0) if budget > 0 else (100.0 if spent > 0 else 0.0)
-        remaining = budget - spent if budget > 0 else 0.0
+        budget = b_minor / 100.0
+        spent = s_minor / 100.0
+        remaining = (b_minor - s_minor) / 100.0 if b_minor > 0 else 0.0
+        pct = (s_minor / b_minor * 100.0) if b_minor > 0 else (100.0 if s_minor > 0 else 0.0)
 
-        if budget == 0:
+        if b_minor == 0:
             status = "Unbudgeted"
-        elif spent > budget:
+        elif s_minor > b_minor:
             status = "⚠️ Over Budget"
-        elif spent >= budget * 0.85:
+        elif s_minor >= int(round(b_minor * 0.85)):
             status = "🟡 Near Limit"
         else:
             status = "✅ On Track"
@@ -127,7 +160,7 @@ def calculate_budget_variance(
         rows.append({
             "category_id": c_id,
             "category": c_name,
-            "is_parent": p_id is None,
+            "is_parent": is_parent,
             "parent_id": p_id,
             "kind": cat["kind"].title(),
             "budget_eur": budget,
@@ -140,9 +173,9 @@ def calculate_budget_variance(
     df = pd.DataFrame(rows)
     return {
         "month": target_month,
-        "total_budget_eur": total_budget,
-        "total_spent_eur": total_spent,
-        "variance_eur": total_budget - total_spent,
+        "total_budget_eur": total_budget_minor / 100.0,
+        "total_spent_eur": total_spent_minor / 100.0,
+        "variance_eur": (total_budget_minor - total_spent_minor) / 100.0,
         "categories_df": df,
     }
 
@@ -159,7 +192,6 @@ def calculate_12_month_runway_forecast(
     cur_bal = liquid_cash
     bud_bal = liquid_cash
 
-    today = date.today()
     for m in range(1, horizon_months + 1):
         m_label = f"Month {m}"
         cur_bal = cur_bal + projected_monthly_income - current_burn_rate

@@ -5,7 +5,7 @@ from config import DB_PATH
 from connectors.file_import.detect import FileFormat, parse_statement, parse_statement_holdings, parse_statement_balance
 from connectors.market_data_service import update_quotes
 from db import database
-from services.sync_service import import_statement_content, process_and_save_transactions
+from services.sync_service import import_statement_content
 
 
 def render():

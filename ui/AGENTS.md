@@ -8,8 +8,8 @@ The UI layer houses the Streamlit presentation tier for the personal finance ass
 
 | File | Owns |
 |---|---|
-| `ui/theme.py` | Legacy theme wrapper reexporting modular tokens and styles |
-| `ui/theme/` | Modular styling tokens, stylesheets, and chart rendering helpers |
+| `ui/theme/` | Design system tokens (`tokens.py`), theme styles (`common.css`, `dark.css`, `light.css`), and Plotly theme engine (`charts.py`) |
+| `ui/sankey_component/` | Interactive bi-directional Sankey cash flow custom component with Plotly drilldown |
 | `ui/copilot_sidebar.py` | Non blocking Copilot assistant panel, message threads, and quick actions |
 | `ui/pages/dashboard.py` | High level net worth KPIs, cash flow trends, and account summaries |
 | `ui/pages/investments.py` | Direct holdings, copy portfolios, exposure treemaps, and asset drift analysis |

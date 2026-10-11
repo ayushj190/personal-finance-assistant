@@ -8,6 +8,8 @@ The services layer contains the core financial computation engines and business 
 
 | File | Owns |
 |---|---|
+| `services/legal_vault_service.py` | Local Dutch Financial Law Vector Vault with hybrid search, Reciprocal Rank Fusion, and FastEmbed |
+| `services/budget_service.py` | Monthly budget variance rollups, category budget limits, and 12-month runway forecasting |
 | `services/tax_optimizer.py` | Dutch fiscal math for Jaarruimte, Box 3 asset taxes, and green investment arbitrage |
 | `services/mortgage.py` | Amortization tables, interest tax deductions (HRA), and early prepayment savings |
 | `services/analytics.py` | Aggregates liquid cash, investment portfolios, and real estate equity for net worth metrics |

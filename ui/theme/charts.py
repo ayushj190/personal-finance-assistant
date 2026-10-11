@@ -4,14 +4,7 @@ import plotly.io as pio
 import streamlit as st
 
 from ui.theme.tokens import (
-    COLOR_CASH,
-    COLOR_DISCRETIONARY,
-    COLOR_FIXED,
-    COLOR_INCOME,
-    COLOR_INVESTMENT,
-    COLOR_LIABILITY,
     COLOR_PALETTE,
-    COLOR_SAVINGS,
     COLOR_UNCATEGORIZED,
     FONT_FAMILY_SANS,
     SEMANTIC_FINANCIAL_COLORS,
@@ -50,6 +43,8 @@ def register_plotly_theme() -> None:
 
     chart_font_family = FONT_FAMILY_SANS.replace('"', "")
 
+    template.layout.margin = dict(l=55, r=25, t=40, b=40)
+
     if current_theme == "light":
         template.layout.font = dict(
             family=chart_font_family,
@@ -62,6 +57,7 @@ def register_plotly_theme() -> None:
             tickfont=dict(color="#475569", size=11),
             title=dict(font=dict(color="#0F172A", size=12)),
             showgrid=True,
+            automargin=True,
         )
         template.layout.yaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.25)",
@@ -69,6 +65,7 @@ def register_plotly_theme() -> None:
             tickfont=dict(color="#475569", size=11),
             title=dict(font=dict(color="#0F172A", size=12)),
             showgrid=True,
+            automargin=True,
         )
         template.layout.legend = dict(
             font=dict(color="#334155"),
@@ -88,6 +85,7 @@ def register_plotly_theme() -> None:
             tickfont=dict(color="#94A3B8", size=11),
             title=dict(font=dict(color="#F8FAFC", size=12)),
             showgrid=True,
+            automargin=True,
         )
         template.layout.yaxis = dict(
             gridcolor="rgba(148, 163, 184, 0.12)",
@@ -95,6 +93,7 @@ def register_plotly_theme() -> None:
             tickfont=dict(color="#94A3B8", size=11),
             title=dict(font=dict(color="#F8FAFC", size=12)),
             showgrid=True,
+            automargin=True,
         )
         template.layout.legend = dict(
             font=dict(color="#CBD5E1"),
@@ -124,6 +123,10 @@ def render_chart(figure_or_data: Any, *args: Any, **kwargs: Any) -> Any:
             figure_or_data.layout.plot_bgcolor = "rgba(0,0,0,0)"
         if not figure_or_data.layout.template:
             figure_or_data.layout.template = "pfa_theme"
+        if hasattr(figure_or_data.layout, "xaxis") and figure_or_data.layout.xaxis.automargin is None:
+            figure_or_data.layout.xaxis.automargin = True
+        if hasattr(figure_or_data.layout, "yaxis") and figure_or_data.layout.yaxis.automargin is None:
+            figure_or_data.layout.yaxis.automargin = True
 
     return st.plotly_chart(figure_or_data, *args, **kwargs)
 

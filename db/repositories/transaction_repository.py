@@ -133,8 +133,19 @@ class TransactionRepository:
         return [r["expenses"] for r in rows if r["expenses"] > 0]
 
     @staticmethod
-    def get_recent_spending_df(conn: sqlite3.Connection, days: int = 30):
+    def get_recent_spending_df(
+        conn: sqlite3.Connection,
+        days: int = 30,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
         import pandas as pd
+        if start_date and end_date:
+            date_cond = "t.booking_date >= ? AND t.booking_date <= ?"
+            params: tuple[Any, ...] = (start_date, end_date)
+        else:
+            date_cond = f"t.booking_date >= date('now', '-{days} days')"
+            params = ()
         spend_query = f"""
         SELECT c.name AS category, t.merchant_normalized AS merchant, -t.amount_eur_minor / 100.0 AS amount_eur
         FROM transactions t
@@ -142,8 +153,10 @@ class TransactionRepository:
         WHERE t.amount_eur_minor < 0
           AND c.kind IN ('fixed', 'discretionary')
           AND t.is_internal_transfer = 0
-          AND t.booking_date >= date('now', '-{days} days')
+          AND {date_cond}
         """
+        if params:
+            return pd.read_sql_query(spend_query, conn, params=params)
         return pd.read_sql_query(spend_query, conn)
 
     @staticmethod
@@ -198,5 +211,22 @@ class TransactionRepository:
                 (name, target_amount, account_id),
             )
             return cur.lastrowid
+
+    @staticmethod
+    def delete_transaction(conn: sqlite3.Connection, transaction_id: int) -> bool:
+        with conn:
+            cur = conn.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+            return cur.rowcount > 0
+
+    @staticmethod
+    def delete_transactions(conn: sqlite3.Connection, transaction_ids: Iterable[int]) -> int:
+        ids = [int(i) for i in transaction_ids]
+        if not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        with conn:
+            cur = conn.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", ids)
+            return cur.rowcount
+
 
 

@@ -1,17 +1,15 @@
 import pandas as pd
 import streamlit as st
-import plotly.express as px
 
 from config import DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
-from services.portfolio import allocate_contribution, calculate_drift, full_rebalance, rebalance_without_selling
+from services.portfolio import calculate_drift
 from services.dividend_service import calculate_dividend_projections
 from ui.charts import build_drift_bar_chart
-from ui.components import format_money, is_hidden, kpi_card, section_header
+from ui.components import is_hidden, kpi_card, section_header
 from ui.theme import render_chart
-from connectors.market_data_service import update_quotes, get_ticker_logo_url, enrich_ticker_metadata, classify_asset
-import streamlit.components.v1 as components
+from connectors.market_data_service import update_quotes, enrich_ticker_metadata, classify_asset
 import json
 from pathlib import Path
 
@@ -443,16 +441,19 @@ def render():
                 )
                 bar_fig.update_layout(
                     showlegend=False,
-                    margin=dict(t=40, l=10, r=10, b=10),
+                    margin=dict(t=40, l=120, r=20, b=20),
                     font=dict(size=EXPOSURE_FONT_SIZE),
                     title=dict(font=dict(size=14)),
                     xaxis=dict(
                         title=dict(text="Weight (%)", font=dict(size=EXPOSURE_FONT_SIZE)),
-                        tickfont=dict(size=EXPOSURE_FONT_SIZE)
+                        tickfont=dict(size=EXPOSURE_FONT_SIZE),
+                        ticksuffix="%",
+                        automargin=True,
                     ),
                     yaxis=dict(
                         title=dict(text="", font=dict(size=EXPOSURE_FONT_SIZE)),
-                        tickfont=dict(size=EXPOSURE_FONT_SIZE)
+                        tickfont=dict(size=EXPOSURE_FONT_SIZE),
+                        automargin=True,
                     )
                 )
             
@@ -505,7 +506,10 @@ def render():
             with t_data:
                 df_disp = direct_df.copy()
                 df_disp["average_open_rate"] = (df_disp["cost_basis_native"] / df_disp["quantity"]).fillna(0)
-                df_disp["opened_at"] = pd.to_datetime(df_disp["updated_at"], errors='coerce').dt.strftime('%Y-%m-%d')
+                if "updated_at" in df_disp.columns:
+                    df_disp["opened_at"] = pd.to_datetime(df_disp["updated_at"], errors='coerce').dt.strftime('%Y-%m-%d').fillna("-")
+                else:
+                    df_disp["opened_at"] = "-"
             
                 # Formatting
                 df_disp["P&L (€)"] = df_disp["unrealized_pnl_eur"]
@@ -694,9 +698,9 @@ def render():
                     color_discrete_sequence=["#2DD4BF"],
                 )
                 dist_fig.update_layout(
-                    margin=dict(t=35, l=10, r=10, b=10),
-                    xaxis_title="Month",
-                    yaxis_title="Projected Payout (€)",
+                    margin=dict(t=35, l=55, r=20, b=25),
+                    xaxis=dict(title="Month", automargin=True),
+                    yaxis=dict(title="Projected Payout (€)", tickprefix="€", automargin=True),
                 )
                 if is_hidden():
                     dist_fig.update_traces(hovertemplate="Censored<extra></extra>")
@@ -777,7 +781,11 @@ def render():
             
             fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
             fig_fire.add_hline(y=fi_number, line_dash="dash", annotation_text="FI Target", line_color="#2DD4BF")
-            fig_fire.update_layout(xaxis_title="Years from Now", yaxis_title="Net Worth (€)", margin=dict(t=35, l=10, r=10, b=10))
+            fig_fire.update_layout(
+                xaxis=dict(title="Years from Now", automargin=True),
+                yaxis=dict(title="Net Worth (€)", tickprefix="€", tickformat="~s", automargin=True),
+                margin=dict(t=35, l=55, r=20, b=25),
+            )
             if is_hidden():
                 fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
             render_chart(fig_fire, use_container_width=True)

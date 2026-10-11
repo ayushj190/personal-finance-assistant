@@ -172,7 +172,6 @@ class EtoroService:
                     units = float(p.get("units") or 0.0)
                     amount = float(p.get("amount") or 0.0)
                     pnl_info = p.get("unrealizedPnL") or {}
-                    _pnl = float(pnl_info.get("pnL") or 0.0)
                     close_rate = float(pnl_info.get("closeRate") or 0.0)
 
                     if symbol not in direct_agg:
@@ -355,10 +354,48 @@ class EtoroService:
                         if not items:
                             break
 
+                        CONFIRMED_CASH_STATUSES = {
+                            "settled", "completed", "confirmed", "executed", "success", "successful"
+                        }
+                        REJECTED_OR_PENDING_STATUSES = {
+                            "failed", "declined", "cancelled", "canceled", "rejected", "reversed",
+                            "pending", "processing", "in progress", "in_progress", "authorized",
+                            "pre-authorized", "preauthorize", "void", "hold", "review"
+                        }
+
                         for item in items:
-                            status = str(item.get("status") or "").lower()
-                            # eToro cash transactions: skip failed, declined, or pre-authorization checks
-                            if status and status != "settled":
+                            # 1. Check boolean pending / authorization flags
+                            if (
+                                item.get("isPending")
+                                or item.get("pending")
+                                or item.get("is_pending")
+                                or item.get("isAuthorized")
+                                or item.get("is_authorized")
+                            ):
+                                continue
+
+                            # 2. Check main status: eToro cash transactions require settled/completed status
+                            status = str(item.get("status") or "").strip().lower()
+                            if not status or status not in CONFIRMED_CASH_STATUSES or status in REJECTED_OR_PENDING_STATUSES:
+                                continue
+                            if any(term in status for term in ("pending", "reject", "fail", "decline", "cancel", "revers")):
+                                continue
+
+                            # 3. Check subStatus if provided
+                            sub_status = str(item.get("subStatus") or item.get("sub_status") or "").strip().lower()
+                            if sub_status and (
+                                sub_status in REJECTED_OR_PENDING_STATUSES
+                                or any(term in sub_status for term in ("pending", "reject", "fail", "decline", "cancel", "revers"))
+                            ):
+                                continue
+
+                            # 4. Check card authorization details (e.g. preAuthorize holds, reversals)
+                            card_details = item.get("cardTransactionDetails") or {}
+                            auth_status = str(card_details.get("authorizationStatus") or card_details.get("status") or "").strip().lower()
+                            if auth_status and (
+                                auth_status in ("preauthorize", "pre-authorized", "reversal", "pending", "declined", "void", "failed", "rejected", "cancelled", "canceled")
+                                or any(term in auth_status for term in ("pending", "reject", "fail", "decline", "cancel", "revers", "preauth"))
+                            ):
                                 continue
 
                             raw_date = item.get("postedAt")
@@ -451,6 +488,15 @@ class EtoroService:
                         trades = trades_data if isinstance(
                             trades_data, list) else trades_data.get("trades", [])
                         for trade in trades:
+                            if trade.get("isPending") or trade.get("pending") or trade.get("is_pending"):
+                                continue
+                            trade_status = str(trade.get("status") or trade.get("orderStatus") or trade.get("tradeStatus") or "").strip().lower()
+                            if trade_status:
+                                if trade_status not in ("closed", "completed", "confirmed", "settled", "executed", "success", "successful"):
+                                    continue
+                                if any(term in trade_status for term in ("pending", "reject", "fail", "decline", "cancel", "open")):
+                                    continue
+
                             close_ts = trade.get("closeTimestamp")
                             if not close_ts:
                                 continue

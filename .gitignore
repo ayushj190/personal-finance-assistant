@@ -15,3 +15,5 @@ htmlcov/
 scratch/
 .env
 .env.*
+ui/sankey_component/plotly.min.js
+.cache/

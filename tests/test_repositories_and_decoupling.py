@@ -2,11 +2,10 @@ import os
 import tempfile
 import time
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from db.database import connect, migrate
-from db.models import Account, Holding, Liability, TaxProfile, Transaction, Goal
+from db.models import Account, Holding, Transaction
 from db.repositories import (
     AccountRepository,
     HoldingRepository,
@@ -169,6 +168,10 @@ class TestRepositoriesAndDecoupling(unittest.TestCase):
         holdings = HoldingRepository.get_all_holdings(self.conn)
         self.assertEqual(len(holdings), 1)
         self.assertEqual(holdings[0].ticker, "IWDA.AS")
+
+        v_df = HoldingRepository.get_v_holdings_df(self.conn)
+        self.assertIn("updated_at", v_df.columns)
+        self.assertEqual(v_df.iloc[0]["updated_at"], "2026-10-10")
 
         # Market quotes & FX quote
         HoldingRepository.upsert_market_quotes(

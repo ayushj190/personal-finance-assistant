@@ -1,11 +1,8 @@
 from datetime import date, datetime
-from decimal import Decimal
-from pathlib import Path
 import sqlite3
 from typing import Any
 
-from config import DB_PATH
-from connectors.base import RawAccount, RawHolding, RawTransaction
+from connectors.base import RawTransaction
 from connectors.file_import.detect import FileFormat, parse_statement
 from connectors.market_data_service import get_latest_fx_to_eur
 from db import database

@@ -1,7 +1,6 @@
 from datetime import date
 import json
 from typing import Any, Iterator
-import pandas as pd
 
 from agent import tools
 from agent.tools import COPILOT_TOOLS_SCHEMA
@@ -9,10 +8,12 @@ from services.llm_client import chat_with_tools, generate_stream
 
 SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app.
 You run locally and privately on the user's machine.
-You have access to native deterministic tools for querying net worth, category spending, recent transactions, cashflows, portfolio investments, tax analysis, mortgage schedules, financial simulations, and a local RAG knowledge base of Dutch tax and mortgage laws.
+You have access to native deterministic tools for querying net worth, category spending, recent transactions, cashflows, portfolio investments, tax analysis, mortgage schedules, financial simulations, and a local Dutch Financial Law Vector Vault.
 
 Always call the relevant tool when the user asks about their financial data, accounts, spending, mortgage options, or tax strategies:
-- Use `search_financial_knowledge_base` to retrieve Dutch tax (Box 1 / Box 3), mortgage deduction (HRA), Pillar 3 pension (Jaarruimte/Lijfrente), or Groenfondsen rules and cite official parameters.
+- Use `search_dutch_law_vault` to search Dutch tax laws (Box 1 rates, Box 3 wealth tax & actual return rulings), mortgage deduction (HRA), Pillar 3 pension (Wet toekomst pensioenen / Jaarruimte), estate/gifting (Successiewet 1956), and expat 30% facility. Always cite the exact statutory articles returned.
+- Use `lookup_tax_law_article` when the user asks for a specific statutory provision (e.g. 'Art. 3.16', 'Art. 5.2', 'Art. 3.120', 'Hoge Raad 2024').
+- Use `search_financial_knowledge_base` as an alternative knowledge query tool.
 - Use `simulate_tax_optimization` when the user asks how to allocate capital (e.g. bonus, savings) between mortgage prepayment, pension (Jaarruimte), green funds, or ETFs.
 - Use `calculate_pension_room` for questions about Dutch pension gaps, Factor A, and tax rebates.
 - Use `analyze_green_fund_strategy` for questions about Groenfondsen double tax benefits.
@@ -31,6 +32,8 @@ TOOL_MAP = {
     "analyze_tax_situation": tools.tool_analyze_tax_situation,
     "analyze_mortgage": tools.tool_analyze_mortgage,
     "search_financial_knowledge_base": tools.tool_search_financial_knowledge_base,
+    "search_dutch_law_vault": tools.tool_search_dutch_law_vault,
+    "lookup_tax_law_article": tools.tool_lookup_tax_law_article,
     "search_web": tools.tool_search_web,
     "analyze_market_data": tools.tool_analyze_market_data,
     "toggle_privacy_mode": tools.tool_toggle_privacy_mode,
@@ -156,6 +159,7 @@ def run_copilot(
     captured_figure = None
     captured_df = None
     captured_form = None
+    captured_citations = []
 
     for tc in tool_calls:
         fn_info = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", {})
@@ -175,6 +179,10 @@ def run_copilot(
             captured_df = result["df"]
         if result.get("form_request"):
             captured_form = result["form_request"]
+        if result.get("citations"):
+            captured_citations.extend(result["citations"])
+        elif result.get("article"):
+            captured_citations.append(result["article"])
 
         # Append assistant tool call & tool result to message history for final summarization
         messages.append({
@@ -196,4 +204,5 @@ def run_copilot(
         "figure": captured_figure,
         "df": captured_df,
         "form_request": captured_form,
+        "citations": captured_citations,
     }

@@ -1,7 +1,6 @@
 import unittest
 import os
 import tempfile
-import sqlite3
 
 from db.database import migrate, connect
 from services.dividend_service import calculate_dividend_projections, get_estimated_yield

@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import date
 
@@ -14,7 +13,6 @@ from services.fiscal_service import (
 )
 from services.budget_service import (
     init_budget_table,
-    set_category_budget,
     calculate_budget_variance,
 )
 

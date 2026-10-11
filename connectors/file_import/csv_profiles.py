@@ -35,11 +35,22 @@ def parse_etoro_money(text: str, default_account_id: str = "etoro_cash_eur") -> 
     if not lines:
         return txs
 
+    CONFIRMED_STATUSES = {
+        "settled", "completed", "confirmed", "executed", "success", "successful", "closed", "finished"
+    }
+    REJECTED_STATUSES = {
+        "failed", "declined", "cancelled", "canceled", "rejected", "reversed", "pending",
+        "processing", "in progress", "in_progress", "authorized", "pre-authorized", "void"
+    }
+
     reader = csv.DictReader(lines, delimiter="\t")
     for row in reader:
-        status = (row.get("Status") or row.get("State") or "").strip().lower()
-        if status in ("failed", "declined", "cancelled", "rejected", "reversed"):
-            continue
+        status = (row.get("Status") or row.get("State") or row.get("Transaction Status") or "").strip().lower()
+        if status:
+            if status in REJECTED_STATUSES or status not in CONFIRMED_STATUSES:
+                continue
+            if "pending" in status or "reject" in status:
+                continue
 
         name = row.get("Name", "").strip()
         date_str = row.get("Date", "").strip()
@@ -227,9 +238,14 @@ def parse_etoro_statement_transactions(text: str, default_account_id: str = "eto
     txs: list[RawTransaction] = []
 
     for row in reader:
-        status = (row.get("Status") or row.get("State") or "").strip().lower()
-        if status in ("failed", "declined", "cancelled", "rejected", "reversed"):
-            continue
+        status = (row.get("Status") or row.get("State") or row.get("Transaction Status") or "").strip().lower()
+        if status:
+            if status in ("failed", "declined", "cancelled", "canceled", "rejected", "reversed", "pending", "processing", "in progress", "in_progress", "authorized", "pre-authorized", "void"):
+                continue
+            if status not in ("settled", "completed", "confirmed", "executed", "success", "successful", "closed", "finished"):
+                continue
+            if "pending" in status or "reject" in status:
+                continue
 
         date_str = row.get("Date") or row.get("Date and Time")
         if not date_str:
@@ -248,6 +264,11 @@ def parse_etoro_statement_transactions(text: str, default_account_id: str = "eto
         amt_minor = to_minor(amt_str)
         t_type = row.get("Type", "").strip()
         details = row.get("Details", "").strip()
+
+        combined_text = f"{t_type} {details}".lower()
+        if any(term in combined_text for term in ("pending", "rejected", "declined", "failed", "cancelled", "reversed")):
+            continue
+
         desc = f"{t_type} - {details}".strip(" -") or "eToro Activity"
 
         txs.append(
