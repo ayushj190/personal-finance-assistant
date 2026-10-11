@@ -1,0 +1,306 @@
+:root, .stApp {
+            --background-color: #0a110d !important;
+            --secondary-background-color: #101c15 !important;
+            --text-color: #ecfdf5 !important;
+            --primary-color: #10b981 !important;
+            --tab-border: #162a1f !important;
+            --tab-inactive-bg: #0d1711 !important;
+            --button-border: #1e3325 !important;
+            --button-bg: #101c15 !important;
+            --text-muted: #94a3b8 !important;
+            background-color: #0a110d !important;
+            color: #ecfdf5 !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        /* Sidebar in Dark Mode */
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid #162a1f !important;
+        }
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarContent"],
+        div[data-testid="stSidebarUserContent"] {
+            background-color: #101c15 !important;
+            color: #ecfdf5 !important;
+        }
+        
+        section[data-testid="stSidebar"] .st-key-sticky_sidebar_header {
+            background-color: #101c15 !important;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #ecfdf5;
+        }
+        section[data-testid="stSidebar"] .stMarkdown p,
+        section[data-testid="stSidebar"] .stMarkdown span,
+        section[data-testid="stSidebar"] .stCaption,
+        section[data-testid="stSidebar"] .stCaption * {
+            color: #94a3b8 !important;
+        }
+        section[data-testid="stSidebar"] hr {
+            border-color: #1e3325 !important;
+        }
+
+        /* Metric Cards & Glass Cards */
+        .glass-card, div[data-testid="stMetric"] {
+            background: #101c15 !important;
+            backdrop-filter: none !important;
+            border: 1px solid #1e3325 !important;
+            border-radius: 12px !important;
+            padding: 10px 16px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+            transition: all 0.2s ease-in-out !important;
+            min-height: 90px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+        }
+        .glass-card:hover, div[data-testid="stMetric"]:hover {
+            border-color: #10b981 !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.15) !important;
+        }
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"] * {
+            color: #94a3b8 !important;
+        }
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricValue"] * {
+            color: #ecfdf5 !important;
+        }
+        .kpi-title { color: #94a3b8 !important; }
+        .kpi-value { color: #ecfdf5 !important; }
+
+        /* Bordered Containers */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: #101c15 !important;
+            backdrop-filter: none !important;
+            border: 1px solid #1e3325 !important;
+            border-radius: 12px !important;
+            padding: 12px 16px !important;
+            box-sizing: border-box !important;
+            box-shadow: none !important;
+            transition: border-color 0.2s ease, transform 0.2s ease !important;
+            color: #ecfdf5 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+            border-color: #10b981 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div * {
+            color: #ecfdf5;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
+            color: #94a3b8 !important;
+        }
+
+        /* Tabs in Dark Mode */
+        div[data-baseweb="tab-list"],
+        div[data-testid="stTabs"] [role="tablist"] {
+            background-color: transparent !important;
+            border-bottom: 2px solid #1e3325 !important;
+            gap: 0px !important;
+            justify-content: flex-start !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+        [role="tab"],
+        [data-baseweb="tab"],
+        [data-testid="stTab"],
+        div[data-testid="stTabs"] button,
+        div[data-testid="stTabs"] div[role="tab"] {
+            background-color: transparent !important;
+            border: 1px solid transparent !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px 16px !important;
+            transition: all 0.15s ease-in-out !important;
+            cursor: pointer !important;
+        }
+        [role="tab"] *,
+        [data-baseweb="tab"] *,
+        [data-testid="stTab"] *,
+        div[data-testid="stTabs"] button *,
+        div[data-testid="stTabs"] div[role="tab"] * {
+            color: #94a3b8 !important;
+            font-size: 0.92rem !important;
+            font-weight: 500 !important;
+        }
+        [role="tab"]:hover,
+        [role="tab"]:hover *,
+        [data-baseweb="tab"]:hover,
+        [data-baseweb="tab"]:hover *,
+        [data-testid="stTab"]:hover,
+        [data-testid="stTab"]:hover * {
+            color: #ecfdf5 !important;
+        }
+        [role="tab"][aria-selected="true"],
+        [role="tab"][aria-selected="true"] *,
+        [data-baseweb="tab"][aria-selected="true"],
+        [data-baseweb="tab"][aria-selected="true"] *,
+        [data-testid="stTab"][aria-selected="true"],
+        [data-testid="stTab"][aria-selected="true"] * {
+            color: #10b981 !important;
+            font-weight: 700 !important;
+        }
+        div[data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #10b981 !important;
+            height: 3px !important;
+            border-radius: 2px !important;
+        }
+        div[data-baseweb="tab-border"] {
+            background-color: #1e3325 !important;
+        }
+
+        /* Secondary Buttons & Popovers */
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"],
+        div[data-testid="stPopover"] > button {
+            background: #101c15 !important;
+            border: 1px solid #1e3325 !important;
+            color: #ecfdf5 !important;
+            border-radius: 8px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+        }
+        button[kind="secondary"]:hover,
+        button[data-testid="baseButton-secondary"]:hover,
+        div[data-testid="stPopover"] > button:hover {
+            border-color: #10b981 !important;
+            color: #10b981 !important;
+            background: #162a1f !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Inputs, Selects, Expanders */
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"],
+        .stTextInput input,
+        .stNumberInput input,
+        .stDateInput input {
+            background-color: #0d1711 !important;
+            color: #ecfdf5 !important;
+            border-color: #1e3325 !important;
+        }
+        div[data-testid="stExpander"] {
+            background-color: #101c15 !important;
+            border: 1px solid #1e3325 !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stExpander"] details summary,
+        div[data-testid="stExpander"] details summary span,
+        div[data-testid="stExpander"] details summary p {
+            color: #ecfdf5 !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stPopoverBody"] {
+            background-color: #0a110d !important;
+            border: 1px solid #1e3325 !important;
+            color: #ecfdf5 !important;
+        }
+        /* Chat UI - Dark Mode */
+        div[data-testid="stChatMessage"] {
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            margin-bottom: 0.85rem !important;
+            display: flex !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Avatar styling */
+        div[data-testid="stChatMessage"] div[data-testid^="stChatMessageAvatar"] {
+            flex-shrink: 0 !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            margin: 0 !important;
+        }
+
+        /* Base chat content */
+        div[data-testid="stChatMessageContent"] {
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+
+        /* User Messages (Right Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) {
+            flex-direction: row-reverse !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="user" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.28) 0%, rgba(5, 150, 105, 0.38) 100%) !important;
+            border: 1px solid rgba(52, 211, 153, 0.45) !important;
+            border-radius: 16px 16px 4px 16px !important;
+            padding: 10px 14px !important;
+            color: #ECFDF5 !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(85%, calc(100% - 44px)) !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"] *,
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] * {
+            color: #ECFDF5 !important;
+        }
+
+        /* Assistant Messages (Left Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) {
+            flex-direction: row !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="assistant" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) div[data-testid="stChatMessageContent"] {
+            background: rgba(16, 28, 21, 0.85) !important;
+            border: 1px solid rgba(45, 212, 191, 0.28) !important;
+            border-radius: 16px 16px 16px 4px !important;
+            padding: 10px 14px !important;
+            color: #ECFDF5 !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(88%, calc(100% - 44px)) !important;
+            margin-right: auto !important;
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stRadio"] label p,
+        div[data-testid="stCheckbox"] label p {
+            color: #ecfdf5 !important;
+        }

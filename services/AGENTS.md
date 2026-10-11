@@ -15,6 +15,7 @@ The services layer contains the core financial computation engines and business 
 | `services/rag_service.py` | Vector search and text chunk retrieval over Dutch tax guides and financial laws |
 | `services/secrets_vault.py` | Fernet encryption for API keys backed by Windows Credential Manager via keyring |
 | `services/sync_service.py` | Coordination of background sync tasks across active banking and broker connectors |
+| `services/task_coordinator.py` | Thread safe coordinator isolating background workers from direct Streamlit session state |
 
 ## Conventions
 

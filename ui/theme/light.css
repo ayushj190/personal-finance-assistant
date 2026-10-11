@@ -1,0 +1,324 @@
+:root, .stApp {
+            --background-color: #F8FAFC !important;
+            --secondary-background-color: #FFFFFF !important;
+            --text-color: #0F172A !important;
+            --primary-color: #0D9488 !important;
+            --tab-border: #E2E8F0 !important;
+            --tab-inactive-bg: #F1F5F9 !important;
+            --button-border: #CBD5E1 !important;
+            --button-bg: #FFFFFF !important;
+            --text-muted: #334155 !important;
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
+        }
+
+        /* Sidebar in Light Mode */
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid #E2E8F0 !important;
+        }
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarContent"],
+        div[data-testid="stSidebarUserContent"] {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+        }
+        
+        section[data-testid="stSidebar"] .st-key-sticky_sidebar_header {
+            background-color: #FFFFFF !important;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] .stMarkdown p,
+        section[data-testid="stSidebar"] .stMarkdown span,
+        section[data-testid="stSidebar"] .stCaption,
+        section[data-testid="stSidebar"] .stCaption * {
+            color: #334155 !important;
+        }
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3 {
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] hr {
+            border-color: #E2E8F0 !important;
+        }
+
+        /* Metric Cards & Glass Cards */
+        .glass-card, div[data-testid="stMetric"] {
+            background: #FFFFFF !important;
+            backdrop-filter: none !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px !important;
+            padding: 10px 16px !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 4px 12px 0 rgba(0, 0, 0, 0.03) !important;
+            transition: all 0.2s ease-in-out !important;
+            min-height: 90px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+        }
+        .glass-card:hover, div[data-testid="stMetric"]:hover {
+            border-color: rgba(13, 148, 136, 0.6) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 18px 0 rgba(0, 0, 0, 0.08) !important;
+        }
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"] * {
+            color: #334155 !important;
+            opacity: 1 !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stMetricLabel"] svg {
+            fill: #334155 !important;
+            color: #334155 !important;
+            opacity: 0.9 !important;
+        }
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricValue"] * {
+            color: #0F172A !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+        .kpi-title { color: #334155 !important; opacity: 1 !important; }
+        .kpi-value { color: #0F172A !important; opacity: 1 !important; }
+
+        /* Bordered Containers */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px !important;
+            padding: 12px 16px !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+            backdrop-filter: none !important;
+            color: #0F172A !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+            border-color: rgba(13, 148, 136, 0.4) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div * {
+            color: #0F172A;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption,
+        div[data-testid="stVerticalBlockBorderWrapper"] > div .stCaption * {
+            color: #334155 !important;
+        }
+
+        /* Tabs in Light Mode */
+        div[data-baseweb="tab-list"],
+        div[data-testid="stTabs"] [role="tablist"] {
+            background-color: transparent !important;
+            border-bottom: 2px solid #E2E8F0 !important;
+            gap: 0px !important;
+            justify-content: flex-start !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+        [role="tab"],
+        [data-baseweb="tab"],
+        [data-testid="stTab"],
+        div[data-testid="stTabs"] button,
+        div[data-testid="stTabs"] div[role="tab"] {
+            background-color: transparent !important;
+            border: 1px solid transparent !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px 16px !important;
+            color: #334155 !important;
+            opacity: 1 !important;
+            transition: all 0.15s ease-in-out !important;
+            cursor: pointer !important;
+        }
+        [role="tab"] *,
+        [data-baseweb="tab"] *,
+        [data-testid="stTab"] *,
+        div[data-testid="stTabs"] button *,
+        div[data-testid="stTabs"] div[role="tab"] * {
+            color: #334155 !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+        }
+        [role="tab"]:hover,
+        [role="tab"]:hover *,
+        [data-baseweb="tab"]:hover,
+        [data-baseweb="tab"]:hover *,
+        [data-testid="stTab"]:hover,
+        [data-testid="stTab"]:hover * {
+            color: #0F172A !important;
+            opacity: 1 !important;
+        }
+        [role="tab"][aria-selected="true"],
+        [role="tab"][aria-selected="true"] *,
+        [data-baseweb="tab"][aria-selected="true"],
+        [data-baseweb="tab"][aria-selected="true"] *,
+        [data-testid="stTab"][aria-selected="true"],
+        [data-testid="stTab"][aria-selected="true"] * {
+            color: #0D9488 !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+        div[data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #0D9488 !important;
+            height: 3px !important;
+            border-radius: 2px !important;
+        }
+        div[data-baseweb="tab-border"] {
+            background-color: #E2E8F0 !important;
+        }
+
+        /* Secondary Buttons & Popovers */
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"],
+        div[data-testid="stPopover"] > button {
+            background: #FFFFFF !important;
+            border: 1px solid #CBD5E1 !important;
+            color: #334155 !important;
+            border-radius: 8px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        }
+        button[kind="secondary"]:hover,
+        button[data-testid="baseButton-secondary"]:hover,
+        div[data-testid="stPopover"] > button:hover {
+            border-color: #0D9488 !important;
+            color: #0D9488 !important;
+            background: #F8FAFC !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Inputs, Selects, Expanders */
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"],
+        .stTextInput input,
+        .stNumberInput input,
+        .stDateInput input {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #CBD5E1 !important;
+        }
+        div[data-testid="stExpander"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stExpander"] details summary,
+        div[data-testid="stExpander"] details summary span,
+        div[data-testid="stExpander"] details summary p {
+            color: #0F172A !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stPopoverBody"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            color: #0F172A !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+        }
+        /* Chat UI - Light Mode */
+        div[data-testid="stChatMessage"] {
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            margin-bottom: 0.85rem !important;
+            display: flex !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Avatar styling */
+        div[data-testid="stChatMessage"] div[data-testid^="stChatMessageAvatar"] {
+            flex-shrink: 0 !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            margin: 0 !important;
+        }
+
+        /* Base chat content */
+        div[data-testid="stChatMessageContent"] {
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+
+        /* User Messages (Right Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) {
+            flex-direction: row-reverse !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="user" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+            border: 1px solid #059669 !important;
+            border-radius: 16px 16px 4px 16px !important;
+            padding: 10px 14px !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.22) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(85%, calc(100% - 44px)) !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"] *,
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] * {
+            color: #FFFFFF !important;
+        }
+
+        /* Assistant Messages (Left Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) {
+            flex-direction: row !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="assistant" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) div[data-testid="stChatMessageContent"] {
+            background: #F8FAFC !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 16px 16px 16px 4px !important;
+            padding: 10px 14px !important;
+            color: #0F172A !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(88%, calc(100% - 44px)) !important;
+            margin-right: auto !important;
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stRadio"] label p,
+        div[data-testid="stCheckbox"] label p {
+            color: #0F172A !important;
+        }

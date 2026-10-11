@@ -51,30 +51,24 @@ database.migrate()
 theme.register_plotly_theme()
 theme.inject_custom_css()
 
-# Background automatic sync on startup and every 10 minutes
-_sync_lock = threading.Lock()
-_is_syncing = False
+from db.repositories.account_repository import AccountRepository
+from services.task_coordinator import coordinator
 
 
 def _run_bg_sync() -> None:
-    global _is_syncing
-    if _is_syncing:
-        return
-    with _sync_lock:
-        _is_syncing = True
+    try:
+        from services.sync_service import sync_all
+        bg_conn = database.connect(DB_PATH)
         try:
-            from services.sync_service import sync_all
-            bg_conn = database.connect(DB_PATH)
             sync_all(bg_conn)
-            bg_conn.close()
-        except Exception:
-            pass
         finally:
-            _is_syncing = False
+            bg_conn.close()
+    except Exception:
+        pass
 
 
 def _trigger_auto_sync() -> None:
-    threading.Thread(target=_run_bg_sync, daemon=True).start()
+    coordinator.submit("bg_sync", _run_bg_sync)
 
 
 now = datetime.now()
@@ -99,27 +93,11 @@ _auto_sync_scheduler()
 
 # Check for manual accounts reminder
 conn = database.connect(DB_PATH)
-manual_stale = conn.execute("""
-    SELECT a.name, MAX(s.snapshot_date) as last_snap
-    FROM accounts a
-    LEFT JOIN account_snapshots s ON s.account_id = a.id
-    WHERE a.provider = 'manual' AND a.is_active = 1
-    GROUP BY a.id
-""").fetchall()
-conn.close()
+try:
+    stale_accounts = AccountRepository.get_manual_stale_accounts(conn, days_threshold=30)
+finally:
+    conn.close()
 
-stale_accounts = []
-for r in manual_stale:
-    if not r["last_snap"]:
-        stale_accounts.append(r["name"])
-    else:
-        try:
-            last_snap = datetime.strptime(
-                r["last_snap"][:10], "%Y-%m-%d").date()
-            if (date.today() - last_snap).days >= 30:
-                stale_accounts.append(r["name"])
-        except Exception:
-            pass
 
 if stale_accounts and "stale_notified" not in st.session_state:
     st.toast(

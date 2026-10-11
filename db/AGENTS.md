@@ -8,10 +8,13 @@ The database layer manages SQLite persistence for the personal finance assistant
 
 | File | Owns |
 |---|---|
-| `db/database.py` | Connection factory, migration steps, and data access routines |
+| `db/database.py` | Connection factory, migration runner trigger, and data access routines |
+| `db/models.py` | Typed dataclass models for accounts, transactions, holdings, and liabilities |
+| `db/repositories/` | Dedicated repository classes for accounts, transactions, holdings, and liabilities |
+| `db/migrations/` | Versioned SQL migration files and incremental schema runner |
 | `db/schema.sql` | Core table definitions, constraints, default indexes, and foreign keys |
 | `db/seed.sql` | Initial category hierarchy seeds for income, fixed, and discretionary expenses |
-| `db/repository.py` | Additional query helpers and aggregate data retrieval methods |
+| `db/repository.py` | Legacy query helpers and aggregate data retrieval methods |
 
 ## Conventions
 

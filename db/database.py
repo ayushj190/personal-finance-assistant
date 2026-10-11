@@ -17,112 +17,16 @@ def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+from db.migrations.runner import run_migrations
+
+
 def migrate(db_path: Path | str = DB_PATH) -> None:
     conn = connect(db_path)
-    with conn:
-        with open(SCHEMA_FILE, "r", encoding="utf-8") as f:
-            conn.executescript(f.read())
-        with open(SEED_FILE, "r", encoding="utf-8") as f:
-            conn.executescript(f.read())
-        # Migration: ensure apy column exists on accounts
-        cols = [r["name"]
-                for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
-        if "apy" not in cols:
-            conn.execute(
-                "ALTER TABLE accounts ADD COLUMN apy REAL DEFAULT NULL;")
-        # Migration: ensure home_value_minor column exists on liabilities
-        lib_cols = [r["name"] for r in conn.execute(
-            "PRAGMA table_info(liabilities)").fetchall()]
-        if "home_value_minor" not in lib_cols:
-            conn.execute(
-                "ALTER TABLE liabilities ADD COLUMN home_value_minor INTEGER DEFAULT NULL;")
-                
-        # Migration: tax_profile robustness
-        tax_cols = [r["name"] for r in conn.execute("PRAGMA table_info(tax_profile)").fetchall()]
-        if tax_cols: # Only migrate if table exists
-            if "has_30_percent_ruling" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN has_30_percent_ruling INTEGER NOT NULL DEFAULT 0;")
-            if "is_entrepreneur" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN is_entrepreneur INTEGER NOT NULL DEFAULT 0;")
-            if "owns_home" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN owns_home INTEGER NOT NULL DEFAULT 0;")
-            if "birth_year" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN birth_year INTEGER;")
-            if "has_13th_month" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN has_13th_month INTEGER NOT NULL DEFAULT 0;")
-            if "expected_bonus_eur" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN expected_bonus_eur INTEGER NOT NULL DEFAULT 0;")
-            if "pension_contribution_pct" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN pension_contribution_pct REAL NOT NULL DEFAULT 0;")
-            if "employer_pension_match_pct" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN employer_pension_match_pct REAL NOT NULL DEFAULT 0;")
-            if "factor_a_minor" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN factor_a_minor INTEGER NOT NULL DEFAULT 0;")
-            if "green_investments_minor" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN green_investments_minor INTEGER NOT NULL DEFAULT 0;")
-            if "reserveringsruimte_minor" not in tax_cols:
-                conn.execute("ALTER TABLE tax_profile ADD COLUMN reserveringsruimte_minor INTEGER NOT NULL DEFAULT 0;")
+    try:
+        run_migrations(conn)
+    finally:
+        conn.close()
 
-        # Migration: knowledge_embeddings table
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS knowledge_embeddings (
-              id              INTEGER PRIMARY KEY,
-              chunk_id        TEXT UNIQUE NOT NULL,
-              doc_title       TEXT NOT NULL,
-              category        TEXT NOT NULL,
-              content         TEXT NOT NULL,
-              embedding_json  TEXT,
-              updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-        """)
-
-        # Migration: risk_profiles robustness
-        risk_cols = [r["name"] for r in conn.execute("PRAGMA table_info(risk_profiles)").fetchall()]
-        if risk_cols: # Only migrate if table exists
-            if "investment_horizon_years" not in risk_cols:
-                conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_horizon_years INTEGER;")
-            if "liquidity_needs" not in risk_cols:
-                conn.execute("ALTER TABLE risk_profiles ADD COLUMN liquidity_needs TEXT;")
-            if "investment_experience" not in risk_cols:
-                conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_experience TEXT;")
-
-        # Migration: app_settings table
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS app_settings (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-        """)
-
-        # Migration: category taxonomy consolidation
-        try:
-            conn.execute("UPDATE categories SET name = 'Mortgage & Rent' WHERE id = 10 AND name = 'Housing & Utilities'")
-            conn.execute("UPDATE categories SET name = 'Insurances' WHERE id = 20 AND name = 'Insurance & Financial'")
-            conn.execute("UPDATE categories SET name = 'Groceries' WHERE id = 40 AND name = 'Groceries & Household'")
-            conn.execute("UPDATE categories SET name = 'Food & Restaurants' WHERE id = 50 AND name = 'Dining & Nightlife'")
-
-            conn.execute("INSERT OR IGNORE INTO categories (name, parent_id, kind) VALUES ('Utility Bills', NULL, 'fixed')")
-            u_row = conn.execute("SELECT id FROM categories WHERE name = 'Utility Bills'").fetchone()
-            if u_row:
-                conn.execute("UPDATE categories SET parent_id = ? WHERE id IN (13, 14, 15, 16)", (u_row["id"],))
-
-            conn.execute("INSERT OR IGNORE INTO categories (name, parent_id, kind) VALUES ('Sports & Leisure', NULL, 'discretionary')")
-            s_row = conn.execute("SELECT id FROM categories WHERE name = 'Sports & Leisure'").fetchone()
-            if s_row:
-                conn.execute("UPDATE categories SET parent_id = ? WHERE id IN (33, 65, 83)", (s_row["id"],))
-        except Exception:
-            pass
-
-        # Performance Indexes
-        conn.execute("CREATE INDEX IF NOT EXISTS ix_snapshots_date ON account_snapshots(snapshot_date);")
-        conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_acc_date ON transactions(account_id, booking_date);")
-        conn.execute("CREATE INDEX IF NOT EXISTS ix_holdings_acc_ticker ON holdings(account_id, ticker);")
-
-        row = conn.execute(
-            "SELECT version FROM schema_version LIMIT 1;").fetchone()
-        if not row:
-            conn.execute("INSERT INTO schema_version (version) VALUES (1);")
-    conn.close()
 
 
 

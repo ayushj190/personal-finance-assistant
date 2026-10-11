@@ -284,8 +284,12 @@ def render():
             margin=dict(t=40, l=10, r=10, b=10),
         )
         if is_hidden():
-            fig.update_traces(hovertemplate="Censored<extra></extra>")
+            fig.update_traces(
+                node=dict(hovertemplate="Censored<extra></extra>"),
+                link=dict(hovertemplate="Censored<extra></extra>"),
+            )
         st.plotly_chart(fig, use_container_width=True)
+
 
     # 5. Expense Breakdown & Top Merchants
     with section_header(f"Expense Breakdown ({selected_scope})",

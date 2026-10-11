@@ -7,11 +7,14 @@ import streamlit.components.v1 as components
 
 from config import DATA_DIR, DB_PATH
 from db import database
+from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
 from services.analytics import calculate_burn_and_runway, detect_recurring_charges, calculate_current_net_worth
 from ui.charts import build_spending_donut
 from ui.components import empty_state, format_money, is_hidden, kpi_card, section_header, status_badge
 from ui.logos import get_institution_logo_svg
+from ui.theme import render_chart
 from connectors.etoro_service import EtoroService
+
 
 @st.cache_data(ttl=300)
 def fetch_cached_news():
@@ -78,8 +81,7 @@ def render():
     conn = database.connect(DB_PATH)
 
     # 1. Accounts & Balances
-    accounts = [dict(r) for r in conn.execute(
-        "SELECT * FROM accounts WHERE is_active = 1").fetchall()]
+    accounts = AccountRepository.get_active_accounts(conn)
     if not accounts:
         conn.close()
         empty_state(
@@ -88,10 +90,27 @@ def render():
         )
         return
 
+    # Convert to list of dicts for compatible template access
+    accounts_dicts = [
+        {
+            "id": a.id,
+            "provider": a.provider,
+            "institution": a.institution,
+            "name": a.name,
+            "currency": a.currency,
+            "asset_class": a.asset_class,
+            "external_id": a.external_id,
+            "iban": a.iban,
+            "apy": a.apy,
+            "is_active": a.is_active,
+        }
+        for a in accounts
+    ]
+
     # 0. Scrolling Ticker Tape Widget (relocated from Investments page)
     all_tickers = []
     try:
-        h_rows = conn.execute("SELECT DISTINCT ticker FROM v_holdings").fetchall()
+        h_tickers = HoldingRepository.get_distinct_tickers(conn)
         cache_path = DATA_DIR / "etoro_mirrors_cache.json"
         mirrors_map = {}
         if cache_path.exists():
@@ -103,8 +122,7 @@ def render():
             except Exception:
                 pass
 
-        for r in h_rows:
-            t = r["ticker"]
+        for t in h_tickers:
             if not t:
                 continue
             if str(t).startswith("COPY:"):
@@ -152,9 +170,7 @@ def render():
     components.html(tape_html, height=44)
 
     # Fetch sync logs to derive status for all bank & investment accounts
-    sync_logs = [dict(r) for r in conn.execute(
-        "SELECT connector, started_at, status, message FROM sync_log ORDER BY started_at DESC LIMIT 50"
-    ).fetchall()]
+    sync_logs = AccountRepository.get_recent_sync_logs(conn, limit=50)
 
     # Compute current balances
     nw_data = calculate_current_net_worth(conn)
@@ -166,16 +182,14 @@ def render():
 
     acc_subtexts: dict[int, str] = {}
     today = date.today()
+    latest_snapshots = AccountRepository.get_all_latest_snapshots(conn)
 
     for acc in accounts:
-        row = conn.execute(
-            "SELECT balance_minor, balance_eur_minor, snapshot_date FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
-            (acc["id"],),
-        ).fetchone()
+        row = latest_snapshots.get(acc.id)
         subtext = ""
         if row:
             base_bal_eur = row["balance_eur_minor"] / 100.0
-            apy = acc.get("apy")
+            apy = acc.apy
             if apy and apy > 0:
                 snap_date_str = str(row["snapshot_date"])[:10]
                 try:
@@ -188,25 +202,14 @@ def render():
                         subtext = f"+€{accrued:,.2f} accrued ({apy}% APY)"
                 except Exception:
                     pass
-        acc_subtexts[acc["id"]] = subtext
+        acc_subtexts[acc.id] = subtext
 
     # Liability balance & Property Asset
-    lib_row = conn.execute(
-        "SELECT original_principal_minor, home_value_minor, balance_override_minor, balance_override_date FROM liabilities LIMIT 1"
-    ).fetchone()
+    liabilities = LiabilityRepository.get_all_liabilities(conn)
+    lib_row = liabilities[0] if liabilities else None
 
     # Monthly cashflow for runway calculation
-    cf_query = """
-    SELECT strftime('%Y-%m', t.booking_date) AS month,
-           SUM(CASE WHEN c.kind IN ('fixed','discretionary') THEN -t.amount_eur_minor ELSE 0 END) / 100.0 AS expenses
-    FROM transactions t
-    LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.is_internal_transfer = 0
-    GROUP BY strftime('%Y-%m', t.booking_date)
-    ORDER BY month ASC
-    """
-    cf_rows = conn.execute(cf_query).fetchall()
-    monthly_expenses = [r["expenses"] for r in cf_rows if r["expenses"] > 0]
+    monthly_expenses = TransactionRepository.get_monthly_expenses(conn)
     burn_rate, runway_months, runway_days = calculate_burn_and_runway(
         monthly_expenses, liquid_cash)
 
@@ -218,6 +221,7 @@ def render():
     with c2:
         kpi_card("Liquid Cash", format_money(liquid_cash),
                  subtext="Checking & cash reserves")
+
     with c3:
         kpi_card("Investments", format_money(invested),
                  subtext="Securities & portfolio holdings")
@@ -238,13 +242,19 @@ def render():
             cols = st.columns(COLS_PER_ROW)
             for idx, acc in enumerate(row_accounts):
                 col = cols[idx]
-                bal = acc_balances.get(acc["id"], 0.0)
-                sub = acc_subtexts.get(acc["id"], "")
-                curr = acc.get("currency", "EUR")
+                bal = acc_balances.get(acc.id, 0.0)
+                sub = acc_subtexts.get(acc.id, "")
+                curr = acc.currency or "EUR"
                 sym = currency_symbols.get(curr, "€")
-                badge_txt, badge_kind = get_account_status(acc, sync_logs)
-                disp_name = clean_account_name(acc, accounts)
-                logo_svg = get_institution_logo_svg(acc.get("institution", ""), size=20)
+                badge_txt, badge_kind = get_account_status(
+                    {"provider": acc.provider, "institution": acc.institution},
+                    sync_logs,
+                )
+                disp_name = clean_account_name(
+                    {"institution": acc.institution, "name": acc.name, "currency": acc.currency, "asset_class": acc.asset_class},
+                    accounts_dicts,
+                )
+                logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
 
                 with col:
                     with st.container(border=True):
@@ -261,15 +271,15 @@ def render():
                             )
                         with c_header_cog:
                             with st.popover("", icon=":material/settings:", help="Account Settings"):
-                                st.markdown(f"**{acc['name']}**")
-                                st.write(f"**Institution:** {acc['institution']}")
-                                st.write(f"**Asset Class:** {acc.get('asset_class', 'cash').title()}")
+                                st.markdown(f"**{acc.name}**")
+                                st.write(f"**Institution:** {acc.institution}")
+                                st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
                                 st.write(f"**Currency:** {curr}")
                                 st.caption(f"Status: {badge_txt}")
 
-                                if acc.get("asset_class") == "cash":
+                                if acc.asset_class == "cash":
                                     st.divider()
-                                    with st.form(f"adjust_bal_dash_{acc['id']}"):
+                                    with st.form(f"adjust_bal_dash_{acc.id}"):
                                         st.caption(f"Adjust balance ({sym})")
                                         new_adj_bal = st.number_input(
                                             f"New Balance ({sym})",
@@ -277,12 +287,12 @@ def render():
                                             min_value=0.0,
                                             step=50.0,
                                             format="%.2f",
-                                            key=f"dash_bal_in_{acc['id']}",
+                                            key=f"dash_bal_in_{acc.id}",
                                         )
                                         if st.form_submit_button("Update Balance", type="primary", use_container_width=True):
                                             val_min = int(round(new_adj_bal * 100))
                                             database.upsert_snapshots(conn, [{
-                                                "account_id": acc["id"],
+                                                "account_id": acc.id,
                                                 "snapshot_date": today.isoformat(),
                                                 "balance_minor": val_min,
                                                 "balance_eur_minor": val_min,
@@ -293,8 +303,8 @@ def render():
                         val_display = "****" if is_hidden() else f"{bal:,.2f}"
                         if sub:
                             sub_content = f"<span style='color: #10B981; font-weight: 600;'>✨ {sub}</span>"
-                        elif acc.get("apy"):
-                            sub_content = f"<span style='color: var(--text-muted); font-weight: 500;'>📈 APY: {acc['apy']}%</span>"
+                        elif acc.apy:
+                            sub_content = f"<span style='color: var(--text-muted); font-weight: 500;'>📈 APY: {acc.apy}%</span>"
                         else:
                             sub_content = "&nbsp;"
 
@@ -309,16 +319,7 @@ def render():
 
         with col_left:
             with section_header("Spending by Category", "Last 30 days expenses"):
-                spend_query = """
-                SELECT c.name AS category, t.merchant_normalized AS merchant, -t.amount_eur_minor / 100.0 AS amount_eur
-                FROM transactions t
-                JOIN categories c ON c.id = t.category_id
-                WHERE t.amount_eur_minor < 0
-                  AND c.kind IN ('fixed', 'discretionary')
-                  AND t.is_internal_transfer = 0
-                  AND t.booking_date >= date('now', '-30 days')
-                """
-                spend_df = pd.read_sql_query(spend_query, conn)
+                spend_df = TransactionRepository.get_recent_spending_df(conn, days=30)
                 if not spend_df.empty:
                     drill_key = "donut_drilldown_dashboard"
                     if drill_key not in st.session_state:
@@ -331,10 +332,9 @@ def render():
 
                     fig = build_spending_donut(spend_df, drilldown_category=st.session_state[drill_key])
             
-                    selection = st.plotly_chart(
+                    selection = render_chart(
                         fig, 
                         use_container_width=True, 
-                        theme=None, 
                         on_select="rerun", 
                         selection_mode="points"
                     )
@@ -364,8 +364,7 @@ def render():
         with col_right:
             with section_header("Upcoming Recurring Bills",
                            "Detected automatically from transactions"):
-                all_tx_rows = [dict(r) for r in conn.execute(
-                    "SELECT * FROM v_transactions ORDER BY booking_date DESC LIMIT 500").fetchall()]
+                all_tx_rows = TransactionRepository.get_v_transactions(conn, limit=500)
                 recurring = detect_recurring_charges(all_tx_rows)
                 if recurring:
                     rec_df = pd.DataFrame(recurring[:10])[

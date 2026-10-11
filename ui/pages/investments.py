@@ -4,14 +4,17 @@ import plotly.express as px
 
 from config import DB_PATH
 from db import database
+from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
 from services.portfolio import allocate_contribution, calculate_drift, full_rebalance, rebalance_without_selling
 from services.dividend_service import calculate_dividend_projections
 from ui.charts import build_drift_bar_chart
 from ui.components import format_money, is_hidden, kpi_card, section_header
+from ui.theme import render_chart
 from connectors.market_data_service import update_quotes, get_ticker_logo_url, enrich_ticker_metadata, classify_asset
 import streamlit.components.v1 as components
 import json
 from pathlib import Path
+
 
 @st.cache_data(ttl=60)
 def load_cached_json(file_path: Path):
@@ -120,19 +123,19 @@ def render():
     conn = database.connect(DB_PATH)
 
     # 1. Fetch Holdings
-    holdings_df = pd.read_sql_query("SELECT * FROM v_holdings", conn)
+    holdings_df = HoldingRepository.get_v_holdings_df(conn)
 
     if holdings_df.empty:
         st.info("No investments found.")
+        conn.close()
         return
-    
 
     # Update quotes for real-time prices
     direct_tickers = [t for t in holdings_df["ticker"].unique() if not t.startswith("COPY:") and not t.startswith("ID_")]
     if direct_tickers:
         update_quotes(direct_tickers, conn)
         # Re-fetch after update to get latest prices in v_holdings
-        holdings_df = pd.read_sql_query("SELECT * FROM v_holdings", conn)
+        holdings_df = HoldingRepository.get_v_holdings_df(conn)
 
     total_value = holdings_df["value_eur"].sum()
     total_cost = holdings_df["cost_basis"].sum()
@@ -154,10 +157,9 @@ def render():
     direct_df = holdings_df[~copy_mask].copy()
 
     # FX rate for USD display
-    fx_row = conn.execute(
-        "SELECT close FROM market_quotes WHERE ticker = 'EURUSD=X' ORDER BY quote_date DESC LIMIT 1").fetchone()
-    usd_to_eur = (1.0 / float(fx_row["close"])
-                  ) if fx_row and fx_row["close"] else 0.892
+    fx_close = HoldingRepository.get_latest_fx_quote(conn, "EURUSD=X")
+    usd_to_eur = (1.0 / fx_close) if fx_close else 0.892
+
 
     # Build consolidated drill-down DataFrame
     import plotly.express as px
@@ -373,9 +375,11 @@ def render():
                 margin=dict(t=50, l=10, r=10, b=10),
                 height=700,
                 font=dict(size=EXPOSURE_FONT_SIZE),
-                title=dict(text=chart_title, font=dict(size=14))
-            ) # Made it square/larger
-            st.plotly_chart(fig, use_container_width=True)
+                title=dict(text=chart_title, font=dict(size=14)),
+            )
+            render_chart(fig, use_container_width=True)
+
+
 
             def get_theme_stat(sector_name):
                 val = theme_totals.get(sector_name, 0.0)
@@ -455,7 +459,8 @@ def render():
                 if is_hidden():
                     bar_fig.update_traces(hovertemplate="Censored<extra></extra>")
             
-                st.plotly_chart(bar_fig, use_container_width=True)
+                render_chart(bar_fig, use_container_width=True)
+
 
             with c_table:
                 display_sec_df = sec_df.sort_values(by="value_eur", ascending=False).copy()
@@ -605,8 +610,7 @@ def render():
     with section_header("Allocation & Rebalancing"):
 
         # Fetch allocation profiles
-        profiles = conn.execute(
-            "SELECT * FROM allocation_profiles ORDER BY is_active DESC, name ASC").fetchall()
+        profiles = HoldingRepository.get_allocation_profiles(conn)
         if not profiles:
             st.caption("No allocation profiles configured.")
             return
@@ -617,9 +621,7 @@ def render():
         profile = prof_map[selected_name]
 
         # Fetch targets
-        targets_rows = conn.execute(
-            "SELECT bucket, target_pct FROM allocation_targets WHERE profile_id = ?", (profile["id"],)).fetchall()
-        targets = {r["bucket"]: r["target_pct"] for r in targets_rows}
+        targets = HoldingRepository.get_allocation_targets(conn, profile["id"])
 
         # Calculate actual values per bucket based on profile dimension
         # 'asset_type', 'ticker', 'region', 'asset_class', etc.
@@ -633,10 +635,7 @@ def render():
                     b_key, 0.0) + float(row.get("value_eur", 0.0))
 
         if profile["include_cash"]:
-            cash_val_row = conn.execute(
-                "SELECT SUM(balance_eur_minor)/100.0 AS val FROM account_snapshots WHERE account_id IN (SELECT id FROM accounts WHERE asset_class = 'cash')"
-            ).fetchone()
-            current_values["cash"] = float(cash_val_row["val"] or 0.0)
+            current_values["cash"] = AccountRepository.get_total_cash_balance(conn)
 
         if not current_values:
             st.warning("No value to balance for this profile.")
@@ -647,8 +646,11 @@ def render():
 
         col_chart, col_targets = st.columns([1, 1])
         with col_chart:
-            st.plotly_chart(build_drift_bar_chart(
-                drift_data, drift_band_pct=profile["drift_band_pct"]), use_container_width=True, theme=None)
+            render_chart(
+                build_drift_bar_chart(drift_data, drift_band_pct=profile["drift_band_pct"]),
+                use_container_width=True,
+            )
+
 
         with col_targets:
             drift_df = pd.DataFrame(drift_data)[
@@ -698,7 +700,7 @@ def render():
                 )
                 if is_hidden():
                     dist_fig.update_traces(hovertemplate="Censored<extra></extra>")
-                st.plotly_chart(dist_fig, use_container_width=True)
+                render_chart(dist_fig, use_container_width=True)
 
             with col_m_table:
                 h_df = div_data["holdings_df"]
@@ -745,17 +747,13 @@ def render():
         with c_fire:
             st.subheader("🔥 FIRE Trajectory")
             # Estimate expenses
-            exp_row = conn.execute("SELECT AVG(monthly_exp) as m_exp FROM (SELECT SUM(amount_eur) as monthly_exp FROM v_transactions WHERE amount_eur < 0 AND category_kind IN ('fixed', 'discretionary') GROUP BY strftime('%Y-%m', booking_date))").fetchone()
-            m_exp = float(exp_row["m_exp"] or 0) if exp_row else 0
+            m_exp = TransactionRepository.get_average_monthly_expenses(conn)
             annual_exp = abs(m_exp) * 12
             fi_number = annual_exp * 25
         
             # Estimate savings
-            sav_row = conn.execute("SELECT AVG(savings_eur) as m_sav FROM v_monthly_cashflow").fetchone()
-            m_sav = float(sav_row["m_sav"] or 0) if sav_row else 0
-        
-            nw_row = conn.execute("SELECT SUM(balance_eur_minor)/100.0 as nw FROM account_snapshots WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM account_snapshots)").fetchone()
-            curr_nw = float(nw_row["nw"] or 0) if nw_row else 0
+            m_sav = TransactionRepository.get_average_monthly_savings(conn)
+            curr_nw = AccountRepository.get_latest_net_worth_snapshot(conn)
         
             c_sl1, c_sl2 = st.columns(2)
             with c_sl1:
@@ -782,7 +780,7 @@ def render():
             fig_fire.update_layout(xaxis_title="Years from Now", yaxis_title="Net Worth (€)", margin=dict(t=35, l=10, r=10, b=10))
             if is_hidden():
                 fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
-            st.plotly_chart(fig_fire, use_container_width=True)
+            render_chart(fig_fire, use_container_width=True)
 
         with c_goals:
             st.subheader("🎯 Savings Goals")
@@ -791,17 +789,16 @@ def render():
                 with st.form("new_goal_form"):
                     g_name = st.text_input("Goal Name")
                     g_target = st.number_input("Target Amount (€)", min_value=1.0, step=100.0)
-                    accs = conn.execute("SELECT id, name FROM accounts WHERE asset_class = 'cash'").fetchall()
-                    acc_options = {a["id"]: a["name"] for a in accs}
+                    cash_accounts = AccountRepository.get_cash_accounts(conn)
+                    acc_options = {a.id: a.name for a in cash_accounts}
                     g_acc = st.selectbox("Linked Account", options=list(acc_options.keys()), format_func=lambda x: acc_options[x])
                 
                     if st.form_submit_button("Save Goal"):
-                        with conn:
-                            conn.execute("INSERT INTO goals (name, target_amount, account_id) VALUES (?, ?, ?)", (g_name, g_target, g_acc))
+                        TransactionRepository.add_goal(conn, g_name, g_target, g_acc)
                         st.success("Goal added!")
                         st.rerun(scope="app")
                     
-            goals = conn.execute("SELECT g.*, a.name as account_name, (SELECT balance_eur_minor/100.0 FROM account_snapshots s WHERE s.account_id = g.account_id ORDER BY snapshot_date DESC LIMIT 1) as current_balance FROM goals g LEFT JOIN accounts a ON a.id = g.account_id").fetchall()
+            goals = TransactionRepository.get_goals(conn)
             if not goals:
                 st.caption("No financial goals tracked yet.")
             for g in goals:
@@ -815,6 +812,6 @@ def render():
                     st.write(f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}")
                     st.progress(pct)
 
-
         conn.close()
+
 
