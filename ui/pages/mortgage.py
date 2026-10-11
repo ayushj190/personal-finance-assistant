@@ -29,8 +29,8 @@ def render():
     lib = dict(liabilities[0])
     lib_id = lib["id"]
 
-    # Ensure schedule is generated
-    sync_liability_schedule(conn, lib_id)
+    # Schedule is pre-generated on save.
+    # No need to sync on every page load.
 
     schedule_df = pd.read_sql_query(
         "SELECT * FROM liability_schedule WHERE liability_id = ? ORDER BY month_idx ASC",
@@ -40,7 +40,7 @@ def render():
 
     if schedule_df.empty:
         conn.close()
-        st.warning("Schedule could not be computed.")
+        st.warning("Schedule could not be computed. Please edit the configuration to generate it.")
         return
 
     original_principal = lib["original_principal_minor"] / 100.0
@@ -118,144 +118,144 @@ def render():
                 text=f"Repayment Progress: {pct_repaid:.1f}%")
 
     # Amortization curve
-    section_header("Amortization Schedule",
-                   "Evolution of loan balance and principal paydown over 30 years")
-    st.plotly_chart(build_mortgage_amortization_chart(
-        schedule_df), use_container_width=True, theme=None)
+    with section_header("Amortization Schedule",
+                   "Evolution of loan balance and principal paydown over 30 years"):
+        st.plotly_chart(build_mortgage_amortization_chart(
+            schedule_df), use_container_width=True, theme=None)
 
-    # Monthly breakdown: interest vs principal
-    section_header("Monthly Payment Composition",
-                   "Principal vs Interest per monthly installment")
-    st.plotly_chart(build_mortgage_interest_principal_bar(
-        schedule_df.head(60)), use_container_width=True, theme=None)
+        # Monthly breakdown: interest vs principal
+    with section_header("Monthly Payment Composition",
+                   "Principal vs Interest per monthly installment"):
+        st.plotly_chart(build_mortgage_interest_principal_bar(
+            schedule_df.head(60)), use_container_width=True, theme=None)
 
-    # Actual Mortgage Payments & Bank Debits
-    section_header(
+        # Actual Mortgage Payments & Bank Debits
+    with section_header(
         "Actual Mortgage Payments (Bank Transactions)",
         f"Verified debits matched to {lib['name']} ({lib['lender']})",
-    )
-    if mortgage_tx_rows:
-        matched_records = []
-        for tx in mortgage_tx_rows:
-            tx_month = tx["booking_date"][:7]
-            # Find schedule row matching month
-            sched_match = schedule_df[schedule_df["due_date"].str.startswith(
-                tx_month)]
-            if sched_match.empty:
-                sched_match = schedule_df[schedule_df["due_date"] <= tx["booking_date"]].tail(
-                    1)
+    ):
+        if mortgage_tx_rows:
+            matched_records = []
+            for tx in mortgage_tx_rows:
+                tx_month = tx["booking_date"][:7]
+                # Find schedule row matching month
+                sched_match = schedule_df[schedule_df["due_date"].str.startswith(
+                    tx_month)]
+                if sched_match.empty:
+                    sched_match = schedule_df[schedule_df["due_date"] <= tx["booking_date"]].tail(
+                        1)
 
-            if not sched_match.empty:
-                s_row = sched_match.iloc[0]
-                s_pay = s_row["payment_minor"] / 100.0
-                s_p = s_row["principal_minor"] / 100.0
-                s_i = s_row["interest_minor"] / 100.0
-                s_due = s_row["due_date"]
-                diff = abs(tx["amount_eur"] - s_pay)
-                status = "Exact Match" if diff < 1.0 else (
-                    "Extra Payment" if tx["amount_eur"] > s_pay else "Partial Payment")
+                if not sched_match.empty:
+                    s_row = sched_match.iloc[0]
+                    s_pay = s_row["payment_minor"] / 100.0
+                    s_p = s_row["principal_minor"] / 100.0
+                    s_i = s_row["interest_minor"] / 100.0
+                    s_due = s_row["due_date"]
+                    diff = abs(tx["amount_eur"] - s_pay)
+                    status = "Exact Match" if diff < 1.0 else (
+                        "Extra Payment" if tx["amount_eur"] > s_pay else "Partial Payment")
+                else:
+                    s_pay = 0.0
+                    s_p = 0.0
+                    s_i = 0.0
+                    s_due = "-"
+                    status = "Unmatched Period"
+
+                matched_records.append({
+                    "Date": tx["booking_date"],
+                    "Account": tx["account"],
+                    "Merchant": tx["merchant"],
+                    "Paid (€)": tx["amount_eur"],
+                    "Scheduled Due": s_due,
+                    "Scheduled (€)": s_pay,
+                    "Principal (€)": s_p,
+                    "Interest (€)": s_i,
+                    "Status": status,
+                })
+
+            matched_df = pd.DataFrame(matched_records)
+            if is_hidden():
+                for c in ["Paid (€)", "Scheduled (€)", "Principal (€)", "Interest (€)"]:
+                    matched_df[c] = matched_df[c].map(lambda x: format_money(x) if isinstance(
+                        x, (int, float)) and x > 0 else ("-" if x == 0.0 else x))
+                st.dataframe(matched_df, use_container_width=True, hide_index=True)
             else:
-                s_pay = 0.0
-                s_p = 0.0
-                s_i = 0.0
-                s_due = "-"
-                status = "Unmatched Period"
-
-            matched_records.append({
-                "Date": tx["booking_date"],
-                "Account": tx["account"],
-                "Merchant": tx["merchant"],
-                "Paid (€)": tx["amount_eur"],
-                "Scheduled Due": s_due,
-                "Scheduled (€)": s_pay,
-                "Principal (€)": s_p,
-                "Interest (€)": s_i,
-                "Status": status,
-            })
-
-        matched_df = pd.DataFrame(matched_records)
-        if is_hidden():
-            for c in ["Paid (€)", "Scheduled (€)", "Principal (€)", "Interest (€)"]:
-                matched_df[c] = matched_df[c].map(lambda x: format_money(x) if isinstance(
-                    x, (int, float)) and x > 0 else ("-" if x == 0.0 else x))
-            st.dataframe(matched_df, use_container_width=True, hide_index=True)
+                num_cfg = st.column_config.NumberColumn(
+                    "Amount (€)", format="€%.2f", disabled=True)
+                st.dataframe(
+                    matched_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
+                        "Paid (€)": num_cfg,
+                        "Scheduled (€)": num_cfg,
+                        "Principal (€)": num_cfg,
+                        "Interest (€)": num_cfg,
+                    }
+                )
         else:
-            num_cfg = st.column_config.NumberColumn(
-                "Amount (€)", format="€%.2f", disabled=True)
-            st.dataframe(
-                matched_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
-                    "Paid (€)": num_cfg,
-                    "Scheduled (€)": num_cfg,
-                    "Principal (€)": num_cfg,
-                    "Interest (€)": num_cfg,
-                }
+            st.info("No bank payment transactions assigned to mortgage yet. You can assign uncategorized bank payments to this mortgage from the Spending tab.")
+
+        # Recorded Extra Repayments (Boetevrij Aflossen)
+        extra_repayments = conn.execute(
+            "SELECT * FROM liability_extra_payments WHERE liability_id = ? ORDER BY paid_date DESC",
+            (lib_id,),
+        ).fetchall()
+        if extra_repayments:
+            st.markdown("##### ⚡ Logged Extra Principal Repayments")
+            extra_recs = []
+            for er in extra_repayments:
+                extra_recs.append({
+                    "Date": er["paid_date"],
+                    "Amount (€)": er["amount_minor"] / 100.0,
+                    "Benefit Strategy": "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term",
+                })
+            extra_df = pd.DataFrame(extra_recs)
+            if is_hidden():
+                extra_df["Amount (€)"] = extra_df["Amount (€)"].map(
+                    lambda x: format_money(x))
+                st.dataframe(extra_df, use_container_width=True, hide_index=True)
+            else:
+                st.dataframe(
+                    extra_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Amount (€)": st.column_config.NumberColumn("Amount (€)", format="€%.2f"),
+                    }
+                )
+
+        # Simulator: Extra Repayments
+    with section_header("Extra Repayment Simulator (Boetevrij Aflossen)",
+                   "See the impact of penalty-free extra principal repayments"):
+        col_sim1, col_sim2 = st.columns(2)
+        with col_sim1:
+            extra_annual = st.number_input(
+                "Extra Lump-Sum Payment (€)", min_value=0.0, value=2500.0, step=500.0)
+            recalc_choice = st.selectbox("Aflos Benefit", options=[
+                                         "lower_payment", "shorter_term"], format_func=lambda x: "Lower Monthly Payment" if x == "lower_payment" else "Shorten Loan Term")
+
+        with col_sim2:
+            # Run what-if
+            sim_extras = [{"paid_date": date.today(), "amount_minor": int(
+                extra_annual * 100), "recalc": recalc_choice}]
+            sim_rates = [dict(rate_period)] if rate_period else []
+            sim_sched = calculate_mortgage_schedule(
+                loan_type=lib["loan_type"],
+                principal_cents=lib["original_principal_minor"],
+                start_date=datetime.strptime(
+                    lib["start_date"][:10], "%Y-%m-%d").date(),
+                term_months=lib["term_months"],
+                rate_periods=sim_rates,
+                extra_payments=sim_extras,
             )
-    else:
-        st.info("No bank payment transactions assigned to mortgage yet. You can assign uncategorized bank payments to this mortgage from the Spending tab.")
+            sim_df = pd.DataFrame(sim_sched)
+            sim_interest = sim_df["interest_minor"].sum() / 100.0
+            interest_saved = total_interest_all_time - sim_interest
+            st.metric("Total Interest Saved", f"€{max(0.0, interest_saved):,.2f}")
+            if recalc_choice == "shorter_term":
+                months_saved = len(schedule_df) - len(sim_df)
+                st.metric("Months Saved", f"{max(0, months_saved)} months")
 
-    # Recorded Extra Repayments (Boetevrij Aflossen)
-    extra_repayments = conn.execute(
-        "SELECT * FROM liability_extra_payments WHERE liability_id = ? ORDER BY paid_date DESC",
-        (lib_id,),
-    ).fetchall()
-    if extra_repayments:
-        st.markdown("##### ⚡ Logged Extra Principal Repayments")
-        extra_recs = []
-        for er in extra_repayments:
-            extra_recs.append({
-                "Date": er["paid_date"],
-                "Amount (€)": er["amount_minor"] / 100.0,
-                "Benefit Strategy": "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term",
-            })
-        extra_df = pd.DataFrame(extra_recs)
-        if is_hidden():
-            extra_df["Amount (€)"] = extra_df["Amount (€)"].map(
-                lambda x: format_money(x))
-            st.dataframe(extra_df, use_container_width=True, hide_index=True)
-        else:
-            st.dataframe(
-                extra_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Amount (€)": st.column_config.NumberColumn("Amount (€)", format="€%.2f"),
-                }
-            )
-
-    # Simulator: Extra Repayments
-    section_header("Extra Repayment Simulator (Boetevrij Aflossen)",
-                   "See the impact of penalty-free extra principal repayments")
-    col_sim1, col_sim2 = st.columns(2)
-    with col_sim1:
-        extra_annual = st.number_input(
-            "Extra Lump-Sum Payment (€)", min_value=0.0, value=2500.0, step=500.0)
-        recalc_choice = st.selectbox("Aflos Benefit", options=[
-                                     "lower_payment", "shorter_term"], format_func=lambda x: "Lower Monthly Payment" if x == "lower_payment" else "Shorten Loan Term")
-
-    with col_sim2:
-        # Run what-if
-        sim_extras = [{"paid_date": date.today(), "amount_minor": int(
-            extra_annual * 100), "recalc": recalc_choice}]
-        sim_rates = [dict(rate_period)] if rate_period else []
-        sim_sched = calculate_mortgage_schedule(
-            loan_type=lib["loan_type"],
-            principal_cents=lib["original_principal_minor"],
-            start_date=datetime.strptime(
-                lib["start_date"][:10], "%Y-%m-%d").date(),
-            term_months=lib["term_months"],
-            rate_periods=sim_rates,
-            extra_payments=sim_extras,
-        )
-        sim_df = pd.DataFrame(sim_sched)
-        sim_interest = sim_df["interest_minor"].sum() / 100.0
-        interest_saved = total_interest_all_time - sim_interest
-        st.metric("Total Interest Saved", f"€{max(0.0, interest_saved):,.2f}")
-        if recalc_choice == "shorter_term":
-            months_saved = len(schedule_df) - len(sim_df)
-            st.metric("Months Saved", f"{max(0, months_saved)} months")
-
-    conn.close()
+        conn.close()

@@ -56,6 +56,25 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
                 conn.execute("ALTER TABLE tax_profile ADD COLUMN pension_contribution_pct REAL NOT NULL DEFAULT 0;")
             if "employer_pension_match_pct" not in tax_cols:
                 conn.execute("ALTER TABLE tax_profile ADD COLUMN employer_pension_match_pct REAL NOT NULL DEFAULT 0;")
+            if "factor_a_minor" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN factor_a_minor INTEGER NOT NULL DEFAULT 0;")
+            if "green_investments_minor" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN green_investments_minor INTEGER NOT NULL DEFAULT 0;")
+            if "reserveringsruimte_minor" not in tax_cols:
+                conn.execute("ALTER TABLE tax_profile ADD COLUMN reserveringsruimte_minor INTEGER NOT NULL DEFAULT 0;")
+
+        # Migration: knowledge_embeddings table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+              id              INTEGER PRIMARY KEY,
+              chunk_id        TEXT UNIQUE NOT NULL,
+              doc_title       TEXT NOT NULL,
+              category        TEXT NOT NULL,
+              content         TEXT NOT NULL,
+              embedding_json  TEXT,
+              updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        """)
 
         # Migration: risk_profiles robustness
         risk_cols = [r["name"] for r in conn.execute("PRAGMA table_info(risk_profiles)").fetchall()]
@@ -66,6 +85,33 @@ def migrate(db_path: Path | str = DB_PATH) -> None:
                 conn.execute("ALTER TABLE risk_profiles ADD COLUMN liquidity_needs TEXT;")
             if "investment_experience" not in risk_cols:
                 conn.execute("ALTER TABLE risk_profiles ADD COLUMN investment_experience TEXT;")
+
+        # Migration: app_settings table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+        """)
+
+        # Migration: category taxonomy consolidation
+        try:
+            conn.execute("UPDATE categories SET name = 'Mortgage & Rent' WHERE id = 10 AND name = 'Housing & Utilities'")
+            conn.execute("UPDATE categories SET name = 'Insurances' WHERE id = 20 AND name = 'Insurance & Financial'")
+            conn.execute("UPDATE categories SET name = 'Groceries' WHERE id = 40 AND name = 'Groceries & Household'")
+            conn.execute("UPDATE categories SET name = 'Food & Restaurants' WHERE id = 50 AND name = 'Dining & Nightlife'")
+
+            conn.execute("INSERT OR IGNORE INTO categories (name, parent_id, kind) VALUES ('Utility Bills', NULL, 'fixed')")
+            u_row = conn.execute("SELECT id FROM categories WHERE name = 'Utility Bills'").fetchone()
+            if u_row:
+                conn.execute("UPDATE categories SET parent_id = ? WHERE id IN (13, 14, 15, 16)", (u_row["id"],))
+
+            conn.execute("INSERT OR IGNORE INTO categories (name, parent_id, kind) VALUES ('Sports & Leisure', NULL, 'discretionary')")
+            s_row = conn.execute("SELECT id FROM categories WHERE name = 'Sports & Leisure'").fetchone()
+            if s_row:
+                conn.execute("UPDATE categories SET parent_id = ? WHERE id IN (33, 65, 83)", (s_row["id"],))
+        except Exception:
+            pass
 
         # Performance Indexes
         conn.execute("CREATE INDEX IF NOT EXISTS ix_snapshots_date ON account_snapshots(snapshot_date);")
@@ -291,3 +337,39 @@ def get_latest_risk_profile(conn: sqlite3.Connection) -> dict[str, Any] | None:
     ).fetchall()
     res["answers"] = {a["question"]: a["answer"] for a in answers}
     return res
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: Any = None) -> Any:
+    """Retrieve value from app_settings table."""
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        if row is not None:
+            return row["value"]
+    except Exception:
+        pass
+    return default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: Any) -> None:
+    """Upsert value in app_settings table."""
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (str(key), str(value)),
+        )
+
+
+def add_custom_category(conn: sqlite3.Connection, name: str, kind: str, parent_id: int | None = None) -> int:
+    """Add a new custom expense category."""
+    clean_name = name.strip()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO categories (name, parent_id, kind) VALUES (?, ?, ?)",
+            (clean_name, parent_id, kind),
+        )
+        return cur.lastrowid
+

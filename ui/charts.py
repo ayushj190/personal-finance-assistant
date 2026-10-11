@@ -99,13 +99,22 @@ def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None
     if df.empty:
         return go.Figure()
 
+    cat_col = "parent_category" if "parent_category" in df.columns else "category"
+
     if drilldown_category:
-        filtered_df = df[df["category"] == drilldown_category]
-        df_grouped = filtered_df.groupby("merchant", as_index=False)["amount_eur"].sum()
-        names_col = "merchant"
+        filtered_df = df[df[cat_col] == drilldown_category]
+        if filtered_df.empty and "category" in df.columns:
+            filtered_df = df[df["category"] == drilldown_category]
+
+        if not filtered_df.empty and "category" in filtered_df.columns and filtered_df["category"].nunique() > 1:
+            df_grouped = filtered_df.groupby("category", as_index=False)["amount_eur"].sum()
+            names_col = "category"
+        else:
+            df_grouped = filtered_df.groupby("merchant", as_index=False)["amount_eur"].sum()
+            names_col = "merchant"
     else:
-        df_grouped = df.groupby("category", as_index=False)["amount_eur"].sum()
-        names_col = "category"
+        df_grouped = df.groupby(cat_col, as_index=False)["amount_eur"].sum()
+        names_col = cat_col
 
     pull_values = [0.02] * len(df_grouped)
 

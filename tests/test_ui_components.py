@@ -37,6 +37,36 @@ class TestUIComponents(unittest.TestCase):
         self.assertIn("status-dot-success", badge)
         self.assertIn("🟢 Synced 12:00", badge)
 
+    def test_institution_logo_svg(self):
+        from ui.logos import get_institution_logo_svg
+        abn_svg = get_institution_logo_svg("ABN AMRO", size=24)
+        self.assertIn("<svg", abn_svg)
+        self.assertIn('width="24"', abn_svg)
+        self.assertIn("#008269", abn_svg)
+
+        revolut_svg = get_institution_logo_svg("Revolut")
+        self.assertIn("<svg", revolut_svg)
+        self.assertIn("#191C1F", revolut_svg)
+
+        unknown_svg = get_institution_logo_svg("Unknown Bank")
+        self.assertIn("<svg", unknown_svg)
+        self.assertIn("#334155", unknown_svg)
+
+    def test_clean_account_name(self):
+        from ui.pages.dashboard import clean_account_name
+        accounts = [
+            {"id": 1, "institution": "eToro", "name": "eToro USD Investment", "asset_class": "investment", "currency": "USD"},
+            {"id": 2, "institution": "eToro Bank", "name": "eToro Money (Cash)", "asset_class": "cash", "currency": "EUR"},
+            {"id": 3, "institution": "ABN AMRO", "name": "ABN AMRO (EUR)", "asset_class": "cash", "currency": "EUR"},
+            {"id": 4, "institution": "Revolut", "name": "Revolut (USD)", "asset_class": "cash", "currency": "USD"},
+            {"id": 5, "institution": "Revolut", "name": "Revolut (EUR)", "asset_class": "cash", "currency": "EUR"},
+        ]
+        self.assertEqual(clean_account_name(accounts[0], accounts), "eToro (Invest)")
+        self.assertEqual(clean_account_name(accounts[1], accounts), "eToro (Cash)")
+        self.assertEqual(clean_account_name(accounts[2], accounts), "ABN AMRO")
+        self.assertEqual(clean_account_name(accounts[3], accounts), "Revolut (USD)")
+        self.assertEqual(clean_account_name(accounts[4], accounts), "Revolut (EUR)")
+
 
 if __name__ == "__main__":
     unittest.main()

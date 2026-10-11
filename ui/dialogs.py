@@ -22,19 +22,29 @@ def tax_profile_dialog():
             owns_home = st.checkbox("Owns Home", value=bool(profile["owns_home"]))
             has_13th_month = st.checkbox("Has 13th Month", value=bool(dict(profile).get("has_13th_month", 0)))
         with c2:
-            b_year = profile["birth_year"]
+            b_year = profile["birth_year"] if "birth_year" in profile.keys() else 1990
             birth_year = st.number_input("Birth Year", min_value=1900, max_value=2100, value=int(b_year) if b_year else 1990, step=1)
             expected_bonus_eur = st.number_input("Expected Bonus (€)", min_value=0.0, value=float(dict(profile).get("expected_bonus_eur", 0)), step=500.0)
             pension_contribution_pct = st.number_input("Pension Contribution (%)", min_value=0.0, max_value=100.0, value=float(dict(profile).get("pension_contribution_pct", 0)), step=1.0)
             employer_pension_match_pct = st.number_input("Employer Pension Match (%)", min_value=0.0, max_value=100.0, value=float(dict(profile).get("employer_pension_match_pct", 0)), step=1.0)
-            
+
+        st.markdown("##### 🏛️ Pension Gap & Green Investment Optimization")
+        c3, c4 = st.columns(2)
+        with c3:
+            fa_val = (float(dict(profile).get("factor_a_minor", 0)) / 100.0) if "factor_a_minor" in profile.keys() else 0.0
+            factor_a = st.number_input("Factor A (€) - from annual pension UPO", min_value=0.0, value=fa_val, step=100.0, help="Annual pension accrual from employer UPO for Jaarruimte calculation")
+        with c4:
+            green_val = (float(dict(profile).get("green_investments_minor", 0)) / 100.0) if "green_investments_minor" in profile.keys() else 0.0
+            green_investments_eur = st.number_input("Certified Green Investments (€)", min_value=0.0, value=green_val, step=1000.0, help="Groenfondsen (exempt up to €71,251 single / €142,502 partners in Box 3)")
+
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("Save Tax Profile", use_container_width=True, type="primary"):
                 from agent.tools import tool_save_tax_profile
                 res = tool_save_tax_profile(
                     gross_annual_income, has_fiscal_partner, has_30_percent_ruling, is_entrepreneur, owns_home,
-                    birth_year, has_13th_month, expected_bonus_eur, pension_contribution_pct, employer_pension_match_pct
+                    birth_year, has_13th_month, expected_bonus_eur, pension_contribution_pct, employer_pension_match_pct,
+                    factor_a, green_investments_eur, 0.0
                 )
                 if "copilot_history" in st.session_state:
                     st.session_state.copilot_history.append({"role": "assistant", "content": "✅ " + res["message"]})

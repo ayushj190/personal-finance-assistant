@@ -156,9 +156,10 @@ with st.container(key="top_app_bar"):
             on_change=_on_privacy_toggle,
         )
 
+# Render active main page first so main pages are never delayed
+active_page.run()
+
 # Global sidebar
 with st.sidebar:
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
-
-active_page.run()

@@ -6,8 +6,15 @@ import pandas as pd
 import streamlit as st
 
 from agent.chart_renderer import render_chart
-from agent.sql_sandbox import execute_safe_query
 from config import DB_PATH
+import plotly.express as px
+from services.rag_service import search_knowledge_base, ingest_user_document
+from services.tax_optimizer import (
+    calculate_jaarruimte,
+    calculate_groenfondsen_arbitrage,
+    simulate_capital_allocation_tradeoff,
+    diagnose_tax_leakage,
+)
 from connectors.file_import.detect import (
     FileFormat,
     parse_statement,
@@ -41,12 +48,17 @@ def tool_get_current_net_worth() -> dict[str, Any]:
 
 def tool_toggle_privacy_mode(enable: bool | None = None) -> dict[str, Any]:
     """Toggle or set privacy mode (hide or show financial amounts)."""
-    current = st.session_state.get("hide_amounts", False) if hasattr(
-        st, "session_state") else False
+    current = False
+    try:
+        current = bool(st.session_state.get("hide_amounts", False))
+    except Exception:
+        pass
     new_val = not current if enable is None else bool(enable)
-    if hasattr(st, "session_state"):
+    try:
         st.session_state["hide_amounts"] = new_val
         st.session_state["global_privacy_toggle"] = new_val
+    except Exception:
+        pass
     state_str = "ENABLED (Amounts hidden)" if new_val else "DISABLED (Amounts visible)"
     return {"success": True, "message": f"Privacy mode is now {state_str}."}
 
@@ -56,9 +68,11 @@ def tool_set_theme(theme: str) -> dict[str, Any]:
     clean_theme = theme.lower().strip()
     if clean_theme not in ("dark", "light"):
         return {"success": False, "message": "Theme must be either 'dark' or 'light'."}
-    if hasattr(st, "session_state"):
+    try:
         st.session_state["theme"] = clean_theme
         st.session_state["global_theme_toggle"] = (clean_theme == "light")
+    except Exception:
+        pass
     return {"success": True, "message": f"App theme switched to {clean_theme} mode."}
 
 
@@ -474,46 +488,143 @@ def tool_auto_categorize_uncategorized_transactions(limit: int = 50) -> dict[str
         conn.close()
 
 
-def tool_query_financial_data(
-    sql: str,
-    chart_spec: dict[str, Any] | None = None,
-    summary_template: str = "",
+def tool_get_spending_by_category(
+    year: int | None = None,
+    month: int | None = None,
 ) -> dict[str, Any]:
-    """Execute read-only SQL query against financial views and generate Plotly charts."""
-    df = pd.DataFrame()
+    """Get aggregated spending by category for a specific month and year, or all-time."""
+    conn = database.connect(DB_PATH)
     try:
-        df = execute_safe_query(sql)
-    except Exception as e:
+        where_clauses = ["is_internal_transfer = 0", "amount_eur < 0"]
+        params: list[Any] = []
+
+        if year is not None and month is not None:
+            prefix = f"{year:04d}-{month:02d}%"
+            where_clauses.append("booking_date LIKE ?")
+            params.append(prefix)
+        elif year is not None:
+            prefix = f"{year:04d}-%"
+            where_clauses.append("booking_date LIKE ?")
+            params.append(prefix)
+
+        query = f"""
+            SELECT category, ROUND(SUM(-amount_eur), 2) as total_spent, COUNT(*) as count
+            FROM v_transactions
+            WHERE {" AND ".join(where_clauses)}
+            GROUP BY category
+            ORDER BY total_spent DESC
+        """
+        rows = conn.execute(query, tuple(params)).fetchall()
+        df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+
+        total = float(df["total_spent"].sum()) if not df.empty else 0.0
+        time_label = f"for {year}-{month:02d}" if (year and month) else (f"for {year}" if year else "overall")
+
+        fig = None
+        if not df.empty:
+            chart_spec = {
+                "type": "bar",
+                "x": "category",
+                "y": "total_spent",
+                "title": f"Spending by Category ({time_label})",
+            }
+            fig = render_chart(df, chart_spec)
+
+        return {
+            "success": True,
+            "period": time_label,
+            "total_spent_eur": total,
+            "categories": df.to_dict(orient="records") if not df.empty else [],
+            "df": df,
+            "figure": fig,
+            "message": f"Total spending {time_label} is €{total:,.2f} across {len(df)} categories.",
+        }
+    finally:
+        conn.close()
+
+
+def tool_get_recent_transactions(
+    limit: int = 15,
+    category: str | None = None,
+) -> dict[str, Any]:
+    """Retrieve recent transactions filtered optionally by category name."""
+    conn = database.connect(DB_PATH)
+    try:
+        where_clauses = ["is_internal_transfer = 0"]
+        params: list[Any] = []
+
+        if category:
+            where_clauses.append("LOWER(category) LIKE LOWER(?)")
+            params.append(f"%{category.strip()}%")
+
+        clean_limit = max(1, min(100, int(limit)))
+        query = f"""
+            SELECT booking_date, institution, merchant, category, amount_eur
+            FROM v_transactions
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY booking_date DESC
+            LIMIT ?
+        """
+        params.append(clean_limit)
+        rows = conn.execute(query, tuple(params)).fetchall()
+        df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+
+        return {
+            "success": True,
+            "count": len(df),
+            "transactions": df.to_dict(orient="records") if not df.empty else [],
+            "df": df,
+            "figure": None,
+            "message": f"Found {len(df)} transactions.",
+        }
+    finally:
+        conn.close()
+
+
+def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
+    """Get monthly cashflow summary (income, fixed, discretionary, savings)."""
+    conn = database.connect(DB_PATH)
+    try:
+        params: list[Any] = []
+        where_clause = ""
+        if year is not None:
+            where_clause = "WHERE month LIKE ?"
+            params.append(f"{year:04d}-%")
+
+        query = f"""
+            SELECT month, income_eur, fixed_eur, discretionary_eur, savings_eur
+            FROM v_monthly_cashflow
+            {where_clause}
+            ORDER BY month DESC
+            LIMIT 12
+        """
+        rows = conn.execute(query, tuple(params)).fetchall()
+        df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+
+        return {
+            "success": True,
+            "cashflow": df.to_dict(orient="records") if not df.empty else [],
+            "df": df,
+            "figure": None,
+            "message": f"Retrieved cashflow data for {len(df)} months.",
+        }
+    finally:
+        conn.close()
+
+
+def tool_search_financial_knowledge_base(query: str, category: str | None = None) -> dict[str, Any]:
+    """Search the local knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces, or mortgages."""
+    results = search_knowledge_base(query, top_k=3, category=category)
+    if not results:
         return {
             "success": False,
-            "answer": f"Database query failed: {str(e)}",
-            "sql": sql,
-            "df": pd.DataFrame(),
-            "figure": None,
+            "results": [],
+            "message": f"No specific guidance found for query '{query}'.",
         }
-
-    fig = render_chart(df, chart_spec) if chart_spec else None
-
-    # Summary
-    summary = summary_template
-    if summary and not df.empty:
-        try:
-            first_row = df.iloc[0].to_dict()
-            first_val = list(first_row.values())[0] if first_row else ""
-            summary = summary.replace("{total}", str(round(first_val, 2)) if isinstance(
-                first_val, (int, float)) else str(first_val))
-            summary = summary.replace("{count}", str(len(df)))
-        except Exception:
-            pass
-    elif not summary:
-        summary = f"Found {len(df)} matching records."
-
     return {
         "success": True,
-        "answer": summary,
-        "sql": sql,
-        "df": df,
-        "figure": fig,
+        "results": results,
+        "message": f"Retrieved {len(results)} relevant articles.",
     }
 
 
@@ -533,31 +644,6 @@ def tool_analyze_market_data(ticker: str) -> dict[str, Any]:
     return {"success": True, "quote": quote}
 
 
-def tool_execute_python(code: str) -> dict[str, Any]:
-    """Execute Python code for complex data analysis using pandas or sqlite3. Returns stdout."""
-    old_stdout = sys.stdout
-    redirected_output = sys.stdout = io.StringIO()
-    try:
-        import pandas as pd
-        import sqlite3
-        import numpy as np
-        from config import DB_PATH
-
-        local_env = {
-            "pd": pd,
-            "sqlite3": sqlite3,
-            "np": np,
-            "DB_PATH": DB_PATH,
-        }
-        exec(code, local_env)
-        stdout_val = redirected_output.getvalue()
-        return {"success": True, "output": stdout_val.strip()}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-    finally:
-        sys.stdout = old_stdout
-
-
 def tool_save_tax_profile(
     gross_annual_income: float,
     has_fiscal_partner: bool,
@@ -568,7 +654,10 @@ def tool_save_tax_profile(
     has_13th_month: bool = False,
     expected_bonus_eur: float = 0,
     pension_contribution_pct: float = 0,
-    employer_pension_match_pct: float = 0
+    employer_pension_match_pct: float = 0,
+    factor_a: float = 0,
+    green_investments_eur: float = 0,
+    reserveringsruimte_eur: float = 0,
 ) -> dict[str, Any]:
     """Save user tax profile to the database."""
     conn = database.connect(DB_PATH)
@@ -576,27 +665,168 @@ def tool_save_tax_profile(
         with conn:
             conn.execute(
                 "INSERT INTO tax_profile (id, gross_annual_income, has_fiscal_partner, has_30_percent_ruling, "
-                "is_entrepreneur, owns_home, birth_year, has_13th_month, expected_bonus_eur, pension_contribution_pct, employer_pension_match_pct) "
-                "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "is_entrepreneur, owns_home, birth_year, has_13th_month, expected_bonus_eur, pension_contribution_pct, "
+                "employer_pension_match_pct, factor_a_minor, green_investments_minor, reserveringsruimte_minor) "
+                "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET gross_annual_income=excluded.gross_annual_income, "
                 "has_fiscal_partner=excluded.has_fiscal_partner, has_30_percent_ruling=excluded.has_30_percent_ruling, "
                 "is_entrepreneur=excluded.is_entrepreneur, owns_home=excluded.owns_home, birth_year=excluded.birth_year, "
                 "has_13th_month=excluded.has_13th_month, expected_bonus_eur=excluded.expected_bonus_eur, "
                 "pension_contribution_pct=excluded.pension_contribution_pct, employer_pension_match_pct=excluded.employer_pension_match_pct, "
+                "factor_a_minor=excluded.factor_a_minor, green_investments_minor=excluded.green_investments_minor, "
+                "reserveringsruimte_minor=excluded.reserveringsruimte_minor, "
                 "updated_at=datetime('now')",
-                (gross_annual_income if gross_annual_income is not None else 0.0, 
-                 1 if has_fiscal_partner else 0, 1 if has_30_percent_ruling else 0, 1 if is_entrepreneur else 0, 
-                 1 if owns_home else 0, birth_year, 1 if has_13th_month else 0, 
-                 int(expected_bonus_eur) if expected_bonus_eur is not None else 0, 
-                 pension_contribution_pct if pension_contribution_pct is not None else 0.0, 
-                 employer_pension_match_pct if employer_pension_match_pct is not None else 0.0)
+                (
+                    gross_annual_income if gross_annual_income is not None else 0.0,
+                    1 if has_fiscal_partner else 0,
+                    1 if has_30_percent_ruling else 0,
+                    1 if is_entrepreneur else 0,
+                    1 if owns_home else 0,
+                    birth_year,
+                    1 if has_13th_month else 0,
+                    int(expected_bonus_eur) if expected_bonus_eur is not None else 0,
+                    pension_contribution_pct if pension_contribution_pct is not None else 0.0,
+                    employer_pension_match_pct if employer_pension_match_pct is not None else 0.0,
+                    int(round((factor_a or 0.0) * 100)),
+                    int(round((green_investments_eur or 0.0) * 100)),
+                    int(round((reserveringsruimte_eur or 0.0) * 100)),
+                ),
             )
         return {
             "success": True,
-            "message": f"Tax profile saved successfully: Gross Income €{(gross_annual_income or 0):,.2f}, Fiscal Partner: {bool(has_fiscal_partner)}."
+            "message": f"Tax profile saved successfully: Gross Income €{(gross_annual_income or 0):,.2f}, Fiscal Partner: {bool(has_fiscal_partner)}, Factor A: €{(factor_a or 0):,.0f}, Green Assets: €{(green_investments_eur or 0):,.0f}."
         }
     finally:
         conn.close()
+
+
+def tool_simulate_tax_optimization(capital_eur: float, horizon_years: int = 10) -> dict[str, Any]:
+    """Simulate 4-way capital trade-off (Mortgage Prepayment vs. Pillar 3 Jaarruimte vs. Certified Groenfonds vs. Taxable ETF)."""
+    conn = database.connect(DB_PATH)
+    try:
+        sim = simulate_capital_allocation_tradeoff(capital_eur, horizon_years, conn=conn)
+        df = sim["trajectory_df"]
+
+        fig = px.line(
+            df,
+            x="Year",
+            y=["Mortgage Prepayment", "Pillar 3 Pension (Jaarruimte)", "Certified Groenfonds", "Taxable Box 3 ETF"],
+            title=f"Capital Allocation Strategy Comparison (€{capital_eur:,.0f} Horizon {horizon_years}y)",
+            labels={"value": "Total Net Wealth (€)", "variable": "Strategy"},
+            markers=True,
+        )
+        fig.update_layout(
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=10, r=10, t=50, b=10),
+            hovermode="x unified",
+        )
+
+        winner = sim["winner_strategy"].replace("_", " ").title()
+        msg = (
+            f"Simulated €{capital_eur:,.0f} across {horizon_years} years. "
+            f"Top outcome: {winner} yielding €{sim['final_values'][sim['winner_strategy']]:,.2f} net. "
+            f"Immediate Pillar 3 tax refund: €{sim['immediate_pension_refund_eur']:,.2f}."
+        )
+
+        return {
+            "success": True,
+            "simulation": sim,
+            "figure": fig,
+            "df": df,
+            "message": msg,
+        }
+    finally:
+        conn.close()
+
+
+def tool_calculate_pension_room(gross_income: float | None = None, factor_a: float = 0.0) -> dict[str, Any]:
+    """Calculate official Dutch Pillar 3 pension gap (Jaarruimte & Reserveringsruimte) and immediate Box 1 tax refund."""
+    conn = database.connect(DB_PATH)
+    try:
+        if gross_income is None:
+            profile = conn.execute("SELECT gross_annual_income, factor_a_minor, reserveringsruimte_minor FROM tax_profile WHERE id = 1").fetchone()
+            gross_income = float(profile["gross_annual_income"]) if profile else 65000.0
+            if factor_a == 0.0 and profile and "factor_a_minor" in profile.keys():
+                factor_a = float(profile["factor_a_minor"]) / 100.0
+
+        pension_data = calculate_jaarruimte(gross_income=gross_income, factor_a=factor_a)
+        msg = (
+            f"Calculated Jaarruimte for €{gross_income:,.0f} gross (Factor A: €{factor_a:,.0f}): "
+            f"Annual room €{pension_data['annual_jaarruimte']:,.2f}. "
+            f"Immediate Box 1 tax refund: €{pension_data['immediate_tax_rebate']:,.2f} "
+            f"({pension_data['marginal_tax_rate']*100:.2f}% marginal bracket). "
+            f"20-year compound tax shield: €{pension_data['compounding_tax_shield']:,.2f}."
+        )
+        return {
+            "success": True,
+            "pension_data": pension_data,
+            "message": msg,
+        }
+    finally:
+        conn.close()
+
+
+def tool_analyze_green_fund_strategy(target_allocation: float | None = None) -> dict[str, Any]:
+    """Analyze Dutch Groenfondsen double tax benefit (Box 3 wealth tax exemption and 0.1% Box 1 credit)."""
+    conn = database.connect(DB_PATH)
+    try:
+        nw = calculate_current_net_worth(conn)
+        total_wealth = nw["liquid_cash"] + nw["invested"]
+        profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
+        has_partner = bool(profile["has_fiscal_partner"]) if profile else False
+        current_green = (float(profile["green_investments_minor"]) / 100.0) if profile and "green_investments_minor" in profile.keys() else 0.0
+        prospective = target_allocation if target_allocation is not None else (25000.0 if current_green == 0 else 0.0)
+
+        arb = calculate_groenfondsen_arbitrage(
+            total_wealth=total_wealth,
+            current_green=current_green,
+            prospective_green=prospective,
+            has_fiscal_partner=has_partner,
+        )
+
+        msg = (
+            f"Groenfondsen Analysis: Exemption cap €{arb['exemption_cap']:,.0f}. "
+            f"Annual tax benefit for €{arb['total_green']:,.0f} green allocation: "
+            f"€{arb['total_annual_tax_benefit']:,.2f} (avoiding €{arb['box3_annual_savings']:,.2f} in Box 3 + "
+            f"€{arb['box1_annual_credit']:,.2f} Box 1 credit). "
+            f"Guaranteed tax alpha: ~{arb['guaranteed_tax_alpha_pct']:.2f}%."
+        )
+        return {
+            "success": True,
+            "arbitrage": arb,
+            "message": msg,
+        }
+    finally:
+        conn.close()
+
+
+def tool_diagnose_tax_leaks() -> dict[str, Any]:
+    """Scan current user assets, liabilities, and income to proactively diagnose tax inefficiencies."""
+    conn = database.connect(DB_PATH)
+    try:
+        leaks = diagnose_tax_leakage(conn)
+        tot_savings = sum(l["potential_annual_saving_eur"] for l in leaks)
+        msg = f"Diagnosed {len(leaks)} tax optimization opportunities with up to €{tot_savings:,.2f} in potential annual savings."
+        return {
+            "success": True,
+            "leak_count": len(leaks),
+            "total_potential_annual_savings_eur": tot_savings,
+            "recommendations": leaks,
+            "message": msg,
+        }
+    finally:
+        conn.close()
+
+
+def tool_ingest_financial_document(doc_title: str, content: str, category: str = "custom") -> dict[str, Any]:
+    """Index a custom text/markdown document (e.g. UPO pension statement, mortgage advice deed) into local RAG."""
+    conn = database.connect(DB_PATH)
+    try:
+        res = ingest_user_document(title=doc_title, content=content, category=category, conn=conn)
+        return res
+    finally:
+        conn.close()
+
 
 
 def tool_analyze_tax_situation() -> dict[str, Any]:
@@ -670,4 +900,299 @@ def tool_request_profile_form(form_type: str) -> dict[str, Any]:
         "form_request": form_type,
         "message": f"Displaying the {form_type.replace('_', ' ')} form..."
     }
+
+
+COPILOT_TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_net_worth",
+            "description": "Calculate and return real-time net worth (cash, investments, home equity, total).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_spending_by_category",
+            "description": "Get total spending broken down by category for a specific month and year (e.g. year=2026, month=10), or overall.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "year": {"type": "integer", "description": "4-digit year like 2026"},
+                    "month": {"type": "integer", "description": "Month number (1-12)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recent_transactions",
+            "description": "Retrieve recent transactions optionally filtered by category.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Number of transactions to return (default 15)"},
+                    "category": {"type": "string", "description": "Category name filter (e.g. Groceries, Dining)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_monthly_cashflow",
+            "description": "Get monthly income, expenses, and savings summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "year": {"type": "integer", "description": "Filter by 4-digit year"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_investments",
+            "description": "Analyze investment portfolio asset classes, holdings by type, target drift, and risk profile alignment.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_tax_situation",
+            "description": "Retrieve gross income and wealth balances for Dutch Box 1 and Box 3 calculations.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_mortgage",
+            "description": "Analyze active mortgages, interest rate periods, and upcoming repayment schedules.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_financial_knowledge_base",
+            "description": "Search local unstructured knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces (jaarruimte/lijfrente), or mortgage rules.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query about tax, mortgage, or financial concepts"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search web for news, company descriptions, or current market info.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Web search query"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_market_data",
+            "description": "Fetch live market price and fundamentals for a stock or ETF ticker (e.g. AAPL, VWCE.DE).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Ticker symbol"},
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "toggle_privacy_mode",
+            "description": "Toggle or set privacy mode to hide/show amounts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enable": {"type": "boolean", "description": "True to hide amounts, False to show"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_theme",
+            "description": "Switch app theme between 'dark' and 'light'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "theme": {"type": "string", "enum": ["dark", "light"]},
+                },
+                "required": ["theme"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_active_allocation_profile",
+            "description": "Set the active investment asset allocation profile by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile_name": {"type": "string", "description": "Name of the allocation profile"},
+                },
+                "required": ["profile_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_savings_rate",
+            "description": "Update APY interest rate or balance for a savings/cash account.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "institution_or_name": {"type": "string", "description": "Bank or account name"},
+                    "apy_pct": {"type": "number", "description": "Annual interest percentage yield"},
+                    "balance_eur": {"type": "number", "description": "Optional updated balance"},
+                },
+                "required": ["institution_or_name", "apy_pct"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_mortgage_payment",
+            "description": "Record extra principal repayment on a mortgage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "loan_name": {"type": "string", "description": "Name or lender of the loan"},
+                    "amount_eur": {"type": "number", "description": "Extra repayment amount in EUR"},
+                    "paid_date": {"type": "string", "description": "YYYY-MM-DD date"},
+                    "recalc": {"type": "string", "enum": ["lower_payment", "shorter_term"]},
+                },
+                "required": ["loan_name", "amount_eur"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_risk_profile",
+            "description": "Retrieve user's investment risk profile.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "auto_categorize_uncategorized_transactions",
+            "description": "Automatically categorize uncategorized transactions using AI.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max transactions to categorize (default 50)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_profile_form",
+            "description": "Request UI dialog form for 'tax_profile' or 'risk_profile'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "form_type": {"type": "string", "enum": ["tax_profile", "risk_profile", "mortgage_config"]},
+                },
+                "required": ["form_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "simulate_tax_optimization",
+            "description": "Simulate 4-way capital trade-off (Mortgage Prepayment vs Pillar 3 Jaarruimte vs Groenfonds vs Taxable ETF) with interactive trajectory chart.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "capital_eur": {"type": "number", "description": "Lump sum amount in EUR to allocate (e.g. 5000, 10000)"},
+                    "horizon_years": {"type": "integer", "description": "Investment horizon in years (default 10)"},
+                },
+                "required": ["capital_eur"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_pension_room",
+            "description": "Calculate official Dutch Pillar 3 pension gap (Jaarruimte), immediate Box 1 tax refund, and compound tax shield.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "gross_income": {"type": "number", "description": "Optional gross annual income override"},
+                    "factor_a": {"type": "number", "description": "Optional Factor A (pensioenaangroei from UPO)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_green_fund_strategy",
+            "description": "Analyze Dutch Groenfondsen double tax benefit (Box 3 exemption up to €71k/€142k and 0.1% Box 1 credit) with certified fund list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_allocation": {"type": "number", "description": "Prospective amount in EUR to invest in green funds"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "diagnose_tax_leaks",
+            "description": "Proactively scan accounts, liabilities, and income for Dutch tax inefficiencies (cash drag, unused HRA/prepayments, top bracket deductions).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ingest_financial_document",
+            "description": "Index a custom financial text document (e.g. UPO pension statement, mortgage advice note) into local RAG knowledge base.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doc_title": {"type": "string", "description": "Title of the document"},
+                    "content": {"type": "string", "description": "Full text or summary of the document"},
+                    "category": {"type": "string", "description": "Category (e.g. pension, mortgage, tax, custom)"},
+                },
+                "required": ["doc_title", "content"],
+            },
+        },
+    },
+]
+
 

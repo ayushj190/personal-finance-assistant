@@ -169,11 +169,11 @@ def inject_custom_css() -> None:
             background: #FFFFFF !important;
             backdrop-filter: none !important;
             border: 1px solid #E2E8F0 !important;
-            border-radius: 14px !important;
-            padding: 16px 20px !important;
+            border-radius: 12px !important;
+            padding: 10px 16px !important;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 4px 12px 0 rgba(0, 0, 0, 0.03) !important;
             transition: all 0.2s ease-in-out !important;
-            min-height: 115px !important;
+            min-height: 90px !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
@@ -209,7 +209,7 @@ def inject_custom_css() -> None:
             background: #FFFFFF !important;
             border: 1px solid #E2E8F0 !important;
             border-radius: 12px !important;
-            padding: 16px !important;
+            padding: 12px 16px !important;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
             backdrop-filter: none !important;
             color: #0F172A !important;
@@ -345,11 +345,98 @@ def inject_custom_css() -> None:
             color: #0F172A !important;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
         }
+        /* Chat UI - Light Mode */
         div[data-testid="stChatMessage"] {
-            background-color: #FFFFFF !important;
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            margin-bottom: 0.85rem !important;
+            display: flex !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Avatar styling */
+        div[data-testid="stChatMessage"] div[data-testid^="stChatMessageAvatar"] {
+            flex-shrink: 0 !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            margin: 0 !important;
+        }
+
+        /* Base chat content */
+        div[data-testid="stChatMessageContent"] {
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+
+        /* User Messages (Right Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) {
+            flex-direction: row-reverse !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="user" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+            border: 1px solid #059669 !important;
+            border-radius: 16px 16px 4px 16px !important;
+            padding: 10px 14px !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.22) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(85%, calc(100% - 44px)) !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"] *,
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] * {
+            color: #FFFFFF !important;
+        }
+
+        /* Assistant Messages (Left Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) {
+            flex-direction: row !important;
+        }
+        div[data-testid="stChatMessageContent"][aria-label*="assistant" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) div[data-testid="stChatMessageContent"] {
+            background: #F8FAFC !important;
             border: 1px solid #E2E8F0 !important;
-            border-radius: 10px !important;
+            border-radius: 16px 16px 16px 4px !important;
+            padding: 10px 14px !important;
             color: #0F172A !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(88%, calc(100% - 44px)) !important;
+            margin-right: auto !important;
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
         }
         div[data-testid="stRadio"] label p,
         div[data-testid="stCheckbox"] label p {
@@ -406,10 +493,10 @@ def inject_custom_css() -> None:
             backdrop-filter: none !important;
             border: 1px solid #1e3325 !important;
             border-radius: 12px !important;
-            padding: 16px 20px !important;
+            padding: 10px 16px !important;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
             transition: all 0.2s ease-in-out !important;
-            min-height: 115px !important;
+            min-height: 90px !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
@@ -437,7 +524,7 @@ def inject_custom_css() -> None:
             backdrop-filter: none !important;
             border: 1px solid #1e3325 !important;
             border-radius: 12px !important;
-            padding: 16px !important;
+            padding: 12px 16px !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             transition: border-color 0.2s ease, transform 0.2s ease !important;
@@ -567,45 +654,98 @@ def inject_custom_css() -> None:
             border: 1px solid #1e3325 !important;
             color: #ecfdf5 !important;
         }
-        /* Chat UI */
+        /* Chat UI - Dark Mode */
         div[data-testid="stChatMessage"] {
             background-color: transparent !important;
             border: none !important;
             padding: 0 !important;
-            margin-bottom: 1rem !important;
+            margin-bottom: 0.85rem !important;
             display: flex !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
         }
 
-        /* User Messages (Right Aligned) */
-        div[data-testid="stChatMessage"]:has([alt="user avatar"]), 
-        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+        /* Avatar styling */
+        div[data-testid="stChatMessage"] div[data-testid^="stChatMessageAvatar"] {
+            flex-shrink: 0 !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            margin: 0 !important;
+        }
+
+        /* Base chat content */
+        div[data-testid="stChatMessageContent"] {
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+
+        /* User Messages (Right Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) {
             flex-direction: row-reverse !important;
         }
-        div[data-testid="stChatMessage"]:has([alt="user avatar"]) .stMarkdown,
-        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stMarkdown {
-            background-color: #10b981 !important;
-            color: #0a110d !important;
-            border-radius: 18px 18px 4px 18px !important;
-            padding: 12px 16px !important;
-            max-width: 80% !important;
-            margin-right: 12px !important;
+        div[data-testid="stChatMessageContent"][aria-label*="user" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.28) 0%, rgba(5, 150, 105, 0.38) 100%) !important;
+            border: 1px solid rgba(52, 211, 153, 0.45) !important;
+            border-radius: 16px 16px 4px 16px !important;
+            padding: 10px 14px !important;
+            color: #ECFDF5 !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(85%, calc(100% - 44px)) !important;
             margin-left: auto !important;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stChatMessage"]:has([aria-label*="user" i]) div[data-testid="stChatMessageContent"] *,
+        div[data-testid="stChatMessage"]:has(.chat-user-marker) div[data-testid="stChatMessageContent"] * {
+            color: #ECFDF5 !important;
         }
 
-        /* Assistant Messages (Left Aligned) */
-        div[data-testid="stChatMessage"]:has([alt="assistant avatar"]), 
-        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+        /* Assistant Messages (Left Aligned Bubble) */
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]),
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) {
             flex-direction: row !important;
         }
-        div[data-testid="stChatMessage"]:has([alt="assistant avatar"]) .stMarkdown,
-        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stMarkdown {
-            background-color: #162a1f !important;
-            color: #ecfdf5 !important;
-            border-radius: 18px 18px 18px 4px !important;
-            padding: 12px 16px !important;
-            max-width: 85% !important;
-            margin-left: 12px !important;
+        div[data-testid="stChatMessageContent"][aria-label*="assistant" i],
+        div[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+        div[data-testid="stChatMessage"]:has(.chat-assistant-marker) div[data-testid="stChatMessageContent"] {
+            background: rgba(16, 28, 21, 0.85) !important;
+            border: 1px solid rgba(45, 212, 191, 0.28) !important;
+            border-radius: 16px 16px 16px 4px !important;
+            padding: 10px 14px !important;
+            color: #ECFDF5 !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+            flex: 0 1 auto !important;
+            width: fit-content !important;
+            max-width: min(88%, calc(100% - 44px)) !important;
             margin-right: auto !important;
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            text-align: left !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
         }
         div[data-testid="stRadio"] label p,
         div[data-testid="stCheckbox"] label p {
@@ -760,45 +900,114 @@ def inject_custom_css() -> None:
         [data-testid="stSidebar"] {
             top: 0 !important;
             height: 100vh !important;
+            max-height: 100vh !important;
             padding-top: 0 !important;
-            overflow: visible !important;
+            overflow: hidden !important;
         }
         [data-testid="stSidebarNav"] {
             display: none !important;
         }
+        [data-testid="stSidebarHeader"] {
+            display: none !important;
+            height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
         [data-testid="stSidebarContent"] {
+            height: 100vh !important;
+            max-height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
             padding-top: 0 !important;
+            padding-bottom: 0.75rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            overflow: hidden !important;
             gap: 0 !important;
         }
         [data-testid="stSidebarUserContent"] {
-            padding-top: 0 !important;
-            margin-top: -4.5rem !important; /* Forcefully pull up to kill the un-hideable gap */
-            height: calc(100vh + 4.5rem) !important;
-            overflow: hidden !important; /* Use flexbox for internal scrolling */
+            flex: 1 1 0% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+        }
+        [data-testid="stSidebarUserContent"] > div {
+            flex: 1 1 0% !important;
+            height: 100% !important;
+            min-height: 0 !important;
             display: flex !important;
             flex-direction: column !important;
         }
-        
-        /* Middle Chat History Container */
-        [data-testid="stSidebarUserContent"] > div.element-container:nth-child(2) {
-            flex-grow: 1 !important;
-            overflow-y: auto !important; /* ONLY this scrolls! */
-            padding-bottom: 1rem !important;
-            padding-right: 0.5rem !important;
+        [data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] {
+            flex: 1 1 0% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.5rem !important;
         }
         
-        /* Bottom Chat Input */
+        /* 1. Header Container */
+        [data-testid="stSidebarUserContent"] [data-testid="stLayoutWrapper"]:has(> .st-key-sticky_sidebar_header) {
+            flex: 0 0 auto !important;
+        }
+
+        /* 2. Middle Chat History Container */
+        [data-testid="stSidebarUserContent"] [data-testid="stLayoutWrapper"]:has(> .st-key-copilot_chat_history) {
+            flex: 1 1 0% !important;
+            min-height: 0 !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        .st-key-copilot_chat_history {
+            flex: 1 1 0% !important;
+            min-height: 0 !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            padding-bottom: 0.5rem !important;
+        }
+        .st-key-copilot_chat_history::-webkit-scrollbar {
+            width: 5px;
+        }
+        .st-key-copilot_chat_history::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .st-key-copilot_chat_history::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+
+        /* 3. Bottom Chat Input */
+        .st-key-copilot_chat_input {
+            flex: 0 0 auto !important;
+            margin-top: auto !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+        }
         div[data-testid="stChatInput"] {
             position: relative !important;
-            bottom: auto !important;
-            flex-shrink: 0 !important;
-            padding-bottom: 1rem !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
         }
         
-        /* Hide sidebar collapse button so it cannot be closed */
-        [data-testid="stSidebarCollapseButton"],
-        [data-testid="collapsedControl"] {
-            display: none !important;
+        /* Hide sidebar collapse button on desktop, allow toggle on small screens */
+        @media (min-width: 768px) {
+            [data-testid="stSidebarCollapseButton"],
+            [data-testid="collapsedControl"] {
+                display: none !important;
+            }
         }
 
         /* Sleek DataFrames */
@@ -925,7 +1134,193 @@ def inject_custom_css() -> None:
         .status-dot-danger { background-color: #FB7185; box-shadow: 0 0 8px #FB7185; }
         .status-dot-neutral { background-color: #94A3B8; box-shadow: 0 0 4px #94A3B8; }
 
+        /* Compact Account Cards - Centered Text, Zero Top Void, Tight Padding */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) > div {
+            height: 84px !important;
+            min-height: 84px !important;
+            max-height: 84px !important;
+            padding: 6px 10px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            box-sizing: border-box !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap: 0px !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) div[data-testid="stHorizontalBlock"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            align-items: center !important;
+            flex-wrap: nowrap !important;
+            gap: 4px !important;
+            min-height: 22px !important;
+            max-height: 22px !important;
+            height: 22px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:last-child {
+            flex: 0 0 22px !important;
+            min-width: 22px !important;
+            max-width: 22px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) div[data-testid="stMarkdownContainer"] p,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) div[data-testid="stElementContainer"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] > div {
+            display: flex !important;
+            justify-content: flex-end !important;
+            align-items: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 22px !important;
+            min-width: 22px !important;
+            height: 22px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] button {
+            border: 1px solid var(--tab-border) !important;
+            background: transparent !important;
+            padding: 0 !important;
+            min-width: 22px !important;
+            width: 22px !important;
+            max-width: 22px !important;
+            min-height: 22px !important;
+            height: 22px !important;
+            max-height: 22px !important;
+            border-radius: 6px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin: 0 !important;
+            line-height: 1 !important;
+            overflow: hidden !important;
+            box-shadow: none !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"]:hover,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] button:hover {
+            border-color: var(--primary-color) !important;
+            background: rgba(148, 163, 184, 0.15) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"] span[aria-hidden="true"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"] [data-testid="stIconMaterial"]:last-child:not(:only-child),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"] svg:nth-of-type(2),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"] span:nth-of-type(2),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] button span[aria-hidden="true"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] button [data-testid="stIconMaterial"]:last-child:not(:only-child) {
+            display: none !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) button[data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-card-marker) [data-testid="stPopover"] button [data-testid="stIconMaterial"] {
+            font-size: 14px !important;
+            width: 14px !important;
+            height: 14px !important;
+            line-height: 14px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .account-card-marker {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 6px !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            height: 22px !important;
+            overflow: hidden !important;
+            white-space: nowrap !important;
+        }
+        .account-card-name {
+            font-weight: 600 !important;
+            font-size: 0.86rem !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            color: var(--text-color) !important;
+            line-height: 1.2 !important;
+        }
+        .account-card-body {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            margin-top: 2px !important;
+            width: 100% !important;
+        }
+        .account-balance-text {
+            display: flex !important;
+            align-items: baseline !important;
+            justify-content: center !important;
+            text-align: center !important;
+            margin: 0 !important;
+            line-height: 1.1 !important;
+            color: var(--text-color) !important;
+        }
+        .account-currency-symbol {
+            font-size: 1.25rem !important;
+            font-weight: 700 !important;
+            line-height: 1 !important;
+            margin-right: 2px !important;
+            color: var(--text-color) !important;
+        }
+        .account-balance-number {
+            font-size: 1.25rem !important;
+            font-weight: 700 !important;
+            line-height: 1 !important;
+            color: var(--text-color) !important;
+            letter-spacing: -0.01em !important;
+        }
+        .account-subtext-slot {
+            min-height: 15px !important;
+            height: 15px !important;
+            max-height: 15px !important;
+            font-size: 0.74rem !important;
+            line-height: 15px !important;
+            overflow: hidden !important;
+            white-space: nowrap !important;
+            text-overflow: ellipsis !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            margin-top: 2px !important;
+            width: 100% !important;
+        }
 
+        /* Section Headers - remove excessive top gap */
+        div[data-testid="stVerticalBlockBorderWrapper"] h3 {
+            margin-top: 0px !important;
+            margin-bottom: 6px !important;
+            padding-top: 0px !important;
+        }
 
         /* Hide Top Right Default Elements & Header */
         [data-testid="stToolbar"] { display: none !important; }
@@ -940,6 +1335,155 @@ def inject_custom_css() -> None:
             margin-top: 0 !important;
             margin-bottom: 0 !important;
             border-bottom: 1px solid var(--tab-border) !important;
+        }
+
+        /* Clean inner paragraph margins and elements in chat bubbles to ensure vertical centering */
+        div[data-testid="stChatMessageContent"] {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+        div[data-testid="stChatMessageContent"] > div,
+        div[data-testid="stChatMessageContent"] div[data-testid="stVerticalBlock"] {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0.35rem !important;
+        }
+        div[data-testid="stChatMessageContent"] div[data-testid="stMarkdownContainer"],
+        div[data-testid="stChatMessageContent"] .stMarkdown > div {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+        div[data-testid="stChatMessageContent"] p {
+            margin-top: 0 !important;
+            margin-bottom: 0.35rem !important;
+            line-height: 1.45 !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stChatMessageContent"] p:first-child,
+        div[data-testid="stChatMessageContent"] p:first-of-type {
+            margin-top: 0 !important;
+        }
+        div[data-testid="stChatMessageContent"] p:last-child,
+        div[data-testid="stChatMessageContent"] p:last-of-type {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stChatMessageContent"] ul,
+        div[data-testid="stChatMessageContent"] ol {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.35rem !important;
+            padding-left: 1.25rem !important;
+        }
+        div[data-testid="stChatMessageContent"] li {
+            margin-bottom: 0.2rem !important;
+            line-height: 1.4 !important;
+        }
+        div[data-testid="stChatMessageContent"] pre {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            border-radius: 8px !important;
+            margin: 0.35rem 0 !important;
+            font-size: 0.82rem !important;
+        }
+        div[data-testid="stChatMessageContent"] code {
+            font-size: 0.85em !important;
+            word-break: break-all !important;
+        }
+
+        /* Copilot Thinking Animation Card */
+        .copilot-thinking-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 14px;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            color: #94A3B8;
+            font-size: 0.86rem;
+            font-weight: 500;
+            margin: 4px 0;
+            animation: thinkingGlow 2.5s infinite ease-in-out;
+        }
+        .thinking-spinner {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .thinking-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #10B981;
+            display: inline-block;
+            animation: thinkingBounce 1.4s infinite ease-in-out both;
+        }
+        .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+        .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+        .thinking-dot:nth-child(3) { animation-delay: 0s; }
+
+        @keyframes thinkingBounce {
+            0%, 80%, 100% {
+                transform: scale(0.4);
+                opacity: 0.3;
+            }
+            40% {
+                transform: scale(1.15);
+                opacity: 1;
+                box-shadow: 0 0 8px #10B981;
+            }
+        }
+        @keyframes thinkingGlow {
+            0%, 100% {
+                border-color: rgba(16, 185, 129, 0.2);
+                box-shadow: 0 0 0px rgba(16, 185, 129, 0);
+            }
+            50% {
+                border-color: rgba(16, 185, 129, 0.5);
+                box-shadow: 0 0 10px rgba(16, 185, 129, 0.18);
+            }
+        }
+
+        /* Copilot Typing Animation Pill */
+        .copilot-typing-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 10px;
+            border-radius: 10px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34D399;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 6px;
+            animation: typingPulse 1.8s infinite ease-in-out;
+        }
+        .typing-dot-small {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background-color: #34D399;
+            box-shadow: 0 0 6px #34D399;
+            display: inline-block;
+            animation: dotBlink 1s infinite alternate;
+        }
+        @keyframes typingPulse {
+            0%, 100% { opacity: 0.85; }
+            50% { opacity: 1; border-color: rgba(52, 211, 153, 0.6); }
+        }
+        @keyframes dotBlink {
+            0% { transform: scale(0.7); opacity: 0.4; }
+            100% { transform: scale(1.2); opacity: 1; }
         }
 
         /* Subtle Micro-Animations */

@@ -43,11 +43,14 @@ def kpi_card(
     st.metric(label=title, value=value_str, delta=delta_str, help=subtext)
 
 
-def section_header(title: str, subtitle: str | None = None, badge: str | None = None) -> None:
-    badge_text = f" `{badge}`" if badge else ""
-    st.subheader(f"{title}{badge_text}")
-    if subtitle:
-        st.caption(subtitle)
+import contextlib
+
+@contextlib.contextmanager
+def section_header(title: str, subtitle: str | None = None, badge: str | None = None):
+    with st.container(border=True):
+        badge_text = f" `{badge}`" if badge else ""
+        st.subheader(f"{title}{badge_text}", help=subtitle)
+        yield
 
 
 def empty_state(title: str, message: str) -> None:

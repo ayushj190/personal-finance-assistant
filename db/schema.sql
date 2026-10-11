@@ -204,7 +204,8 @@ SELECT h.id, a.institution, a.name AS account, h.ticker, h.isin, h.name,
        COALESCE(mq.prev_close, mq.close, 0) AS prev_close,
        (h.quantity * COALESCE(mq.close, 0) * (CASE WHEN COALESCE(mq.currency, h.currency) = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS value_eur,
        ((h.quantity * COALESCE(mq.close, 0) * (CASE WHEN COALESCE(mq.currency, h.currency) = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END))
-        - ((COALESCE(h.cost_basis_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END))) AS unrealized_pnl_eur
+        - ((COALESCE(h.cost_basis_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END))) AS unrealized_pnl_eur,
+       h.updated_at
 FROM holdings h
 JOIN accounts a ON a.id = h.account_id
 LEFT JOIN (
@@ -271,6 +272,9 @@ CREATE TABLE IF NOT EXISTS tax_profile (
   expected_bonus_eur INTEGER NOT NULL DEFAULT 0,
   pension_contribution_pct REAL NOT NULL DEFAULT 0,
   employer_pension_match_pct REAL NOT NULL DEFAULT 0,
+  factor_a_minor INTEGER NOT NULL DEFAULT 0,
+  green_investments_minor INTEGER NOT NULL DEFAULT 0,
+  reserveringsruimte_minor INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -283,4 +287,23 @@ CREATE TABLE IF NOT EXISTS goals (
   account_id      INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ── Local RAG Knowledge Embeddings ──────────────────────
+CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+  id              INTEGER PRIMARY KEY,
+  chunk_id        TEXT UNIQUE NOT NULL,
+  doc_title       TEXT NOT NULL,
+  category        TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  embedding_json  TEXT,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ── App Settings ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+
 

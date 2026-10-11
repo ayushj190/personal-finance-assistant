@@ -28,6 +28,31 @@ def generate_json(messages: list[dict[str, str]], schema: dict[str, Any] | None 
         print(f"Ollama generation error: {e}")
         return None
 
+
+def chat_with_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Execute chat turn passing native tools array to Ollama."""
+    client, model = get_ollama_client()
+    try:
+        response = client.chat(
+            model=model,
+            messages=messages,
+            tools=tools,
+            stream=False,
+            options={"temperature": 0.0},
+        )
+        msg = response.get("message") if isinstance(response, dict) else getattr(response, "message", None)
+        if hasattr(msg, "model_dump"):
+            return msg.model_dump()
+        if isinstance(msg, dict):
+            return msg
+        return {"role": "assistant", "content": str(msg)}
+    except Exception as e:
+        print(f"Ollama tool calling error: {e}")
+        return None
+
 def generate_stream(messages: list[dict[str, str]]) -> Any:
     """Yields string chunks from the LLM response."""
     client, model = get_ollama_client()

@@ -49,16 +49,24 @@ def generate_dutch_tax_statement(year: int | None = None, conn: sqlite3.Connecti
         mortgage_interest_tax_benefit = deductible_mortgage_interest * 0.3697
 
         # 3. Box 3: Wealth on reference date (Peildatum 1 Januari)
+        green_minor = int(profile["green_investments_minor"]) if profile and "green_investments_minor" in profile.keys() else 0
+        green_balance = green_minor / 100.0
+        green_cap = 142502.0 if has_partner else 71251.0
+        green_exempt_amount = min(green_balance, green_cap)
+        green_box1_credit = green_exempt_amount * 0.001
+
         nw = calculate_current_net_worth(conn)
         cash_balance = nw["liquid_cash"]
-        investments_balance = nw["invested"]
-        total_wealth = cash_balance + investments_balance
+        raw_investments_balance = nw["invested"]
+        taxable_investments_balance = max(0.0, raw_investments_balance - green_exempt_amount)
+
+        total_wealth = cash_balance + taxable_investments_balance
         tax_free_allowance = 114000.0 if has_partner else 57000.0
 
         taxable_wealth = max(0.0, total_wealth - tax_free_allowance)
         # 2024 fictitious yields: cash = 1.03%, investments = 6.04%
         fictitious_cash = cash_balance * 0.0103
-        fictitious_inv = investments_balance * 0.0604
+        fictitious_inv = taxable_investments_balance * 0.0604
         total_fictitious = fictitious_cash + fictitious_inv
 
         taxable_ratio = (taxable_wealth / total_wealth) if total_wealth > 0 else 0.0
@@ -69,6 +77,7 @@ def generate_dutch_tax_statement(year: int | None = None, conn: sqlite3.Connecti
             gross_income
             - box1_tax
             + mortgage_interest_tax_benefit
+            + green_box1_credit
             - box3_tax_due
         )
 
@@ -78,8 +87,10 @@ def generate_dutch_tax_statement(year: int | None = None, conn: sqlite3.Connecti
             {"Section": "Box 1 - Taxable Labor Income", "Amount (€)": taxable_gross, "Notes": f"Subject to {bracket1_rate*100:.2f}% / {bracket2_rate*100:.2f}% brackets"},
             {"Section": "Box 1 - Preliminary Income Tax", "Amount (€)": -box1_tax, "Notes": "Before tax credits and deductions"},
             {"Section": "Box 1 - Mortgage Interest Paid (HRA)", "Amount (€)": deductible_mortgage_interest, "Notes": f"Tax refund benefit: +€{mortgage_interest_tax_benefit:,.2f}"},
+            {"Section": "Box 1 - Green Investment Credit", "Amount (€)": green_box1_credit, "Notes": f"0.1% tax credit on €{green_exempt_amount:,.2f} green assets"},
             {"Section": "Box 3 - Liquid Cash (Peildatum)", "Amount (€)": cash_balance, "Notes": "Fictitious yield 1.03%"},
-            {"Section": "Box 3 - Investments & Crypto", "Amount (€)": investments_balance, "Notes": "Fictitious yield 6.04%"},
+            {"Section": "Box 3 - Investments & Crypto", "Amount (€)": raw_investments_balance, "Notes": "Standard deemed yield 6.04%"},
+            {"Section": "Box 3 - Certified Green Exemption", "Amount (€)": -green_exempt_amount, "Notes": f"Groenfondsen cap: €{green_cap:,.0f}"},
             {"Section": "Box 3 - Tax-free Wealth Allowance", "Amount (€)": tax_free_allowance, "Notes": "With fiscal partner" if has_partner else "Single allowance"},
             {"Section": "Box 3 - Tax Due", "Amount (€)": -box3_tax_due, "Notes": "36% over fictitious yield above allowance"},
             {"Section": "Estimated Total Net Annual Income", "Amount (€)": net_income_after_tax, "Notes": "After all taxes, deductions, and refunds"},
@@ -97,6 +108,9 @@ def generate_dutch_tax_statement(year: int | None = None, conn: sqlite3.Connecti
             "box1_tax": box1_tax,
             "deductible_mortgage_interest": deductible_mortgage_interest,
             "mortgage_interest_refund": mortgage_interest_tax_benefit,
+            "green_investments": green_balance,
+            "green_exempt_amount": green_exempt_amount,
+            "green_tax_credit": green_box1_credit,
             "taxable_wealth": taxable_wealth,
             "box3_tax": box3_tax_due,
             "estimated_net_income": net_income_after_tax,

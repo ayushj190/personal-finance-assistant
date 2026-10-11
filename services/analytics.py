@@ -3,15 +3,18 @@ import statistics
 from typing import Any
 
 
-def calculate_current_net_worth(conn) -> dict[str, Any]:
+import streamlit as st
+
+@st.cache_data(ttl=300)
+def calculate_current_net_worth(_conn) -> dict[str, Any]:
     """Calculates live net worth: liquid cash, invested holdings, and home equity."""
-    accounts = [dict(r) for r in conn.execute("SELECT * FROM accounts WHERE is_active = 1").fetchall()]
+    accounts = [dict(r) for r in _conn.execute("SELECT * FROM accounts WHERE is_active = 1").fetchall()]
     
     acc_balances: dict[int, float] = {}
     today = date.today()
 
     for acc in accounts:
-        row = conn.execute(
+        row = _conn.execute(
             "SELECT balance_minor, balance_eur_minor, snapshot_date FROM account_snapshots WHERE account_id = ? ORDER BY snapshot_date DESC LIMIT 1",
             (acc["id"],),
         ).fetchone()
@@ -30,14 +33,14 @@ def calculate_current_net_worth(conn) -> dict[str, Any]:
                     pass
             acc_balances[acc["id"]] = base_bal_eur
         else:
-            tx_sum = conn.execute(
+            tx_sum = _conn.execute(
                 "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
                 (acc["id"],),
             ).fetchone()
             acc_balances[acc["id"]] = (tx_sum["total"] or 0) / 100.0
 
     # Liability balance & Property Asset
-    lib_row = conn.execute(
+    lib_row = _conn.execute(
         "SELECT original_principal_minor, home_value_minor, balance_override_minor, balance_override_date FROM liabilities LIMIT 1"
     ).fetchone()
     home_value = 0.0
@@ -49,21 +52,21 @@ def calculate_current_net_worth(conn) -> dict[str, Any]:
             mortgage_balance = lib_row["balance_override_minor"] / 100.0
         else:
             today_str = date.today().isoformat()
-            mortgage_bal_row = conn.execute(
+            mortgage_bal_row = _conn.execute(
                 "SELECT balance_minor FROM liability_schedule WHERE due_date <= ? ORDER BY due_date DESC LIMIT 1",
                 (today_str,),
             ).fetchone()
             if not mortgage_bal_row:
-                mortgage_bal_row = conn.execute("SELECT balance_minor FROM liability_schedule ORDER BY due_date ASC LIMIT 1").fetchone()
+                mortgage_bal_row = _conn.execute("SELECT balance_minor FROM liability_schedule ORDER BY due_date ASC LIMIT 1").fetchone()
             mortgage_balance = (mortgage_bal_row["balance_minor"] / 100.0) if mortgage_bal_row else 0.0
     home_equity = home_value - mortgage_balance
 
     # Total cash & invested
     liquid_cash = sum(bal for acc in accounts if acc.get("asset_class") == "cash" and (bal := acc_balances.get(acc["id"], 0.0)))
     
-    holdings_acc_rows = conn.execute("SELECT DISTINCT account_id FROM holdings").fetchall()
+    holdings_acc_rows = _conn.execute("SELECT DISTINCT account_id FROM holdings").fetchall()
     holdings_acc_ids = {r["account_id"] for r in holdings_acc_rows}
-    invested_row = conn.execute("SELECT SUM(CASE WHEN value_eur > 0 THEN value_eur ELSE cost_basis END) as total FROM v_holdings").fetchone()
+    invested_row = _conn.execute("SELECT SUM(CASE WHEN value_eur > 0 THEN value_eur ELSE cost_basis END) as total FROM v_holdings").fetchone()
     invested_holdings = float(invested_row["total"] or 0.0) if invested_row else 0.0
     invested_other = sum(
         bal for acc in accounts
@@ -86,6 +89,7 @@ def calculate_savings_rate(income: float, expenses: float) -> float:
     return ((income - expenses) / income) * 100.0
 
 
+@st.cache_data(ttl=300)
 def calculate_burn_and_runway(
     monthly_expenses: list[float],
     liquid_cash: float,
