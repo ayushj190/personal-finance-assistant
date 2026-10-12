@@ -1,34 +1,49 @@
 import re
+from typing import Any
 import streamlit as st
+from money import Money
+from ui import state
 
 
 def is_hidden() -> bool:
-    return bool(st.session_state.get("hide_amounts", False))
+    return bool(state.get(state.K.PRIVACY_HIDDEN, False))
 
 
 def _on_privacy_toggle() -> None:
-    st.session_state["hide_amounts"] = bool(
-        st.session_state.get("global_privacy_toggle", False)
+    state.set(
+        state.K.PRIVACY_HIDDEN,
+        bool(state.get(state.K.GLOBAL_PRIVACY_TOGGLE, False)),
     )
 
 
 def render_privacy_toggle() -> None:
     st.toggle(
         "Hide values",
-        key="global_privacy_toggle",
+        key=state.K.GLOBAL_PRIVACY_TOGGLE,
         on_change=_on_privacy_toggle,
     )
 
 
 
-def format_money(val: float | int | None, symbol: str = "€", decimals: int = 2) -> str:
+def format_money(
+    val: float | int | Any | None,
+    symbol: str = "€",
+    decimals: int = 2,
+) -> str:
+    from money import Money
+
+    if not isinstance(val, Money):
+        # Convert incoming primitive to Money for uniform representation
+        val = Money.from_major(val) if val is not None else Money.from_cents(0)
+
+    curr_map = {"EUR": "€", "USD": "$", "GBP": "£", "TRY": "TRY "}
+    sym = curr_map.get(val.currency, symbol) if symbol == "€" else symbol
     if is_hidden():
-        return f"{symbol}****"
-    if val is None:
-        return f"{symbol}0.00"
+        return f"{sym}****"
+    amount = val.to_major()
     if decimals == 0:
-        return f"{symbol}{val:,.0f}"
-    return f"{symbol}{val:,.{decimals}f}"
+        return f"{sym}{amount:,.0f}"
+    return f"{sym}{amount:,.{decimals}f}"
 
 
 def mask_if_hidden(text: str | None) -> str:
@@ -98,6 +113,23 @@ def section_divider() -> None:
     st.markdown("<hr class='section-divider'/>", unsafe_allow_html=True)
 
 
+def render_section_header(
+    title: str,
+    subtitle: str | None = None,
+    badge: str | None = None,
+) -> None:
+    """Render a semantic section title + subtitle directly inside an existing panel or column."""
+    badge_text = f" `{badge}`" if badge else ""
+    sub = mask_if_hidden(subtitle) if is_hidden() and subtitle else subtitle
+    st.markdown(
+        f"<div style='margin-bottom: var(--space-xs, 4px);'>"
+        f"<h3 style='margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--text-color);'>{title}{badge_text}</h3>"
+        + (f"<div style='color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;'>{sub}</div>" if sub else "")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 @contextlib.contextmanager
 def section_header(title: str, subtitle: str | None = None, badge: str | None = None):
     with st.container(border=True):
@@ -107,6 +139,29 @@ def section_header(title: str, subtitle: str | None = None, badge: str | None = 
         yield
 
 
-def empty_state(title: str, message: str) -> None:
-    st.info(f"### 📊 {title}\n\n{message}")
+def empty_state(
+    title: str = "",
+    body: str = "",
+    icon: str = "📊",
+    action_label: str | None = None,
+) -> bool:
+    """Standard empty state component matching AC-10."""
+    with st.container(border=True):
+        st.markdown(
+            f"<div class='empty-state-card'>"
+            f"<div class='empty-state-icon'>{icon}</div>"
+            f"<h3 class='empty-state-title'>{title}</h3>"
+            f"<p class='empty-state-body'>{body}</p>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        if action_label:
+            return bool(st.button(action_label, key=f"btn_empty_{title.lower().replace(' ', '_')}"))
+        return False
+
+
+def skeleton(rows: int = 3) -> None:
+    """Render skeleton placeholder rows matching theme token height and pulses (AC-10)."""
+    bars = "".join("<div class='skeleton-bar'></div>" for _ in range(rows))
+    st.markdown(f"<div class='skeleton-container'>{bars}</div>", unsafe_allow_html=True)
 

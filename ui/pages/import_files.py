@@ -12,6 +12,7 @@ from connectors.file_import.detect import (
 from connectors.market_data_service import update_quotes
 from db import database
 from db.repositories import HoldingRepository
+from money import Money
 from services.sync_service import import_statement_content
 from ui.dialogs import manual_account_dialog
 
@@ -141,23 +142,24 @@ def render():
 
             final_balance_to_save = raw_balance
             if raw_balance is not None:
+                maj_bal = Money.from_cents(raw_balance).to_major()
                 st.info(
-                    f"💰 **Detected Account Balance (Eindsaldo / Bakiye):** {target_curr} {raw_balance / 100.0:,.2f}")
+                    f"💰 **Detected Account Balance (Eindsaldo / Bakiye):** {target_curr} {maj_bal:,.2f}")
                 adj_bal = st.number_input(
                     f"Confirm or adjust account balance ({target_curr})",
-                    value=float(raw_balance / 100.0),
+                    value=float(maj_bal),
                     step=50.0,
                     format="%.2f",
                     key=f"bal_input_{file.name}",
                 )
-                final_balance_to_save = int(round(adj_bal * 100))
+                final_balance_to_save = Money.from_major(adj_bal).cents
 
             if raw_txs:
                 st.caption(f"Found {len(raw_txs)} transactions:")
                 preview_data = [
                     {
                         "Date": tx.booking_date.isoformat(),
-                        "Amount": f"{tx.currency} {tx.amount_minor / 100.0:,.2f}",
+                        "Amount": f"{tx.currency} {Money.from_cents(tx.amount_minor).to_major():,.2f}",
                         "Description": tx.description,
                         "Counterparty": tx.counterparty_name or "-",
                     }
@@ -172,7 +174,7 @@ def render():
                     {
                         "Ticker / Name": h.ticker,
                         "Units": h.quantity,
-                        "Cost Basis": f"{h.currency} {h.cost_basis_minor / 100.0:,.2f}",
+                        "Cost Basis": f"{h.currency} {Money.from_cents(h.cost_basis_minor).to_major():,.2f}",
                         "ISIN": h.isin or "-",
                     }
                     for h in raw_holdings[:5]
@@ -181,13 +183,15 @@ def render():
                              use_container_width=True, hide_index=True)
 
             if not raw_txs and not raw_holdings and final_balance_to_save is not None:
-                btn_label = f"Update balance to {target_curr} {final_balance_to_save / 100.0:,.2f} from {file.name}"
+                save_maj = Money.from_cents(final_balance_to_save).to_major()
+                btn_label = f"Update balance to {target_curr} {save_maj:,.2f} from {file.name}"
             else:
                 btn_label = f"Import {len(raw_txs)} transactions"
                 if raw_holdings:
                     btn_label += f" & {len(raw_holdings)} holdings"
                 if final_balance_to_save is not None:
-                    btn_label += f" & set balance to {target_curr} {final_balance_to_save / 100.0:,.2f}"
+                    save_maj = Money.from_cents(final_balance_to_save).to_major()
+                    btn_label += f" & set balance to {target_curr} {save_maj:,.2f}"
                 btn_label += f" from {file.name}"
 
             if st.button(btn_label, key=file.name):
@@ -209,8 +213,9 @@ def render():
                         "balance_minor": final_balance_to_save,
                         "balance_eur_minor": final_balance_to_save
                     }])
+                    save_maj = Money.from_cents(final_balance_to_save).to_major()
                     msg_parts.append(
-                        f"Account balance updated to {target_curr} {final_balance_to_save / 100.0:,.2f}")
+                        f"Account balance updated to {target_curr} {save_maj:,.2f}")
 
                 if raw_holdings:
                     _, inv_acc_id = auto_resolve_accounts(conn, fmt)

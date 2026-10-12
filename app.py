@@ -9,10 +9,12 @@ from ui.pages import (
     tax,
 )
 import importlib
+import logging_setup
+logging_setup.configure()
 import streamlit as st
 
 from db import database
-from config import DB_PATH
+from config import DB_PATH, DEMO
 from ui import theme
 importlib.reload(theme)
 
@@ -24,20 +26,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Synchronize theme state
-if "theme" not in st.session_state:
-    st.session_state["theme"] = "dark"
-
-# Privacy / Mask amounts toggle state
-if "hide_amounts" not in st.session_state:
-    st.session_state["hide_amounts"] = True
-
-if "global_privacy_toggle" in st.session_state:
-    st.session_state["hide_amounts"] = bool(
-        st.session_state["global_privacy_toggle"])
-else:
-    st.session_state["global_privacy_toggle"] = bool(
-        st.session_state["hide_amounts"])
+from ui import state
+state.init_defaults()
 
 
 # Apply styling and database migrations
@@ -66,24 +56,25 @@ def _trigger_auto_sync() -> None:
 
 
 now = datetime.now()
-if "_last_auto_sync" not in st.session_state:
-    st.session_state["_last_auto_sync"] = now
-    _trigger_auto_sync()
-elif (now - st.session_state["_last_auto_sync"]).total_seconds() >= 600:
-    st.session_state["_last_auto_sync"] = now
-    _trigger_auto_sync()
-
-
-@st.fragment(run_every=600)
-def _auto_sync_scheduler() -> None:
-    current_time = datetime.now()
-    last = st.session_state.get("_last_auto_sync")
-    if last is None or (current_time - last).total_seconds() >= 600:
-        st.session_state["_last_auto_sync"] = current_time
+if not DEMO:
+    if not state.has(state.K.LAST_AUTO_SYNC):
+        state.set(state.K.LAST_AUTO_SYNC, now)
+        _trigger_auto_sync()
+    elif (now - state.get(state.K.LAST_AUTO_SYNC)).total_seconds() >= 600:
+        state.set(state.K.LAST_AUTO_SYNC, now)
         _trigger_auto_sync()
 
 
-_auto_sync_scheduler()
+    @st.fragment(run_every=600)
+    def _auto_sync_scheduler() -> None:
+        current_time = datetime.now()
+        last = state.get(state.K.LAST_AUTO_SYNC)
+        if last is None or (current_time - last).total_seconds() >= 600:
+            state.set(state.K.LAST_AUTO_SYNC, current_time)
+            _trigger_auto_sync()
+
+
+    _auto_sync_scheduler()
 
 # Check for manual accounts reminder
 conn = database.connect(DB_PATH)
@@ -93,10 +84,10 @@ finally:
     conn.close()
 
 
-if stale_accounts and "stale_notified" not in st.session_state:
+if stale_accounts and not state.has(state.K.STALE_NOTIFIED):
     st.toast(
         f"Reminder: Update your manual accounts ({', '.join(stale_accounts)}).", icon="📝")
-    st.session_state["stale_notified"] = True
+    state.set(state.K.STALE_NOTIFIED, True)
 
 # Navigation definition: all 7 pages with Settings as the last tab
 settings_page = st.Page(

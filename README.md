@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![Database: SQLite WAL](https://img.shields.io/badge/Database-SQLite%20(WAL)-green.svg)](https://www.sqlite.org/)
 [![AI Engine: Ollama Local](https://img.shields.io/badge/AI%20Engine-Ollama%20(Qwen%202.5)-purple.svg)](https://ollama.com/)
-[![Tests: 200 Passed](https://img.shields.io/badge/Tests-200%20Passed-brightgreen.svg)](tests/)
+[![Tests: 215 Passed](https://img.shields.io/badge/Tests-215%20Passed-brightgreen.svg)](tests/)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
 
 > **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
@@ -31,34 +31,79 @@ Mainstream personal finance aggregators (YNAB, Copilot Money, Monarch) mandate c
 
 **Personal Finance Assistant** rethinks consumer FinTech around **zero-trust local-first execution**:
 
+```mermaid
+flowchart TD
+    subgraph UI["Presentation Layer (Streamlit Desktop)"]
+        Nav["Native Top Navigation"]
+        Dash["Dashboard"]
+        Spend["Spending Topology"]
+        Invest["Investments & Rebalancer"]
+        Mort["Mortgage Modeler"]
+        Tax["Dutch Tax Engine"]
+        Shield["Privacy Shield (****)"]
+    end
+
+    subgraph Agent["Autonomous Copilot Engine"]
+        Copilot["Ollama Local LLM"]
+        Task["CopilotTask Thread"]
+        Tools["25 Native Tools"]
+        VaultRAG["Dutch Law Vector Vault"]
+    end
+
+    subgraph Domain["Single-Source Domain Services"]
+        MoneyCore["Money Value Object (Cents)"]
+        Rebal["Swensen 5/25 Rebalancer"]
+        MortgageCalc["30-Yr Mortgage Amortization"]
+        TaxCalc["Box 1 & 3 Tax Modeler"]
+        BurnRate["3-Mo Trailing Burn Rate"]
+    end
+
+    subgraph Rails["Universal Ingestion Rails"]
+        PSD2["PSD2 Enable Banking"]
+        eToro["eToro Broker Sync"]
+        Parsers["Deterministic Statement Parsers"]
+        Seed["Deterministic Demo Seed"]
+    end
+
+    subgraph Storage["Persistence & Security"]
+        AuthSQL["SQLite Authorizer (Read-Only)"]
+        DB[("SQLite WAL Database")]
+        Vault["Fernet Encryption Vault"]
+        Keyring["Windows Credential Manager"]
+    end
+
+    UI --> Domain
+    UI --> Agent
+    Agent --> Tools
+    Tools --> Domain
+    Tools --> AuthSQL
+    AuthSQL --> DB
+    Rails --> Domain
+    Domain --> DB
+    Vault --> Keyring
+    Seed -.-> DB
 ```
-                               ┌─────────────────────────────────────────────────────────┐
-                               │                    PRESENTATION LAYER                   │
-                               │   Streamlit Desktop UI  •  Dynamic Plotly  •  TradingView │
-                               │            Global Screen-Shield Privacy Mode (****)       │
-                               └──────────────┬───────────────────────────┬──────────────┘
-                                              │                           │
-                                     Synchronous Renders         Asynchronous CopilotTask
-                                              │                   (@st.fragment Threading)
-                                              ▼                           ▼
-┌─────────────────────────────────┐   ┌───────────────────────────┐   ┌──────────────────────────┐
-│        INGESTION RAILS          │   │      DOMAIN SERVICES      │   │     AI AGENT ENGINE      │
-│ • PSD2 Enable Banking (RSA/JWT) │──▶│ • Portfolio 5/25 Rebalance│◀──│ • Ollama (Qwen 2.5 7B)   │
-│ • Direct eToro Broker API Sync  │   │ • 30-Yr Mortgage Engine   │   │ • 25 Deterministic Tools │
-│ • Multi-format Parsers (MT940,  │   │ • Box 1 & 3 Tax Modeler   │   │ • Plotly Chart Generator │
-│   CAMT.053, CSV, İşbank PDF)    │   │ • 3-Mo Trailing Burn Rate │   │ • Dutch RAG Law Vault    │
-│ • LLM Zero-Shot Fallback Parser │   │ • Multi-Dimension Exposure│   │ • Read-Only SQL Authorizer│
-└─────────────────────────────────┘   └─────────────┬─────────────┘   └──────────────────────────┘
-                                                    │
-                                                    ▼
-                                      ┌───────────────────────────┐
-                                      │     PERSISTENCE & SECRETS │
-                                      │ • SQLite in WAL Mode      │
-                                      │ • Minor-Unit Cents Ledger │
-                                      │ • Symmetric Fernet Vault  │
-                                      │ • Windows Credential Mgr  │
-                                      └───────────────────────────┘
+
+---
+
+## 🎭 Interactive Demo Mode & Instant Showcase
+
+Test-drive all financial modeling, charts, and copilot tools immediately without connecting bank credentials:
+
+```cmd
+run.bat --demo
 ```
+
+Or run via environment variable:
+```powershell
+$env:PFA_DEMO = "1"
+.\.venv\Scripts\streamlit.exe run app.py
+```
+
+- **Isolated & Safe**: Binds to `data/demo.db`. Your live `data/finance.db` and encrypted `data/vault.bin` are **never touched**.
+- **Realistic Amsterdam Profile**: Pre-loaded with 18 months of salary and expenses, an active €420,000 mortgage, 15 investment holdings (VWCE, ASML, Novo Nordisk, Microsoft, Bitcoin, Gold) including closed positions with realized P&L, and Belastingdienst 30% ruling tax profiles.
+- **Visual Demo Pill**: Clear visual pill badge in the Copilot header indicating demo data is active.
+- **Idempotent Reset**: Run `python scripts/seed_demo.py --reset` at any time to re-generate the pristine demo dataset.
 
 ---
 

@@ -3,7 +3,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import keyring
 
-from config import DATA_DIR, VAULT_PATH
+from config import DATA_DIR, DEMO, VAULT_PATH
 
 SERVICE_NAME = "personal_finance_assistant"
 VAULT_KEY_NAME = "vault_master_key"
@@ -11,6 +11,9 @@ FALLBACK_KEY_FILE = DATA_DIR / ".vault_master.key"
 
 
 def _get_or_create_master_key() -> bytes:
+    if DEMO:
+        return Fernet.generate_key()
+
     key_str = None
     try:
         key_str = keyring.get_password(SERVICE_NAME, VAULT_KEY_NAME)
@@ -36,8 +39,8 @@ def _get_or_create_master_key() -> bytes:
     return key_str.encode("utf-8")
 
 
-def _read_vault(vault_path: Path = VAULT_PATH) -> dict[str, str]:
-    if not vault_path.exists():
+def _read_vault(vault_path: Path | None = VAULT_PATH) -> dict[str, str]:
+    if DEMO or vault_path is None or not vault_path.exists():
         return {}
     fernet = Fernet(_get_or_create_master_key())
     try:
@@ -48,14 +51,16 @@ def _read_vault(vault_path: Path = VAULT_PATH) -> dict[str, str]:
         return {}
 
 
-def _write_vault(data: dict[str, str], vault_path: Path = VAULT_PATH) -> None:
+def _write_vault(data: dict[str, str], vault_path: Path | None = VAULT_PATH) -> None:
+    if DEMO or vault_path is None:
+        return
     vault_path.parent.mkdir(parents=True, exist_ok=True)
     fernet = Fernet(_get_or_create_master_key())
     encrypted_data = fernet.encrypt(json.dumps(data).encode("utf-8"))
     vault_path.write_bytes(encrypted_data)
 
 
-def get(name: str, vault_path: Path = VAULT_PATH) -> str | None:
+def get(name: str, vault_path: Path | None = VAULT_PATH) -> str | None:
     data = _read_vault(vault_path)
     return data.get(name)
 
@@ -66,13 +71,13 @@ def put(name: str, value: str, vault_path: Path = VAULT_PATH) -> None:
     _write_vault(data, vault_path)
 
 
-def delete(name: str, vault_path: Path = VAULT_PATH) -> None:
+def delete(name: str, vault_path: Path | None = VAULT_PATH) -> None:
     data = _read_vault(vault_path)
     if name in data:
         del data[name]
         _write_vault(data, vault_path)
 
 
-def list_keys(vault_path: Path = VAULT_PATH) -> list[str]:
+def list_keys(vault_path: Path | None = VAULT_PATH) -> list[str]:
     data = _read_vault(vault_path)
     return list(data.keys())

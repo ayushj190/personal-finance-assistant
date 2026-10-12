@@ -4,6 +4,7 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
+from money import Money
 from services.mortgage import calculate_mortgage_schedule, sync_liability_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
 from ui.components import format_money, is_hidden, kpi_card, mask_if_hidden, section_header
@@ -48,19 +49,19 @@ def render():
         st.warning("Schedule could not be computed. Please edit the configuration to generate it.")
         return
 
-    original_principal = lib["original_principal_minor"] / 100.0
+    original_principal = Money.from_cents(lib["original_principal_minor"]).to_major()
 
     today_str = date.today().isoformat()
     if lib.get("balance_override_minor"):
-        latest_balance = lib["balance_override_minor"] / 100.0
+        latest_balance = Money.from_cents(lib["balance_override_minor"]).to_major()
     else:
         past_sched = schedule_df[schedule_df["due_date"] <= today_str]
         if not past_sched.empty:
-            latest_balance = past_sched["balance_minor"].iloc[-1] / 100.0
+            latest_balance = Money.from_cents(past_sched["balance_minor"].iloc[-1]).to_major()
         else:
             latest_balance = original_principal
 
-    total_interest_all_time = schedule_df["interest_minor"].sum() / 100.0
+    total_interest_all_time = Money.from_cents(schedule_df["interest_minor"].sum()).to_major()
     principal_paid = max(0.0, original_principal - latest_balance)
     pct_repaid = (principal_paid / original_principal *
                   100.0) if original_principal > 0 else 0.0
@@ -99,7 +100,7 @@ def render():
     """
     mortgage_tx_rows = conn.execute(tx_query, p_params).fetchall()
 
-    home_val = (lib["home_value_minor"] / 100.0) if lib.get(
+    home_val = Money.from_cents(lib["home_value_minor"]).to_major() if lib.get(
         "home_value_minor") is not None else original_principal
     home_equity = home_val - latest_balance
 
@@ -154,9 +155,9 @@ def render():
 
                 if not sched_match.empty:
                     s_row = sched_match.iloc[0]
-                    s_pay = s_row["payment_minor"] / 100.0
-                    s_p = s_row["principal_minor"] / 100.0
-                    s_i = s_row["interest_minor"] / 100.0
+                    s_pay = Money.from_cents(s_row["payment_minor"]).to_major()
+                    s_p = Money.from_cents(s_row["principal_minor"]).to_major()
+                    s_i = Money.from_cents(s_row["interest_minor"]).to_major()
                     s_due = s_row["due_date"]
                     diff = abs(tx["amount_eur"] - s_pay)
                     status = "Exact Match" if diff < 1.0 else (
@@ -216,7 +217,7 @@ def render():
             with st.container(border=True):
                 for er in extra_repayments:
                     er_date = er["paid_date"]
-                    er_amt = er["amount_minor"] / 100.0
+                    er_amt = Money.from_cents(er["amount_minor"]).to_major()
                     er_strat = "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term"
                     amt_str = "€****" if is_hidden() else f"€{er_amt:,.2f}"
 
@@ -254,8 +255,7 @@ def render():
 
         with col_sim2:
             # Run what-if
-            sim_extras = [{"paid_date": date.today(), "amount_minor": int(
-                extra_annual * 100), "recalc": recalc_choice}]
+            sim_extras = [{"paid_date": date.today(), "amount_minor": Money.from_major(extra_annual).cents, "recalc": recalc_choice}]
             sim_rates = [dict(rate_period)] if rate_period else []
             sim_sched = calculate_mortgage_schedule(
                 loan_type=lib["loan_type"],
@@ -267,7 +267,7 @@ def render():
                 extra_payments=sim_extras,
             )
             sim_df = pd.DataFrame(sim_sched)
-            sim_interest = sim_df["interest_minor"].sum() / 100.0
+            sim_interest = Money.from_cents(sim_df["interest_minor"].sum()).to_major()
             interest_saved = total_interest_all_time - sim_interest
             st.metric("Total Interest Saved", f"€{max(0.0, interest_saved):,.2f}")
             if recalc_choice == "shorter_term":

@@ -29,7 +29,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 11 | Transactions Select Action Workflow | Slice 10 | done |
 | 12 | Investment Exposure Dimensions, TradingView Panel & Realized P&L | Slice 11 | done |
 | 13 | Multi Bank Manual Accounts & Hybrid Statement Ingestion | Slice 12 | done |
-| 14 | System Cleanup, Architecture Hardening & Regression Suite | Slice 13 | planned |
+| 14 | System Cleanup, Architecture Hardening & Regression Suite | Slice 13 | in-progress |
 
 ## Brownfield context
 
@@ -255,10 +255,19 @@ spec [0013](../specs/0013-multi-bank-manual-accounts-hybrid-statement-ingestion/
 
 ## Slice 13: System Cleanup, Architecture Hardening & Regression Suite
 
-### 14. System Cleanup, Architecture Hardening & Regression Suite · needs a decision
+### 14. System Cleanup, Architecture Hardening & Regression Suite · in-progress
 Perform a comprehensive cleanup pass to remove dead code and orphan routines, harden single source of truth financial services, ensure error free navigation across all pages, and verify end to end test suite stability.
 **Done when:** dead code is pruned, financial calculations share a unified tested core, all pages render without warnings, and automated test suite passes completely.
-- [ ] Design it (spec): `/architect system cleanup architecture hardening & regression suite`
+spec [0014](../specs/0014-system-cleanup-architecture-hardening/index.md)
+- [x] Design it (spec): `/architect system cleanup architecture hardening & regression suite`
+- [ ] Build it: /develop system cleanup architecture hardening & regression suite
+  - [x] Money type, logging, typed session state and demo mode seams (satisfies AC-1, AC-2, AC-4, AC-5, AC-7, AC-8)
+  - [x] Dashboard tracer migrated end to end on demo data (satisfies AC-1, AC-4, AC-5, AC-10)
+  - [x] Split agent/tools.py, ui/charts.py and investments page into packages (satisfies AC-3, AC-6)
+  - [x] Migrate remaining pages and services, remove float money path (satisfies AC-1, AC-2, AC-4, AC-5)
+  - [x] Visual consistency pass and README showcase (satisfies AC-9, AC-10, AC-11)
+- [ ] Verify it: /check verify system cleanup architecture hardening & regression suite
+- [ ] Test it: /test system cleanup architecture hardening & regression suite
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.

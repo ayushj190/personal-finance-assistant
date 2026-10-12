@@ -6,6 +6,7 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
+from money import Money
 from services.analytics import calculate_current_net_worth, detect_recurring_charges
 from services.budget_service import (
     calculate_12_month_runway_forecast,
@@ -93,10 +94,10 @@ def _calculate_monthly_summary(df_all: pd.DataFrame, salary_day: int) -> pd.Data
             "fix_minor": fix_minor,
             "disc_minor": disc_minor,
             "unc_minor": unc_minor,
-            "total_spent": tot_minor / 100.0,
-            "fixed_spent": fix_minor / 100.0,
-            "disc_spent": disc_minor / 100.0,
-            "uncat_spent": unc_minor / 100.0,
+            "total_spent": Money.from_cents(tot_minor).to_major(),
+            "fixed_spent": Money.from_cents(fix_minor).to_major(),
+            "disc_spent": Money.from_cents(disc_minor).to_major(),
+            "uncat_spent": Money.from_cents(unc_minor).to_major(),
         })
     return pd.DataFrame(monthly_rows).sort_values(by="month", ascending=False)
 
@@ -729,10 +730,10 @@ def render():
         avg_disc_minor = round(monthly_df["disc_minor"].sum() / n_months)
         avg_unc_minor = avg_tot_minor - avg_fix_minor - avg_disc_minor
 
-        total_spent = avg_tot_minor / 100.0
-        fixed_spent = avg_fix_minor / 100.0
-        disc_spent = avg_disc_minor / 100.0
-        uncat_spent = avg_unc_minor / 100.0
+        total_spent = Money.from_cents(avg_tot_minor).to_major()
+        fixed_spent = Money.from_cents(avg_fix_minor).to_major()
+        disc_spent = Money.from_cents(avg_disc_minor).to_major()
+        uncat_spent = Money.from_cents(avg_unc_minor).to_major()
         header_title = f"Average Monthly Expenses ({n_months} fiscal months)"
         start_d_str, end_d_str = None, None
     else:

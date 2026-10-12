@@ -285,28 +285,77 @@ div[data-testid="stCustomComponentV1"]:has(iframe) {
     flex-shrink: 0 !important;
     white-space: nowrap !important;
     border-bottom: 3px solid transparent !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: max-content !important;
 }
 
-/* Material Icons - Crisp, perfectly proportioned, uncropped */
+/* Streamlit's inner wrappers ship fixed widths + overflow:hidden; let them size to content */
+[data-testid="stTopNavLink"] *,
+[data-testid="stTopNavLinkContainer"] > * {
+    width: auto !important;
+    max-width: none !important;
+    min-width: max-content !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    flex-shrink: 0 !important;
+}
+
+/* Material Icons - Force Material Symbols Rounded with font ligatures so icons render rather than raw text */
+[data-testid="stIconMaterial"],
+span.material-symbols-rounded,
 [data-testid="stTopNavLink"] [data-testid="stIconMaterial"],
-[data-testid="stTopNavLink"] span.material-symbols-rounded,
-[data-testid="stTopNavLink"] svg {
-    font-size: 1.35rem !important;
-    width: 1.35rem !important;
-    height: 1.35rem !important;
+[data-testid="stTopNavLink"] span.material-symbols-rounded {
+    font-family: "Material Symbols Rounded", "Material Symbols Outlined" !important;
+    font-weight: normal !important;
+    font-style: normal !important;
     line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-smoothing: antialiased !important;
+    text-rendering: optimizeLegibility !important;
+    font-feature-settings: 'liga' 1 !important;
+    font-size: 1.25rem !important;
+    width: 1.25rem !important;
+    height: 1.25rem !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    color: var(--text-muted) !important;
     overflow: visible !important;
     flex-shrink: 0 !important;
+}
+
+[data-testid="stTopNavLink"] span:has([data-testid="stIconMaterial"]),
+[data-testid="stTopNavLink"] > span:first-child {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    overflow: visible !important;
+    width: auto !important;
+}
+
+/* Eliminate Streamlit's phantom 14px ::after width sizer that truncates enlarged labels */
+[data-testid="stTopNavLink"] span::after {
+    display: none !important;
+    content: none !important;
+}
+
+[data-testid="stTopNavLink"] span,
+[data-testid="stTopNavLink"] p,
+[data-testid="stTopNavLink"] div {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
 }
 
 /* Labels - Uncropped font sizing with proper line-height for descenders */
 [data-testid="stTopNavLink"] p,
 [data-testid="stTopNavLink"] span:not([class*="material"]):not([data-testid="stIconMaterial"]) {
-    font-size: 0.98rem !important;
+    font-size: 0.95rem !important;
     line-height: 1.4 !important;
     margin: 0 !important;
     white-space: nowrap !important;
@@ -316,6 +365,8 @@ div[data-testid="stCustomComponentV1"]:has(iframe) {
     overflow: visible !important;
     text-overflow: clip !important;
     flex-shrink: 0 !important;
+    display: inline-block !important;
+    width: auto !important;
 }
 
 /* Hover state */
@@ -1183,9 +1234,12 @@ div[data-testid="stTabs"] div[role="tab"] * {
             stroke-width: 7px !important;
         }
 
-        .js-plotly-plot g.slice text.slicetext {
+        .js-plotly-plot g.slice text.slicetext,
+        .js-plotly-plot g.treemaplayer text.slicetext {
             font-family: var(--font-family-sans, 'Inter', -apple-system, sans-serif) !important;
             font-weight: 600 !important;
+            fill: #ffffff !important;
+            color: #ffffff !important;
             text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75) !important;
             letter-spacing: -0.01em !important;
             pointer-events: none !important;
@@ -1194,6 +1248,7 @@ div[data-testid="stTabs"] div[role="tab"] * {
 
         .js-plotly-plot g.treemaplayer g.slice:hover text.slicetext {
             fill: #ffffff !important;
+            color: #ffffff !important;
         }
 
         /* Account Card Semantic Accents & Group Headers (AC-6) */
@@ -1242,4 +1297,65 @@ div[data-testid="stTabs"] div[role="tab"] * {
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.account-accent-investment) > div {
             border-color: rgba(99, 102, 241, 0.35) !important;
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
+        }
+
+        /* AC-10 Standardized Components: KPI card, Empty State, Skeleton */
+        div[data-testid="stMetric"] {
+            background-color: var(--bg-surface, rgba(255, 255, 255, 0.03)) !important;
+            border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
+            border-radius: var(--radius-md, 12px) !important;
+            padding: var(--space-md, 12px) var(--space-lg, 16px) !important;
+            min-height: 104px !important;
+            box-sizing: border-box !important;
+        }
+
+        .empty-state-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: var(--space-xl, 24px) var(--space-lg, 16px);
+            border-radius: var(--radius-md, 12px);
+        }
+
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: var(--space-sm, 8px);
+            opacity: 0.85;
+        }
+
+        .empty-state-title {
+            font-size: var(--font-size-lg, 1.125rem);
+            font-weight: 600;
+            margin: 0 0 var(--space-xs, 4px) 0;
+            color: var(--text-primary, #F8FAFC);
+        }
+
+        .empty-state-body {
+            font-size: var(--font-size-sm, 0.875rem);
+            color: var(--text-muted, #94A3B8);
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .skeleton-container {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm, 8px);
+            padding: var(--space-md, 12px) 0;
+        }
+
+        .skeleton-bar {
+            height: 20px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%);
+            background-size: 200% 100%;
+            animation: skeleton-pulse 1.5s infinite ease-in-out;
+            border-radius: var(--radius-sm, 8px);
+        }
+
+        @keyframes skeleton-pulse {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }

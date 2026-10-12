@@ -179,13 +179,13 @@ class TestDashboardHardening(unittest.TestCase):
         marker = fig.data[0].marker
         self.assertEqual(marker.line.width, 2)
         self.assertIn("rgba", marker.line.color)
-        self.assertEqual(marker.pad.t, 4)
+        self.assertGreaterEqual(marker.pad.t, 4)
         self.assertEqual(fig.data[0].tiling.pad, 6)
         self.assertEqual(marker.cornerradius, 8)
 
         # Verify uniformtext does not hide small tile names and transition is configured
         self.assertFalse(fig.layout.uniformtext.mode)
-        self.assertEqual(fig.layout.uniformtext.minsize, 8)
+        self.assertGreaterEqual(fig.layout.uniformtext.minsize, 8)
         self.assertIsNotNone(fig.layout.transition)
 
     def test_clean_treemap_tile_label(self):

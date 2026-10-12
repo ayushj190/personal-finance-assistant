@@ -1,9 +1,12 @@
 from datetime import date
 import json
+import logging
 from pathlib import Path
 from typing import Any
 import uuid
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from config import DB_PATH
 from connectors.base import NeedsReauth, RawAccount, RawHolding, RawTransaction
@@ -86,7 +89,7 @@ class EtoroService:
         except NeedsReauth:
             raise
         except Exception as e:
-            print(f"Error fetching eToro balances: {e}")
+            logger.error("Error fetching eToro balances: %s", e, exc_info=True)
 
         return [
             RawAccount(
@@ -290,7 +293,7 @@ class EtoroService:
                 with open(CACHE_FILE, "w", encoding="utf-8") as f:
                     json.dump(mirrors_cache, f, indent=2)
             except Exception as e:
-                print(f"Error saving mirrors cache: {e}")
+                logger.error("Error saving mirrors cache: %s", e, exc_info=True)
 
             # Save quotes directly to DB
             if quotes_to_save:
@@ -299,12 +302,12 @@ class EtoroService:
                     database.upsert_market_quotes(conn, quotes_to_save)
                     conn.close()
                 except Exception as e:
-                    print(f"Error saving eToro quotes: {e}")
+                    logger.error("Error saving eToro quotes: %s", e, exc_info=True)
 
         except NeedsReauth:
             raise
         except Exception as e:
-            print(f"Error fetching eToro holdings: {e}")
+            logger.error("Error fetching eToro holdings: %s", e, exc_info=True)
 
         return holdings
 
@@ -525,12 +528,12 @@ class EtoroService:
                                 )
                             )
                 except Exception as e:
-                    print(f"Error fetching eToro trade history: {e}")
+                    logger.error("Error fetching eToro trade history: %s", e, exc_info=True)
 
         except NeedsReauth:
             raise
         except Exception as e:
-            print(f"Error fetching eToro transactions: {e}")
+            logger.error("Error fetching eToro transactions: %s", e, exc_info=True)
 
         return txs
 
@@ -570,6 +573,6 @@ class EtoroService:
                             "created": post.get("created", "")
                         })
         except Exception as e:
-            print(f"Error fetching eToro news: {e}")
+            logger.error("Error fetching eToro news: %s", e, exc_info=True)
             
         return news_items

@@ -1,5 +1,6 @@
 from datetime import date, datetime
 import json
+import logging
 import sqlite3
 from typing import Any
 import streamlit as st
@@ -8,16 +9,29 @@ import streamlit.components.v1 as components
 from config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
+from money import Money
 from services.analytics import calculate_current_net_worth
 from services.portfolio import get_consolidated_holdings_df
+from ui import state
 from ui.charts import (
     build_investments_market_carpet,
     open_sankey_fullscreen_dialog,
     render_cash_flow_sankey,
 )
-from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
+from ui.components import (
+    empty_state,
+    format_money,
+    is_hidden,
+    kpi_card,
+    mask_if_hidden,
+    render_section_header,
+    section_header,
+    status_badge,
+)
 from ui.logos import get_institution_logo_svg
 from ui.theme import render_chart
+
+logger = logging.getLogger(__name__)
 
 
 def get_account_status(acc: dict[str, Any], sync_logs: list[dict[str, Any]]) -> tuple[str, str]:
@@ -80,14 +94,16 @@ def _calculate_monthly_cash_flow(conn: sqlite3.Connection, days: int = 30) -> fl
     """Calculate net cash flow (income minus expenses) over specified trailing days."""
     try:
         query = f"""
-        SELECT COALESCE(SUM(amount_eur_minor), 0) / 100.0 AS net_flow
+        SELECT COALESCE(SUM(amount_eur_minor), 0) AS net_flow_minor
         FROM transactions
         WHERE is_internal_transfer = 0
           AND booking_date >= date('now', '-{days} days')
         """
         row = conn.execute(query).fetchone()
-        return float(row["net_flow"] if row else 0.0)
-    except Exception:
+        cents = int(row["net_flow_minor"] if row else 0)
+        return Money.from_cents(cents).to_major()
+    except Exception as e:
+        logger.error("Error calculating monthly cash flow: %s", e, exc_info=True)
         return 0.0
 
 
@@ -100,7 +116,7 @@ def _calculate_accrued_subtexts(
         row = latest_snapshots.get(acc.id)
         subtext = ""
         if row:
-            base_bal_eur = row["balance_eur_minor"] / 100.0
+            base_bal_eur = Money.from_cents(row["balance_eur_minor"]).to_major()
             apy = acc.apy
             if apy and apy > 0:
                 snap_date_str = str(row["snapshot_date"])[:10]
@@ -108,11 +124,11 @@ def _calculate_accrued_subtexts(
                     snap_date = datetime.strptime(snap_date_str, "%Y-%m-%d").date()
                     days = (today - snap_date).days
                     if days > 0:
-                        daily_rate = (apy / 100.0) / 365.0
+                        daily_rate = (apy / 100.0) / 365.0  # pct
                         accrued = base_bal_eur * (daily_rate * days)
                         subtext = f"+€{accrued:,.2f} accrued ({apy}% APY)"
-                except Exception:
-                    pass
+                except (ValueError, TypeError, OverflowError) as e:
+                    logger.debug("Accrued calculation fallback for account %s: %s", acc.id, e)
         acc_subtexts[acc.id] = subtext
     return acc_subtexts
 
@@ -175,7 +191,7 @@ def _is_conn_open(conn: sqlite3.Connection | None) -> bool:
     try:
         conn.execute("SELECT 1")
         return True
-    except Exception:
+    except sqlite3.Error:
         return False
 
 
@@ -188,7 +204,8 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
         try:
             db_conn = database.connect(DB_PATH)
             should_close = True
-        except Exception:
+        except Exception as e:
+            logger.error("Error opening DB for ticker tape: %s", e, exc_info=True)
             return
 
     all_tickers = []
@@ -202,8 +219,8 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
                     mirrors_data = json.load(f)
                     if isinstance(mirrors_data, list):
                         mirrors_map = {m["ticker"]: m for m in mirrors_data if "ticker" in m}
-            except Exception:
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Mirror cache read fallback: %s", e)
 
         for t in h_tickers:
             if not t:
@@ -216,8 +233,8 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
                         all_tickers.append(sym)
             elif not str(t).startswith("ID_"):
                 all_tickers.append(t)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("Error loading distinct tickers: %s", e, exc_info=True)
     finally:
         if should_close and db_conn is not None:
             db_conn.close()
@@ -253,10 +270,10 @@ def _render_kpi_ribbon(
     liabilities: list[Any] | None = None,
 ) -> None:
     """Render top 4-KPI ribbon for Net Worth, Liquid Cash, Investments, and Monthly Cash Flow."""
-    liquid_cash = nw_data.get("liquid_cash", 0.0)
-    invested = nw_data.get("invested", 0.0)
-    home_equity = nw_data.get("home_equity", 0.0)
-    net_worth = nw_data.get("net_worth", 0.0)
+    liquid_cash = Money.from_major(nw_data.get("liquid_cash", 0.0))
+    invested = Money.from_major(nw_data.get("invested", 0.0))
+    home_equity = Money.from_major(nw_data.get("home_equity", 0.0))
+    net_worth = Money.from_major(nw_data.get("net_worth", 0.0))
 
     lib_row = liabilities[0] if liabilities else None
     nw_sub = (
@@ -265,7 +282,8 @@ def _render_kpi_ribbon(
         else "Assets minus liabilities"
     )
 
-    monthly_cash_flow = _calculate_monthly_cash_flow(conn, days=30)
+    monthly_cash_flow_val = _calculate_monthly_cash_flow(conn, days=30)
+    monthly_cash_flow = Money.from_major(monthly_cash_flow_val)
     flow_sub = "Net cash flow (last 30 days)"
 
     c1, c2, c3, c4 = st.columns(4)
@@ -319,7 +337,8 @@ def _render_accounts_grid(
         try:
             db_conn = database.connect(DB_PATH)
             should_close = True
-        except Exception:
+        except Exception as e:
+            logger.error("Error opening DB for accounts grid snapshots: %s", e, exc_info=True)
             db_conn = None
 
     if db_conn is not None:
@@ -410,7 +429,7 @@ def _render_accounts_grid(
                                     use_container_width=True,
                                     key=f"dashboard_acc_{acc.id}_submit_btn",
                                 ):
-                                    val_min = int(round(new_adj_bal * 100))
+                                    val_min = Money.from_major(new_adj_bal).cents
                                     save_conn = database.connect(DB_PATH)
                                     try:
                                         database.upsert_snapshots(
@@ -502,7 +521,8 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
         try:
             db_conn = database.connect(DB_PATH)
             should_close = True
-        except Exception:
+        except Exception as e:
+            logger.error("Error opening DB in dashboard analytics section: %s", e, exc_info=True)
             return
 
     try:
@@ -514,7 +534,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
             try:
                 dt = datetime.strptime(start_date, "%Y-%m-%d").date()
                 period_sub = f"Since last salary ({dt.strftime('%d %b %Y')} – {today.strftime('%d %b %Y')})"
-            except Exception:
+            except (ValueError, TypeError):
                 period_sub = f"Since last salary ({start_date} – {today_iso})"
         else:
             start_date = today.replace(day=1).isoformat()
@@ -528,13 +548,13 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
             with st.container(border=True, key="expenses_diagram_panel"):
                 c_exp_head, c_exp_act = st.columns([0.88, 0.12], vertical_alignment="center")
                 with c_exp_head:
-                    section_header("Expenses", f"{period_sub} • Interactive flow")
+                    render_section_header("Expenses", f"{period_sub} • Interactive flow")
                 with c_exp_act:
                     if st.button("⛶", key="expand_expenses_flow_btn", help="Expand Expenses to Fullscreen"):
                         open_sankey_fullscreen_dialog(
                             start_date,
                             end_date,
-                            drilldown_flow=st.session_state.get("dashboard_sankey_drilldown_state", "Full Flow"),
+                            drilldown_flow=state.get(state.K.DASHBOARD_SANKEY_DRILLDOWN, "Full Flow"),
                         )
 
                 spend_df = TransactionRepository.get_recent_spending_df(
@@ -552,13 +572,14 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
                     empty_state(
                         "No Recent Spending",
                         f"No expense transactions recorded since last salary ({period_sub}). Import your statements in the 'Import' page to view spending breakdowns.",
+                        icon="💸",
                     )
 
         with col_investments:
             with st.container(border=True, key="portfolio_exposure_panel"):
                 c_inv_head, c_inv_act = st.columns([0.88, 0.12], vertical_alignment="center")
                 with c_inv_head:
-                    section_header("Portfolio exposure", "Sector & themes breakdown • Market carpet heatmap")
+                    render_section_header("Portfolio exposure", "Sector & themes breakdown • Market carpet heatmap")
                 with c_inv_act:
                     if st.button("⛶", key="expand_invest_carpet_btn", help="Expand Portfolio Exposure to Fullscreen"):
                         _investments_fullscreen_dialog()
@@ -571,6 +592,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
                     empty_state(
                         "No Investment Holdings",
                         "No investment portfolio holdings found. Connect eToro or add broker holdings to view exposure.",
+                        icon="📈",
                     )
     finally:
         if should_close:
@@ -587,6 +609,7 @@ def render() -> None:
             empty_state(
                 "No Accounts Found",
                 "Get started by importing your bank or brokerage statements in the 'Import' page, or connect an API in 'Settings'.",
+                icon="🏦",
             )
             return
 

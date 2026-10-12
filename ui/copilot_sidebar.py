@@ -14,7 +14,16 @@ def render_copilot_sidebar() -> None:
     # Sticky sidebar header: brand row, actions, and file import
     header_container = st.container(key="sticky_sidebar_header")
     with header_container:
-        st.markdown("**:material/savings: Finance Assistant**")
+        from config import DEMO
+
+        if DEMO:
+            st.markdown(
+                "**:material/savings: Finance Assistant** &nbsp; "
+                "<span style='background:#f59e0b;color:#111827;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;'>DEMO</span>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown("**:material/savings: Finance Assistant**")
 
         col_acts, col_files = st.columns(2)
         with col_acts:

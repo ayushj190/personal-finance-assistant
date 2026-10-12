@@ -4,6 +4,7 @@ import plotly.express as px
 
 from config import DB_PATH
 from db import database
+from money import Money
 from ui.components import section_header, kpi_card, is_hidden
 from ui.theme import render_chart
 from services.tax_report_service import generate_dutch_tax_statement
@@ -132,8 +133,8 @@ def render():
         st.info("Please set your Gross Annual Income above to see your tax breakdown.")
         return
 
-    green_val = (float(dict(profile).get("green_investments_minor", 0)) / 100.0) if "green_investments_minor" in profile.keys() else 0.0
-    factor_a_val = (float(dict(profile).get("factor_a_minor", 0)) / 100.0) if "factor_a_minor" in profile.keys() else 0.0
+    green_val = Money.from_cents(dict(profile).get("green_investments_minor", 0)).to_major() if "green_investments_minor" in profile.keys() else 0.0
+    factor_a_val = Money.from_cents(dict(profile).get("factor_a_minor", 0)).to_major() if "factor_a_minor" in profile.keys() else 0.0
 
     # Calculations
     box1 = calculate_box1_tax(current_income)

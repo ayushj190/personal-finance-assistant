@@ -7,6 +7,7 @@ import streamlit as st
 
 from config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from db import database
+from money import Money
 from services import secrets_vault
 from ui.components import section_header
 from ui.dialogs import manual_account_dialog
@@ -331,13 +332,13 @@ def render():
                                 (acc["id"],),
                             ).fetchone()
                             if snap_row:
-                                cur_bal = snap_row["balance_eur_minor"] / 100.0
+                                cur_bal = Money.from_cents(snap_row["balance_eur_minor"]).to_major()
                             else:
                                 tx_sum = conn.execute(
                                     "SELECT SUM(amount_eur_minor) AS total FROM transactions WHERE account_id = ?",
                                     (acc["id"],),
                                 ).fetchone()
-                                cur_bal = (tx_sum["total"] or 0) / 100.0
+                                cur_bal = Money.from_cents(tx_sum["total"] if tx_sum else 0).to_major()
 
                             col1, col2, col3 = st.columns([2, 1, 1])
                             with col1:

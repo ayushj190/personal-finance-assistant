@@ -1,7 +1,10 @@
 import json
+import logging
 from typing import Any
 import httpx
 from ollama import Client
+
+logger = logging.getLogger(__name__)
 
 from config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from services import secrets_vault
@@ -39,7 +42,7 @@ def generate_json(messages: list[dict[str, str]], schema: dict[str, Any] | None 
         content = response['message']['content']
         return json.loads(content)
     except Exception as e:
-        print(f"Ollama generation error: {e}")
+        logger.error("Ollama generation error: %s", e, exc_info=True)
         return None
 
 
@@ -64,7 +67,7 @@ def chat_with_tools(
             return msg
         return {"role": "assistant", "content": str(msg)}
     except Exception as e:
-        print(f"Ollama tool calling error: {e}")
+        logger.error("Ollama tool calling error: %s", e, exc_info=True)
         return None
 
 def generate_stream(messages: list[dict[str, str]]) -> Any:
