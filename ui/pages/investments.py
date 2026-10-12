@@ -15,8 +15,9 @@ from services.portfolio import (
     calculate_drift,
     get_consolidated_holdings_df,
     get_dimension_exposure_df,
+    get_smart_allocation_profiles,
 )
-from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_drift_bar_chart
+from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_drift_bar_chart, build_investments_market_carpet
 from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.theme import render_chart
 
@@ -161,23 +162,27 @@ def _render_portfolio_fragment(
         pos_str = "**** assets" if is_hidden() else f"{active_positions_count} assets"
         kpi_card("Active Positions", pos_str, subtext=sub)
 
-    # 2. Multi-dimension Exposure Visualizer (AC-1, AC-2)
+    # 2. Multi-dimension Exposure Visualizer (Sector & Heatmap prominent, Asset Class collapsible)
     if not consolidated_df.empty:
-        with section_header("Portfolio Allocation & Exposure", "Multi-dimension asset diversification"):
-            dim_options = ["Asset Class", "Sector", "Region", "Currency"]
+        with section_header("Sector & Strategic Allocation", "Portfolio exposure heatmap and multi-dimension distribution"):
+            # Prominent Market Carpet Heatmap
+            carpet_fig = build_investments_market_carpet(consolidated_df, height=380)
+            render_chart(carpet_fig, use_container_width=True)
+
+            dim_options = ["Sector", "Region", "Currency", "Nature"]
             selected_dim = st.pills(
                 "Exposure Dimension",
                 options=dim_options,
-                default="Asset Class",
+                default="Sector",
                 key="portfolio_exposure_dim_pills",
                 label_visibility="collapsed",
-            ) or "Asset Class"
+            ) or "Sector"
 
             dim_df = get_dimension_exposure_df(consolidated_df, selected_dim)
             col_donut, col_bar = st.columns([1, 1])
 
             with col_donut:
-                color_map = ASSET_TYPE_COLORS if selected_dim == "Asset Class" else (SECTOR_COLORS if selected_dim == "Sector" else None)
+                color_map = SECTOR_COLORS if selected_dim == "Sector" else None
                 donut_fig = px.pie(
                     dim_df,
                     names="bucket",
@@ -200,7 +205,7 @@ def _render_portfolio_fragment(
                 donut_fig.update_layout(
                     showlegend=True,
                     margin=dict(t=40, l=10, r=10, b=10),
-                    height=340,
+                    height=320,
                 )
                 render_chart(donut_fig, use_container_width=True)
 
@@ -227,13 +232,44 @@ def _render_portfolio_fragment(
                 bar_fig.update_layout(
                     showlegend=False,
                     margin=dict(t=40, l=110, r=20, b=20),
-                    height=340,
+                    height=320,
                     xaxis=dict(ticksuffix="%", automargin=True),
                     yaxis=dict(automargin=True),
                 )
                 render_chart(bar_fig, use_container_width=True)
 
-            with st.expander(f"📋 View {selected_dim} Breakdown Table", expanded=False):
+            # Collapsible Asset Class Breakdown (default minimized)
+            with st.expander("💼 Asset Class Breakdown (Stocks, ETFs, Crypto, Commodities)", expanded=False):
+                ac_dim_df = get_dimension_exposure_df(consolidated_df, "Asset Class")
+                ac_c1, ac_c2 = st.columns([1, 1])
+                with ac_c1:
+                    ac_fig = px.pie(
+                        ac_dim_df,
+                        names="bucket",
+                        values="value_eur",
+                        hole=0.5,
+                        color="bucket",
+                        color_discrete_map=ASSET_TYPE_COLORS,
+                        title="Asset Class Distribution",
+                    )
+                    ac_fig.update_layout(height=280, margin=dict(t=30, l=10, r=10, b=10))
+                    render_chart(ac_fig, use_container_width=True)
+                with ac_c2:
+                    table_ac = ac_dim_df.copy()
+                    if is_hidden():
+                        table_ac["Value (€)"] = "€****"
+                        table_ac["Weight (%)"] = "****%"
+                    else:
+                        table_ac["Value (€)"] = table_ac["value_eur"].map(lambda v: f"€{v:,.2f}")
+                        table_ac["Weight (%)"] = table_ac["weight_pct"].map(lambda w: f"{w:.1f}%")
+                    table_ac.rename(columns={"bucket": "Asset Class"}, inplace=True)
+                    st.dataframe(
+                        table_ac[["Asset Class", "Value (€)", "Weight (%)"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            with st.expander(f"📋 View {selected_dim} Details Table", expanded=False):
                 table_df = dim_df.copy()
                 if is_hidden():
                     table_df["Value (€)"] = "€****"
@@ -367,14 +403,26 @@ def _render_portfolio_fragment(
             st.dataframe(disp_perf, use_container_width=True, hide_index=True)
 
         # 4. Minimizable live TradingView watchlist card (AC-3)
-        direct_tickers = [t for t in direct_df["ticker"].unique() if not str(t).startswith("ID_")]
-        if direct_tickers:
+        # Extract unique symbols from all active holdings (both direct and prominent copy assets)
+        all_tickers: list[str] = []
+        if not consolidated_df.empty and "ticker" in consolidated_df.columns:
+            for t in consolidated_df["ticker"].dropna().unique():
+                ts = str(t).replace("COPY:", "").strip()
+                if ts and not ts.startswith("ID_") and ts not in all_tickers:
+                    all_tickers.append(ts)
+        elif not direct_df.empty:
+            for t in direct_df["ticker"].dropna().unique():
+                ts = str(t).strip()
+                if ts and not ts.startswith("ID_") and ts not in all_tickers:
+                    all_tickers.append(ts)
+
+        if all_tickers:
             if "tv_watchlist_minimized" not in st.session_state:
                 st.session_state["tv_watchlist_minimized"] = False
 
-            c_tv_head, c_tv_act = st.columns([0.88, 0.12], vertical_alignment="center")
+            c_tv_head, c_tv_act = st.columns([0.85, 0.15], vertical_alignment="center")
             with c_tv_head:
-                section_header("Live Market Watchlist", "Direct active holdings quotes • TradingView live stream")
+                section_header("Live Market Quotes & TradingView Watchlist", f"{len(all_tickers)} distinct active assets • Real-time market stream")
             with c_tv_act:
                 is_min = st.session_state["tv_watchlist_minimized"]
                 btn_txt = "➕ Expand" if is_min else "➖ Minimize"
@@ -383,19 +431,20 @@ def _render_portfolio_fragment(
                     st.rerun()
 
             if not st.session_state["tv_watchlist_minimized"]:
-                tv_symbols = [
-                    {"name": t.split(".")[0] if "." in t else t}
-                    for t in direct_tickers
-                ]
+                tv_symbols = []
+                for t in all_tickers[:30]:  # Up to 30 distinct prominent assets
+                    sym_clean = t.split(".")[0] if "." in t else t
+                    tv_symbols.append({"name": sym_clean, "displayName": sym_clean})
+
                 theme = st.get_option("theme.base")
-                tv_content_height = max(320, len(tv_symbols) * 45 + 90)
+                tv_content_height = max(360, len(tv_symbols) * 44 + 80)
                 blur_overlay = (
                     """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>"""
                     if is_hidden()
                     else ""
                 )
                 tv_html = f"""
-                <div style="position: relative; width: 100%; height: 320px; max-height: 320px; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid rgba(128,128,128,0.2);">
+                <div style="position: relative; width: 100%; height: 380px; max-height: 380px; overflow-y: auto; overflow-x: hidden; border-radius: 12px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
                     {blur_overlay}
                     <div class="tradingview-widget-container">
                       <div class="tradingview-widget-container__widget"></div>
@@ -405,7 +454,7 @@ def _render_portfolio_fragment(
                       "height": {tv_content_height},
                       "symbolsGroups": [
                         {{
-                          "name": "Live Market Prices",
+                          "name": "Portfolio Assets",
                           "originalName": "Holdings",
                           "symbols": {json.dumps(tv_symbols)}
                         }}
@@ -419,9 +468,9 @@ def _render_portfolio_fragment(
                     </div>
                 </div>
                 """
-                st.components.v1.html(tv_html, height=330)
+                st.components.v1.html(tv_html, height=390)
         else:
-            st.caption("No direct broker holdings found.")
+            st.caption("No active holdings found for live market feed.")
 
     # 5. Dedicated Realized P&L Panel and closed positions (AC-6)
     if conn is not None:
@@ -472,38 +521,45 @@ def _render_portfolio_fragment(
 
 @st.fragment
 def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
-    # Fetch allocation profiles
-    profiles = HoldingRepository.get_allocation_profiles(conn)
+    # Fetch smart risk-tailored and saved allocation profiles
+    profiles = get_smart_allocation_profiles(conn, consolidated_df)
     if not profiles:
         st.info("No allocation profiles configured.")
         return
 
     prof_map = {p["name"]: p for p in profiles}
-    col_prof, _ = st.columns([1, 2])
+    col_prof, col_desc = st.columns([1, 1], vertical_alignment="center")
     with col_prof:
         selected_name = st.selectbox(
-            "Allocation Profile",
+            "Target Allocation Strategy",
             options=list(prof_map.keys()),
             index=0,
             key="investments_allocation_profile_select",
         )
     profile = prof_map[selected_name]
+    with col_desc:
+        desc = profile.get("description", "")
+        dim_lbl = profile.get("dimension", "").title()
+        st.caption(f"**Strategy Focus:** {desc} • Dimension: `{dim_lbl}`")
 
-    # Fetch targets
-    targets = HoldingRepository.get_allocation_targets(conn, profile["id"])
+    # Fetch targets from profile object
+    targets = profile.get("targets", {})
+    if not targets and "id" in profile:
+        targets = HoldingRepository.get_allocation_targets(conn, profile["id"])
 
     # Calculate actual values per bucket
-    dimension = profile["dimension"]
+    dimension = profile.get("dimension", "asset_type")
     current_values: dict[str, float] = {}
 
     if not consolidated_df.empty:
+        col_to_check = dimension if dimension in consolidated_df.columns else "asset_type"
         for _, row in consolidated_df.iterrows():
-            b_key = str(row.get(dimension) or "other")
+            b_key = str(row.get(col_to_check) or "other")
             current_values[b_key] = current_values.get(
                 b_key, 0.0
             ) + float(row.get("value_eur", 0.0))
 
-    if profile["include_cash"]:
+    if profile.get("include_cash"):
         current_values["cash"] = AccountRepository.get_total_cash_balance(conn)
 
     if not current_values:

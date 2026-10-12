@@ -18,13 +18,6 @@ from ui.charts import (
 from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
 from ui.logos import get_institution_logo_svg
 from ui.theme import render_chart
-from connectors.etoro_service import EtoroService
-
-
-@st.cache_data(ttl=300)
-def fetch_cached_news():
-    etoro = EtoroService()
-    return etoro.fetch_news(limit=10), etoro.is_configured()
 
 
 def get_account_status(acc: dict[str, Any], sync_logs: list[dict[str, Any]]) -> tuple[str, str]:
@@ -229,7 +222,9 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
         if should_close and db_conn is not None:
             db_conn.close()
 
-    symbols = _tradingview_symbols(all_tickers)
+    # Extract distinct tickers preserving order
+    distinct_tickers = list(dict.fromkeys(all_tickers))
+    symbols = _tradingview_symbols(distinct_tickers)
 
     theme = st.get_option("theme.base")
     tape_html = f"""
@@ -341,152 +336,178 @@ def _render_accounts_grid(
         "Accounts & Balances",
         "Real-time balances and connection statuses across connected institutions",
     ):
-        def _render_cards_for_group(acc_group: list[Any], group_type: str) -> None:
-            COLS_PER_ROW = 4
-            for i in range(0, len(acc_group), COLS_PER_ROW):
-                row_accounts = acc_group[i : i + COLS_PER_ROW]
-                cols = st.columns(COLS_PER_ROW)
-                for idx, acc in enumerate(row_accounts):
-                    col = cols[idx]
-                    bal = acc_balances.get(acc.id, 0.0)
-                    sub = acc_subtexts.get(acc.id, "")
-                    curr = acc.currency or "EUR"
-                    sym = currency_symbols.get(curr, "€")
-                    badge_txt, badge_kind = get_account_status(
-                        {"provider": acc.provider, "institution": acc.institution},
-                        sync_logs,
-                    )
-                    disp_name = clean_account_name(
-                        {
-                            "institution": acc.institution,
-                            "name": acc.name,
-                            "currency": acc.currency,
-                            "asset_class": acc.asset_class,
-                        },
-                        accounts_dicts,
-                    )
-                    logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
-                    accent_cls = "account-accent-cash" if group_type == "cash" else "account-accent-investment"
+        def _render_account_card(acc: Any, group_type: str) -> None:
+            bal = acc_balances.get(acc.id, 0.0)
+            sub = acc_subtexts.get(acc.id, "")
+            curr = acc.currency or "EUR"
+            sym = currency_symbols.get(curr, "€")
+            badge_txt, badge_kind = get_account_status(
+                {"provider": acc.provider, "institution": acc.institution},
+                sync_logs,
+            )
+            disp_name = clean_account_name(
+                {
+                    "institution": acc.institution,
+                    "name": acc.name,
+                    "currency": acc.currency,
+                    "asset_class": acc.asset_class,
+                },
+                accounts_dicts,
+            )
+            logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
+            accent_cls = "account-accent-cash" if group_type == "cash" else "account-accent-investment"
 
-                    with col:
-                        with st.container(border=True, key=f"account_card_{acc.id}"):
-                            c_header_info, c_header_cog = st.columns(
-                                [0.85, 0.15], gap=0, vertical_alignment="center", wrap=False
-                            )
-                            with c_header_info:
-                                header_html = (
-                                    f"<div class='account-card-marker {accent_cls}'>"
-                                    f"{logo_svg}"
-                                    f"<span class='account-card-name' title='{disp_name}'>{disp_name}</span>"
-                                    f"</div>"
+            with st.container(border=True, key=f"account_card_{acc.id}"):
+                c_header_info, c_header_cog = st.columns(
+                    [0.85, 0.15], gap=0, vertical_alignment="center", wrap=False
+                )
+                with c_header_info:
+                    header_html = (
+                        f"<div class='account-card-marker {accent_cls}'>"
+                        f"{logo_svg}"
+                        f"<span class='account-card-name' title='{disp_name}'>{disp_name}</span>"
+                        f"</div>"
+                    )
+                    st.markdown(header_html, unsafe_allow_html=True)
+                with c_header_cog:
+                    with st.popover(
+                        "",
+                        icon=":material/settings:",
+                        help="Account Settings",
+                        key=f"dashboard_acc_{acc.id}_popover",
+                    ):
+                        st.markdown(f"**{acc.name}**")
+                        st.write(f"**Institution:** {acc.institution}")
+                        st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
+                        st.write(f"**Currency:** {curr}")
+                        st.caption(f"Status: {badge_txt}")
+
+                        if acc.asset_class == "cash":
+                            st.divider()
+                            with st.form(f"dashboard_acc_{acc.id}_adjust_form"):
+                                st.caption(f"Adjust balance ({sym})")
+                                new_adj_bal = st.number_input(
+                                    f"New Balance ({sym})",
+                                    value=float(bal),
+                                    min_value=0.0,
+                                    step=50.0,
+                                    format="%.2f",
+                                    key=f"dashboard_acc_{acc.id}_bal_in",
                                 )
-                                st.markdown(header_html, unsafe_allow_html=True)
-                            with c_header_cog:
-                                with st.popover(
-                                    "",
-                                    icon=":material/settings:",
-                                    help="Account Settings",
-                                    key=f"dashboard_acc_{acc.id}_popover",
+                                if st.form_submit_button(
+                                    "Update Balance",
+                                    type="primary",
+                                    use_container_width=True,
+                                    key=f"dashboard_acc_{acc.id}_submit_btn",
                                 ):
-                                    st.markdown(f"**{acc.name}**")
-                                    st.write(f"**Institution:** {acc.institution}")
-                                    st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
-                                    st.write(f"**Currency:** {curr}")
-                                    st.caption(f"Status: {badge_txt}")
+                                    val_min = int(round(new_adj_bal * 100))
+                                    save_conn = database.connect(DB_PATH)
+                                    try:
+                                        database.upsert_snapshots(
+                                            save_conn,
+                                            [
+                                                {
+                                                    "account_id": acc.id,
+                                                    "snapshot_date": today.isoformat(),
+                                                    "balance_minor": val_min,
+                                                    "balance_eur_minor": val_min,
+                                                }
+                                            ],
+                                        )
+                                    finally:
+                                        save_conn.close()
+                                    st.rerun(scope="app")
 
-                                    if acc.asset_class == "cash":
-                                        st.divider()
-                                        with st.form(f"dashboard_acc_{acc.id}_adjust_form"):
-                                            st.caption(f"Adjust balance ({sym})")
-                                            new_adj_bal = st.number_input(
-                                                f"New Balance ({sym})",
-                                                value=float(bal),
-                                                min_value=0.0,
-                                                step=50.0,
-                                                format="%.2f",
-                                                key=f"dashboard_acc_{acc.id}_bal_in",
-                                            )
-                                            if st.form_submit_button(
-                                                "Update Balance",
-                                                type="primary",
-                                                use_container_width=True,
-                                                key=f"dashboard_acc_{acc.id}_submit_btn",
-                                            ):
-                                                val_min = int(round(new_adj_bal * 100))
-                                                save_conn = database.connect(DB_PATH)
-                                                try:
-                                                    database.upsert_snapshots(
-                                                        save_conn,
-                                                        [
-                                                            {
-                                                                "account_id": acc.id,
-                                                                "snapshot_date": today.isoformat(),
-                                                                "balance_minor": val_min,
-                                                                "balance_eur_minor": val_min,
-                                                            }
-                                                        ],
-                                                    )
-                                                finally:
-                                                    save_conn.close()
-                                                st.rerun(scope="app")
+                val_display = "****" if is_hidden() else f"{bal:,.2f}"
+                details_html = ""
+                if sub:
+                    masked_sub = mask_if_hidden(sub) if is_hidden() else sub
+                    details_html = f"<span class='account-card-details details-accrued' title='{masked_sub}'>✨ {masked_sub}</span>"
+                elif acc.apy:
+                    details_html = f"<span class='account-card-details details-apy' title='{acc.apy}% APY'>📈 {acc.apy}% APY</span>"
 
-                            val_display = "****" if is_hidden() else f"{bal:,.2f}"
-                            details_html = ""
-                            if sub:
-                                masked_sub = mask_if_hidden(sub) if is_hidden() else sub
-                                details_html = f"<span class='account-card-details details-accrued' title='{masked_sub}'>✨ {masked_sub}</span>"
-                            elif acc.apy:
-                                details_html = f"<span class='account-card-details details-apy' title='{acc.apy}% APY'>📈 {acc.apy}% APY</span>"
-
-                            card_bottom_html = (
-                                f"<div class='account-card-bottom'>"
-                                f"<div class='account-card-amount-group'>"
-                                f"<span class='account-currency-symbol'>{sym}</span>"
-                                f"<span class='account-balance-number'>{val_display}</span>"
-                                f"{details_html}"
-                                f"</div>"
-                                f"<div class='account-card-status-slot'>"
-                                f"{status_badge(badge_txt, badge_kind)}"
-                                f"</div>"
-                                f"</div>"
-                            )
-                            st.markdown(card_bottom_html, unsafe_allow_html=True)
+                card_bottom_html = (
+                    f"<div class='account-card-bottom'>"
+                    f"<div class='account-card-amount-group'>"
+                    f"<span class='account-currency-symbol'>{sym}</span>"
+                    f"<span class='account-balance-number'>{val_display}</span>"
+                    f"{details_html}"
+                    f"</div>"
+                    f"<div class='account-card-status-slot'>"
+                    f"{status_badge(badge_txt, badge_kind)}"
+                    f"</div>"
+                    f"</div>"
+                )
+                st.markdown(card_bottom_html, unsafe_allow_html=True)
 
         cash_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") == "cash"]
         investment_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") != "cash"]
 
-        cash_accounts.sort(
-            key=lambda a: (
-                (getattr(a, "institution", "") or "").lower(),
-                (getattr(a, "name", "") or "").lower(),
-            )
-        )
-        investment_accounts.sort(
-            key=lambda a: (
-                (getattr(a, "institution", "") or "").lower(),
-                (getattr(a, "name", "") or "").lower(),
-            )
-        )
+        from collections import defaultdict
+        cash_by_inst = defaultdict(list)
+        for a in cash_accounts:
+            inst = (getattr(a, "institution", "") or "Other").strip()
+            cash_by_inst[inst].append(a)
 
-        if cash_accounts:
-            st.markdown(
-                f"<div class='accounts-section-header'>"
-                f"<span class='accounts-section-title'>Cash & Liquid Reserves</span>"
-                f"<span class='accounts-section-count'>{len(cash_accounts)}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            _render_cards_for_group(cash_accounts, "cash")
+        invest_by_inst = defaultdict(list)
+        for a in investment_accounts:
+            inst = (getattr(a, "institution", "") or "Other").strip()
+            invest_by_inst[inst].append(a)
 
-        if investment_accounts:
-            st.markdown(
-                f"<div class='accounts-section-header'>"
-                f"<span class='accounts-section-title'>Investment Portfolios</span>"
-                f"<span class='accounts-section-count'>{len(investment_accounts)}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            _render_cards_for_group(investment_accounts, "investment")
+        sorted_cash_insts = sorted(cash_by_inst.keys(), key=lambda s: s.lower())
+        sorted_invest_insts = sorted(invest_by_inst.keys(), key=lambda s: s.lower())
+
+        col_cash, col_invest = st.columns(2, gap="medium")
+
+        with col_cash:
+            with st.container(border=True, key="bank_accounts_col"):
+                st.markdown(
+                    f"<div class='accounts-section-header'>"
+                    f"<span class='accounts-section-title'>Cash & Liquid Reserves</span>"
+                    f"<span class='accounts-section-count'>{len(cash_accounts)}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                if not cash_accounts:
+                    st.caption("No bank accounts connected.")
+                else:
+                    for inst in sorted_cash_insts:
+                        inst_accs = sorted(cash_by_inst[inst], key=lambda a: (getattr(a, "name", "") or "").lower())
+                        if len(inst_accs) > 1:
+                            logo_svg = get_institution_logo_svg(inst, size=18)
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;gap:6px;margin:8px 0 4px 2px;font-weight:600;font-size:0.9rem;opacity:0.85;'>"
+                                f"{logo_svg}<span>{inst}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                        for acc in inst_accs:
+                            _render_account_card(acc, "cash")
+
+        with col_invest:
+            with st.container(border=True, key="invest_accounts_col"):
+                st.markdown(
+                    f"<div class='accounts-section-header'>"
+                    f"<span class='accounts-section-title'>Investment Portfolios</span>"
+                    f"<span class='accounts-section-count'>{len(investment_accounts)}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                if not investment_accounts:
+                    st.caption("No investment accounts connected.")
+                else:
+                    for inst in sorted_invest_insts:
+                        inst_accs = sorted(invest_by_inst[inst], key=lambda a: (getattr(a, "name", "") or "").lower())
+                        if len(inst_accs) > 1:
+                            logo_svg = get_institution_logo_svg(inst, size=18)
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;gap:6px;margin:8px 0 4px 2px;font-weight:600;font-size:0.9rem;opacity:0.85;'>"
+                                f"{logo_svg}<span>{inst}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                        for acc in inst_accs:
+                            _render_account_card(acc, "investment")
 
 
 @st.dialog("Investments Exposure — Fullscreen Market Carpet", width="large")
@@ -535,82 +556,56 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
         col_expenses, col_investments = st.columns(2, gap="medium")
 
         with col_expenses:
-            c_exp_head, c_exp_act = st.columns([0.88, 0.12], vertical_alignment="center")
-            with c_exp_head:
-                section_header("Expenses", f"{period_sub} • Interactive drilldown")
-            with c_exp_act:
-                if st.button("⛶", key="expand_expenses_flow_btn", help="Expand Expenses to Fullscreen"):
-                    open_sankey_fullscreen_dialog(start_date, end_date)
+            with st.container(border=True, key="expenses_diagram_panel"):
+                c_exp_head, c_exp_act = st.columns([0.88, 0.12], vertical_alignment="center")
+                with c_exp_head:
+                    section_header("Expenses", f"{period_sub} • Interactive flow")
+                with c_exp_act:
+                    if st.button("⛶", key="expand_expenses_flow_btn", help="Expand Expenses to Fullscreen"):
+                        open_sankey_fullscreen_dialog(
+                            start_date,
+                            end_date,
+                            drilldown_flow=st.session_state.get("dashboard_sankey_drilldown_state", "Full Flow"),
+                        )
 
-            spend_df = TransactionRepository.get_recent_spending_df(
-                db_conn, start_date=start_date, end_date=end_date
-            )
-            if not spend_df.empty:
-                render_cash_flow_sankey(
-                    db_conn,
-                    key_prefix="dashboard_sankey",
-                    start_date=start_date,
-                    end_date=end_date,
-                    height=360,
+                spend_df = TransactionRepository.get_recent_spending_df(
+                    db_conn, start_date=start_date, end_date=end_date
                 )
-            else:
-                empty_state(
-                    "No Recent Spending",
-                    f"No expense transactions recorded since last salary ({period_sub}). Import your statements in the 'Import' page to view spending breakdowns.",
-                )
+                if not spend_df.empty:
+                    render_cash_flow_sankey(
+                        db_conn,
+                        key_prefix="dashboard_sankey",
+                        start_date=start_date,
+                        end_date=end_date,
+                        height=360,
+                    )
+                else:
+                    empty_state(
+                        "No Recent Spending",
+                        f"No expense transactions recorded since last salary ({period_sub}). Import your statements in the 'Import' page to view spending breakdowns.",
+                    )
 
         with col_investments:
-            c_inv_head, c_inv_act = st.columns([0.88, 0.12], vertical_alignment="center")
-            with c_inv_head:
-                section_header("Investments Exposure", "Sector & themes breakdown • Market carpet heatmap")
-            with c_inv_act:
-                if st.button("⛶", key="expand_invest_carpet_btn", help="Expand Market Carpet to Fullscreen"):
-                    _investments_fullscreen_dialog()
+            with st.container(border=True, key="portfolio_exposure_panel"):
+                c_inv_head, c_inv_act = st.columns([0.88, 0.12], vertical_alignment="center")
+                with c_inv_head:
+                    section_header("Portfolio exposure", "Sector & themes breakdown • Market carpet heatmap")
+                with c_inv_act:
+                    if st.button("⛶", key="expand_invest_carpet_btn", help="Expand Portfolio Exposure to Fullscreen"):
+                        _investments_fullscreen_dialog()
 
-            consolidated_df = get_consolidated_holdings_df(db_conn)
-            if not consolidated_df.empty:
-                carpet_fig = build_investments_market_carpet(consolidated_df, height=360)
-                render_chart(carpet_fig, use_container_width=True, key="dashboard_market_carpet")
-            else:
-                empty_state(
-                    "No Investment Holdings",
-                    "No investment portfolio holdings found. Connect eToro or add broker holdings to view exposure.",
-                )
+                consolidated_df = get_consolidated_holdings_df(db_conn)
+                if not consolidated_df.empty:
+                    carpet_fig = build_investments_market_carpet(consolidated_df, height=360)
+                    render_chart(carpet_fig, use_container_width=True, key="dashboard_market_carpet")
+                else:
+                    empty_state(
+                        "No Investment Holdings",
+                        "No investment portfolio holdings found. Connect eToro or add broker holdings to view exposure.",
+                    )
     finally:
         if should_close:
             db_conn.close()
-
-
-@st.fragment
-def _render_market_news_fragment() -> None:
-    """Render cached market news inside an isolated fragment."""
-    with section_header("Market News", "Latest updates from eToro feed"):
-        news, is_configured = fetch_cached_news()
-
-        if news:
-            with st.container(height=300, border=True):
-                for item in news:
-                    c1, c2 = st.columns([1, 15])
-                    with c1:
-                        if item.get("avatar"):
-                            st.image(item["avatar"], width=24)
-                        else:
-                            st.write("👤")
-                    with c2:
-                        text = item["text"]
-                        if len(text) > 200:
-                            text = text[:200] + "..."
-                        st.markdown(
-                            f"**@{item['username']}** <span style='color: gray; font-size: 0.8em;'>• {item['created'][:10]}</span><br/>"
-                            f"<span style='font-size: 0.9em;'>{text}</span>",
-                            unsafe_allow_html=True,
-                        )
-                    st.divider()
-        else:
-            if not is_configured:
-                st.info("Connect eToro in Settings to view market news.")
-            else:
-                st.info("No news available right now.")
 
 
 def render() -> None:

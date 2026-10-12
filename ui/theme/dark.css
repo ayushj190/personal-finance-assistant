@@ -28,9 +28,14 @@
         }
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
-        div[data-testid="stSidebarUserContent"] {
+        div[data-testid="stSidebarUserContent"],
+        div.st-key-bank_accounts_col > div[data-testid="stVerticalBlockBorderWrapper"],
+        div.st-key-invest_accounts_col > div[data-testid="stVerticalBlockBorderWrapper"],
+        div.st-key-expenses_diagram_panel > div[data-testid="stVerticalBlockBorderWrapper"],
+        div.st-key-portfolio_exposure_panel > div[data-testid="stVerticalBlockBorderWrapper"] {
             background-color: #101c15 !important;
             color: #ecfdf5 !important;
+            border-color: #162a1f !important;
         }
         
         section[data-testid="stSidebar"] .st-key-sticky_sidebar_header {

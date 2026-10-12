@@ -120,6 +120,26 @@ def full_rebalance(
     return deltas
 
 
+def classify_asset_nature(ticker: str, name: str, asset_type: str, sector: str) -> str:
+    """Classify asset into major investment natures including commodities and real assets."""
+    sec_lower = str(sector).lower()
+    t_upper = str(ticker).upper()
+    n_lower = str(name).lower()
+    if (
+        any(k in sec_lower for k in ["gold", "metal", "commodity", "materials", "energy", "uranium"])
+        or any(t in t_upper for t in ["GLD", "URA", "SLV", "USO", "GSG", "PPFB", "RHM"])
+        or any(k in n_lower for k in ["gold", "uranium", "silver", "commodity"])
+    ):
+        return "Commodities & Real Assets"
+    if asset_type == "crypto" or "crypto" in sec_lower:
+        return "Digital Assets (Crypto)"
+    if asset_type in ("stock", "etf"):
+        return "Equities"
+    if asset_type in ("bond", "fixed_income") or "bond" in sec_lower:
+        return "Fixed Income"
+    return "Other / Multi-Asset"
+
+
 def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
     """Build consolidated portfolio holdings DataFrame, resolving direct assets and mirror copy trades."""
     try:
@@ -168,6 +188,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
                 p_name = p.get("name") or sym
                 m_info = meta_map.get(sym, {})
                 a_type, sec = classify_asset(sym, p_name, m_info)
+                nature = classify_asset_nature(sym, p_name, a_type, sec)
                 reg = m_info.get("country") or "Unknown"
                 cur = m_info.get("currency") or "USD"
                 exc = m_info.get("exchange") or "Unknown"
@@ -181,6 +202,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
                     "asset_class": "investment",
                     "asset_type": a_type,
                     "asset_type_display": a_type.upper(),
+                    "nature": nature,
                     "region": reg,
                     "sector": sec,
                     "currency": cur,
@@ -192,6 +214,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
             m_info = meta_map.get(t, {})
             d_name = row.get("name") or t
             a_type, sec = classify_asset(t, d_name, m_info)
+            nature = classify_asset_nature(t, d_name, a_type, sec)
             reg = m_info.get("country") or row.get("region") or "Unknown"
             cur = m_info.get("currency") or row.get("currency") or "EUR"
             exc = m_info.get("exchange") or "Unknown"
@@ -202,6 +225,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
                 "asset_class": row.get("asset_class") or "investment",
                 "asset_type": a_type,
                 "asset_type_display": a_type.upper(),
+                "nature": nature,
                 "region": reg,
                 "sector": sec,
                 "currency": cur,
@@ -224,7 +248,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
 
 def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> pd.DataFrame:
     """
-    Aggregate portfolio exposure across a given dimension (Sector, Region, Currency, Asset Class).
+    Aggregate portfolio exposure across a given dimension (Sector, Region, Currency, Asset Class, Nature/Commodity).
     Returns DataFrame with columns ['bucket', 'value_eur', 'weight_pct'].
     Falls back to 'Other' for missing or unknown values.
     """
@@ -236,12 +260,14 @@ def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> 
     # Map dimension name to DataFrame column
     if dim_key in ("asset_class", "asset_type", "asset_type_display", "assetclass"):
         col = "asset_type_display" if "asset_type_display" in consolidated_df.columns else "asset_type"
-    elif dim_key in ("sector", "sectors"):
+    elif dim_key in ("sector", "sectors", "theme", "themes"):
         col = "sector"
-    elif dim_key in ("region", "regions", "country"):
+    elif dim_key in ("region", "regions", "country", "geography"):
         col = "region"
     elif dim_key in ("currency", "currencies"):
         col = "currency"
+    elif dim_key in ("nature", "asset_nature", "commodity", "commodities"):
+        col = "nature"
     else:
         col = dimension if dimension in consolidated_df.columns else "sector"
 
@@ -260,3 +286,118 @@ def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> 
     )
     grouped = grouped.sort_values(by="value_eur", ascending=False).reset_index(drop=True)
     return grouped[["bucket", "value_eur", "weight_pct"]]
+
+
+def get_smart_allocation_profiles(conn: sqlite3.Connection, consolidated_df: pd.DataFrame | None = None) -> list[dict[str, Any]]:
+    """Return smart, risk-tolerance-tailored allocation profiles across Sector, Region, Currency, and Multi-Asset dimensions."""
+    from db import database
+    risk_prof = database.get_latest_risk_profile(conn)
+    tolerance = (risk_prof.get("risk_tolerance") or "Growth").capitalize() if risk_prof else "Growth"
+
+    # Base profile targets adjusted for risk profile
+    if tolerance in ("Aggressive", "Growth"):
+        sector_targets = {
+            "Technology": 30.0,
+            "Industrials & Materials": 20.0,
+            "Healthcare": 15.0,
+            "Consumer & Entertainment": 15.0,
+            "Energy": 10.0,
+            "Cryptocurrency": 5.0,
+            "Other": 5.0,
+        }
+        nature_targets = {
+            "Equities": 75.0,
+            "Commodities & Real Assets": 15.0,
+            "Digital Assets (Crypto)": 5.0,
+            "Fixed Income": 5.0,
+        }
+    else:
+        sector_targets = {
+            "Technology": 20.0,
+            "Healthcare": 20.0,
+            "Consumer & Entertainment": 20.0,
+            "Industrials & Materials": 15.0,
+            "Energy": 15.0,
+            "Other": 10.0,
+        }
+        nature_targets = {
+            "Equities": 60.0,
+            "Commodities & Real Assets": 10.0,
+            "Fixed Income": 25.0,
+            "Digital Assets (Crypto)": 5.0,
+        }
+
+    region_targets = {
+        "North America": 55.0,
+        "Europe": 30.0,
+        "Asia": 15.0,
+    }
+
+    currency_targets = {
+        "EUR": 50.0,
+        "USD": 45.0,
+        "Other": 5.0,
+    }
+
+    profiles = [
+        {
+            "id": "smart_sector",
+            "name": f"Smart Sector & Themes ({tolerance})",
+            "dimension": "sector",
+            "drift_band_pct": 5.0,
+            "include_cash": 0,
+            "description": f"Sector diversification tailored for {tolerance} risk profile and 10+ yr horizon",
+            "targets": sector_targets,
+            "is_smart": True,
+        },
+        {
+            "id": "smart_nature",
+            "name": f"Multi-Asset & Commodities ({tolerance})",
+            "dimension": "nature",
+            "drift_band_pct": 5.0,
+            "include_cash": 0,
+            "description": "Equities, real asset commodities, digital assets, and fixed income",
+            "targets": nature_targets,
+            "is_smart": True,
+        },
+        {
+            "id": "smart_region",
+            "name": f"Global Geographic Reach ({tolerance})",
+            "dimension": "region",
+            "drift_band_pct": 5.0,
+            "include_cash": 0,
+            "description": "Regional allocation across North America, Europe, and Asia",
+            "targets": region_targets,
+            "is_smart": True,
+        },
+        {
+            "id": "smart_currency",
+            "name": "Currency Neutrality (EUR / USD)",
+            "dimension": "currency",
+            "drift_band_pct": 5.0,
+            "include_cash": 0,
+            "description": "Currency exposure balance between EUR base and USD growth assets",
+            "targets": currency_targets,
+            "is_smart": True,
+        },
+    ]
+
+    # Append saved database profiles (such as 80/20 Core-Satellite)
+    try:
+        db_profiles = HoldingRepository.get_allocation_profiles(conn)
+        for p in db_profiles:
+            db_targets = HoldingRepository.get_allocation_targets(conn, p["id"])
+            profiles.append({
+                "id": p["id"],
+                "name": p["name"],
+                "dimension": p["dimension"],
+                "drift_band_pct": float(p.get("drift_band_pct", 5.0)),
+                "include_cash": bool(p.get("include_cash", 0)),
+                "description": f"Saved profile ({p['dimension']})",
+                "targets": db_targets,
+                "is_smart": False,
+            })
+    except Exception:
+        pass
+
+    return profiles

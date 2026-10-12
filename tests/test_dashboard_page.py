@@ -9,11 +9,11 @@ from ui.pages.dashboard import (
     _render_accounts_grid,
     _render_analytics_section,
     _render_kpi_ribbon,
-    _render_market_news_fragment,
     _render_ticker_fragment,
     _tradingview_symbols,
     render,
 )
+from ui.pages.investments import _render_market_news_fragment
 
 
 class TestDashboardPage(unittest.TestCase):

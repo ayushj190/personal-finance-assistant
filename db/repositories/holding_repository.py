@@ -258,8 +258,10 @@ class HoldingRepository:
             "SELECT close FROM market_quotes WHERE ticker = ? ORDER BY quote_date DESC LIMIT 1",
             (pair,),
         ).fetchone()
-        if row and row["close"]:
-            return float(row["close"])
+        if row:
+            val = row["close"] if hasattr(row, "keys") else row[0]
+            if val is not None:
+                return float(val)
         return None
 
     @staticmethod

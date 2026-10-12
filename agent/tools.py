@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import json
 from typing import Any
 import pandas as pd
 import streamlit as st
@@ -389,7 +390,15 @@ def tool_analyze_investments() -> dict[str, Any]:
 
         drift_alerts = [d for d in drift_data if d.get("alert")]
         rebalance_needed = len(drift_alerts) > 0
-        msg_parts = [f"Total portfolio value is €{total_portfolio_value_eur:,.2f} across {len(positions)} positions."]
+        total_positions_count = len(positions)
+        # Sort positions descending by value and provide top 15 to prevent blowing up LLM context with copy trades
+        positions_sorted = sorted(positions, key=lambda p: float(p.get("value_eur", 0.0)), reverse=True)
+        top_positions = positions_sorted[:15]
+
+        msg_parts = [
+            f"Total investment portfolio value is €{total_portfolio_value_eur:,.2f} across {total_positions_count} total positions.",
+            f"Asset breakdown: {json.dumps(holdings_by_type)}.",
+        ]
         if active_profile:
             if rebalance_needed:
                 msg_parts.append(
@@ -407,9 +416,10 @@ def tool_analyze_investments() -> dict[str, Any]:
             "total_portfolio_value_formatted": f"€{total_portfolio_value_eur:,.2f}",
             "cash_balance_eur": cash_balance_eur,
             "cash_balance_formatted": f"€{cash_balance_eur:,.2f}",
+            "total_positions_count": total_positions_count,
             "asset_classes_eur": asset_classes,
             "holdings_by_asset_type_eur": holdings_by_type,
-            "positions": positions,
+            "positions": top_positions,
             "active_allocation_profile": active_profile,
             "allocation_targets": targets_list,
             "allocation_drift": drift_data,

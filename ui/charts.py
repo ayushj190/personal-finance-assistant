@@ -832,10 +832,18 @@ def render_cash_flow_sankey(
 def open_sankey_fullscreen_dialog(
     start_date: str | None = None,
     end_date: str | None = None,
+    drilldown_flow: str | None = None,
 ) -> None:
-    """Open full screen modal dialog displaying the high-resolution cash flow Sankey diagram."""
+    """Open full screen modal dialog displaying the high-resolution cash flow Sankey diagram with matching drilldown state and date filters."""
     from config import DB_PATH
     from db import database
+
+    if drilldown_flow:
+        st.session_state["fullscreen_sankey_drilldown_state"] = drilldown_flow
+    elif "dashboard_sankey_drilldown_state" in st.session_state:
+        st.session_state["fullscreen_sankey_drilldown_state"] = st.session_state["dashboard_sankey_drilldown_state"]
+    elif "spending_sankey_drilldown_state" in st.session_state:
+        st.session_state["fullscreen_sankey_drilldown_state"] = st.session_state["spending_sankey_drilldown_state"]
 
     dlg_conn = database.connect(DB_PATH)
     try:
@@ -854,7 +862,7 @@ def build_investments_market_carpet(
     consolidated_df: pd.DataFrame,
     height: int = 350,
 ) -> go.Figure:
-    """Build a market carpet (treemap heatmap) of investment sector and theme exposures."""
+    """Build a market carpet (treemap heatmap) of investment sector and theme exposures with translucent glassmorphic tiles."""
     if consolidated_df.empty:
         return go.Figure()
 
@@ -893,7 +901,7 @@ def build_investments_market_carpet(
             hovertemplate="Censored<extra></extra>",
             marker=dict(line=marker_line, pad=dict(t=4, l=4, r=4, b=4)),
             tiling=dict(pad=6, packing="squarify"),
-            opacity=0.85,
+            opacity=0.75,
         )
     else:
         fig.update_traces(
@@ -907,7 +915,7 @@ def build_investments_market_carpet(
             ),
             marker=dict(line=marker_line, pad=dict(t=4, l=4, r=4, b=4)),
             tiling=dict(pad=6, packing="squarify"),
-            opacity=0.85,
+            opacity=0.75,
         )
 
     fig.update_layout(
