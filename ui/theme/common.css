@@ -100,9 +100,12 @@ header[data-testid="stHeader"] {
 /* Hide Streamlit dev/toolbar clutter (loading symbols, deploy button, rerun text, decoration) */
 [data-testid="stStatusWidget"],
 [data-testid="stDeployButton"],
+[data-testid="stAppDeployButton"],
+.stAppDeployButton,
 [data-testid="stDecoration"],
 [data-testid="stToolbarActions"],
 button[data-testid="stDeployButton"],
+button[data-testid="stAppDeployButton"],
 [data-testid="stMainMenu"],
 #MainMenu {
     display: none !important;
@@ -119,7 +122,7 @@ header[data-testid="stHeader"] [data-testid="stToolbar"] {
     height: 100% !important;
     width: 100% !important;
     max-width: 100% !important;
-    padding: 0 48px 0 0.5rem !important;
+    padding: 0 64px 0 0.5rem !important;
     background-color: transparent !important;
     box-sizing: border-box !important;
     overflow: visible !important;
@@ -255,15 +258,20 @@ div[data-testid="stCustomComponentV1"]:has(iframe) {
 }
 
 /* Top Nav Container & Links */
+.rc-overflow-item {
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+}
+
 [data-testid="stTopNavLinkContainer"] {
     display: inline-flex !important;
     align-items: center !important;
     gap: 12px !important;
     width: auto !important;
-    max-width: calc(100% - 60px) !important;
-    overflow-x: auto !important;
-    overflow-y: visible !important;
-    scrollbar-width: none !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    overflow: visible !important;
 }
 [data-testid="stTopNavLinkContainer"]::-webkit-scrollbar {
     display: none !important;
@@ -273,7 +281,7 @@ div[data-testid="stCustomComponentV1"]:has(iframe) {
     display: inline-flex !important;
     align-items: center !important;
     gap: 8px !important;
-    padding: 6px 14px !important;
+    padding: 6px 16px !important;
     border-radius: var(--radius-sm, 8px) !important;
     text-decoration: none !important;
     color: var(--text-muted) !important;
@@ -288,6 +296,12 @@ div[data-testid="stCustomComponentV1"]:has(iframe) {
     width: auto !important;
     max-width: none !important;
     min-width: max-content !important;
+}
+
+[data-testid="stTopNavLink"] > * {
+    max-width: none !important;
+    overflow: visible !important;
+    width: auto !important;
 }
 
 /* Streamlit's inner wrappers ship fixed widths + overflow:hidden; let them size to content */
@@ -319,12 +333,14 @@ span.material-symbols-rounded,
     text-rendering: optimizeLegibility !important;
     font-feature-settings: 'liga' 1 !important;
     font-size: 1.25rem !important;
+    min-width: 1.25rem !important;
     width: 1.25rem !important;
     height: 1.25rem !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     overflow: visible !important;
+    margin-right: 6px !important;
     flex-shrink: 0 !important;
 }
 
@@ -425,6 +441,18 @@ div[data-testid="stTabs"] div[role="tab"] * {
 div[data-testid="stTabs"] button,
 div[data-testid="stTabs"] div[role="tab"] {
     flex-shrink: 0 !important;
+    white-space: nowrap !important;
+}
+
+div[data-testid="stTabs"] button[role="tab"] {
+    overflow: visible !important;
+    padding: 8px 16px !important;
+}
+
+div[data-testid="stTabs"] button[role="tab"] p,
+div[data-testid="stTabs"] button[role="tab"] span {
+    overflow: visible !important;
+    text-overflow: clip !important;
     white-space: nowrap !important;
 }
 
