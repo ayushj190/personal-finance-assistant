@@ -107,6 +107,40 @@ $env:PFA_DEMO = "1"
 
 ---
 
+## 📸 Application Visual Showcase
+
+All visuals captured in **Privacy Shield** mode (`Hide values` ON) ensuring complete confidentiality during demonstrations and presentations:
+
+### 1. Executive Wealth Dashboard & Portfolio Exposure
+Comprehensive multi-asset overview tracking net worth trajectory, cash flow trends, account liquidity, and dynamic exposure treemaps:
+![Dashboard Overview](docs/assets/screenshots/dashboard.png)
+
+### 2. Spending Topology & Expense Breakdown
+Interactive donut charts, category-level cash flow drilldowns, and automated recurring subscription leak detection:
+![Spending Breakdown](docs/assets/screenshots/spending.png)
+
+### 3. Multi-Asset Portfolio Allocation & Drift Engine
+Swensen 5/25 threshold rebalancing monitor, dimension switchers (Asset Class, Currency, Geography, Sector), and live TradingView integration:
+![Investments & Rebalancing](docs/assets/screenshots/investments.png)
+
+### 4. Dutch Mortgage & Real Estate Modeler
+30-year amortization curve modeling (Annuity, Linear, Interest-Only), penalty-free prepayment simulator, and net home equity tracking:
+![Mortgage Amortization](docs/assets/screenshots/mortgage.png)
+
+### 5. Transaction Ledger & Inline Categorization
+Searchable transaction records with multi-criteria filtering (date, account, category), sorting, and inline editing workflows:
+![Transactions Ledger](docs/assets/screenshots/transactions.png)
+
+### 6. Belastingdienst Tax Intelligence (Box 1 & Box 3)
+Dutch Box 1 income tax optimization, Box 3 wealth tax deemed yield calculation, and pension room (*Jaarruimte*) arbitrage modeling:
+![Tax Analysis](docs/assets/screenshots/tax.png)
+
+### 7. Settings, Credentials Vault & Database Management
+Local SQLite database backups, API secrets vault, bank connections, and classification rules management:
+![Settings & Backups](docs/assets/screenshots/settings.png)
+
+---
+
 ## 💡 Strategic Engineering Decisions & Trade-Offs
 
 | Decision | Alternative Evaluated | Engineering & Product Rationale |
