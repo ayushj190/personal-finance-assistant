@@ -1,7 +1,7 @@
 # 0013. Multi Bank Manual Accounts and Hybrid Statement Ingestion
 
 **Date**: 2026-10-12
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 

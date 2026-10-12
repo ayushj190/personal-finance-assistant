@@ -4,7 +4,7 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
-from services.mortgage import calculate_mortgage_schedule
+from services.mortgage import calculate_mortgage_schedule, sync_liability_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
 from ui.components import format_money, is_hidden, kpi_card, mask_if_hidden, section_header
 from ui.theme import render_chart
@@ -125,12 +125,16 @@ def render():
     # Amortization curve
     with section_header("Amortization Schedule",
                    "Evolution of loan balance and principal paydown over 30 years"):
-        render_chart(build_mortgage_amortization_chart(schedule_df))
+        with st.container(border=True):
+            st.markdown("##### 📈 Loan Balance & Principal Amortization")
+            render_chart(build_mortgage_amortization_chart(schedule_df))
 
         # Monthly breakdown: interest vs principal
     with section_header("Monthly Payment Composition",
                    "Principal vs Interest per monthly installment"):
-        render_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)))
+        with st.container(border=True):
+            st.markdown("##### 📊 Monthly Installment Composition (Interest vs Principal)")
+            render_chart(build_mortgage_interest_principal_bar(schedule_df.head(60)))
 
         # Actual Mortgage Payments & Bank Debits
     with section_header(
@@ -209,27 +213,34 @@ def render():
         ).fetchall()
         if extra_repayments:
             st.markdown("##### ⚡ Logged Extra Principal Repayments")
-            extra_recs = []
-            for er in extra_repayments:
-                extra_recs.append({
-                    "Date": er["paid_date"],
-                    "Amount (€)": er["amount_minor"] / 100.0,
-                    "Benefit Strategy": "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term",
-                })
-            extra_df = pd.DataFrame(extra_recs)
-            if is_hidden():
-                extra_df["Amount (€)"] = extra_df["Amount (€)"].map(
-                    lambda x: format_money(x))
-                st.dataframe(extra_df, use_container_width=True, hide_index=True)
-            else:
-                st.dataframe(
-                    extra_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Amount (€)": st.column_config.NumberColumn("Amount (€)", format="€%.2f"),
-                    }
-                )
+            with st.container(border=True):
+                for er in extra_repayments:
+                    er_date = er["paid_date"]
+                    er_amt = er["amount_minor"] / 100.0
+                    er_strat = "Lower Monthly Payment" if er["recalc"] == "lower_payment" else "Shorten Loan Term"
+                    amt_str = "€****" if is_hidden() else f"€{er_amt:,.2f}"
+
+                    col_edate, col_eamt, col_estrat, col_eact = st.columns([2, 2, 4, 1.5], vertical_alignment="center")
+                    with col_edate:
+                        st.markdown(f"**{er_date}**")
+                    with col_eamt:
+                        st.markdown(amt_str)
+                    with col_estrat:
+                        st.caption(f"Strategy: {er_strat}")
+                    with col_eact:
+                        if st.button("🗑️ Delete", key=f"del_extra_pmt_{lib_id}_{er_date}", help=f"Delete repayment from {er_date}"):
+                            del_conn = database.connect(DB_PATH)
+                            try:
+                                with del_conn:
+                                    del_conn.execute(
+                                        "DELETE FROM liability_extra_payments WHERE liability_id = ? AND paid_date = ?",
+                                        (lib_id, er_date),
+                                    )
+                                sync_liability_schedule(del_conn, lib_id)
+                            finally:
+                                del_conn.close()
+                            st.success(f"Deleted extra repayment of {amt_str} from {er_date}")
+                            st.rerun()
 
         # Simulator: Extra Repayments
     with section_header("Extra Repayment Simulator (Boetevrij Aflossen)",

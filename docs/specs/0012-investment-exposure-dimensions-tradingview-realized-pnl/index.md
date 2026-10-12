@@ -1,7 +1,7 @@
 # 0012. Investment Exposure Dimensions, TradingView Watchlist, and Realized P&L
 
 **Date**: 2026-10-12
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 

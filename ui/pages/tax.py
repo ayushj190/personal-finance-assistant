@@ -196,7 +196,9 @@ def render():
             ])
             fig1 = px.pie(df_box1, names='Category', values='Amount', title='Income Breakdown', hole=0.4)
             fig1.update_layout(margin=dict(t=40, b=0, l=0, r=0))
-            render_chart(fig1, use_container_width=True)
+            with st.container(border=True):
+                st.markdown("##### 💶 Income Breakdown (Net vs Box 1 Tax)")
+                render_chart(fig1, use_container_width=True)
 
         with col2:
             # Box 3 Breakdown Pie
@@ -207,7 +209,9 @@ def render():
             if (cash_bal + investments_bal) > 0:
                 fig2 = px.pie(df_box3, names='Category', values='Amount', title='Asset Taxability (Box 3)', hole=0.4)
                 fig2.update_layout(margin=dict(t=40, b=0, l=0, r=0))
-                render_chart(fig2, use_container_width=True)
+                with st.container(border=True):
+                    st.markdown("##### 🏦 Asset Taxability (Box 3 Wealth)")
+                    render_chart(fig2, use_container_width=True)
 
         # 5. Official Belastingdienst Tax Filing Statement & Export
     with section_header("📋 Tax Filing Statement (Aangifte Inkomstenbelasting)", "Itemized summary for your annual tax declaration"):
@@ -276,7 +280,9 @@ def render():
             yaxis=dict(tickprefix="€", tickformat="~s", automargin=True),
             xaxis=dict(automargin=True),
         )
-        render_chart(fig_sim, use_container_width=True)
+        with st.container(border=True):
+            st.markdown(f"##### 🚀 Net Wealth Trajectory: €{sim_capital:,.0f} Lump Sum Allocation over {sim_years} Years")
+            render_chart(fig_sim, use_container_width=True)
 
     # 7. Green Funds & Pillar 3 Pension Analysis
     with section_header("🌱 Green Funds & Pillar 3 Pension (Jaarruimte)", "Optimize tax deductions under Dutch regulations"):

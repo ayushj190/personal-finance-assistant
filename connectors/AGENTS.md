@@ -12,7 +12,7 @@ The connectors layer manages integrations with outside financial data providers 
 | `connectors/enable_banking_service.py` | Enable Banking AISP client using JWT authorization and bank redirect sessions |
 | `connectors/etoro_service.py` | eToro portfolio holdings, cash balance, copy trades, and transaction fetching |
 | `connectors/market_data_service.py` | Real time stock quotes, exchange rates, and historical prices via Yahoo Finance |
-| `connectors/file_import/detect.py` | Automatic file format detection and parsing dispatch for PDF, MT940, and CSV |
+| `connectors/file_import/` | Statement parsers (CAMT.053, MT940, CSV profiles, İş Bankası PDF) and auto format detection (`detect.py`) |
 
 ## Conventions
 

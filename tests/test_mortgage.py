@@ -132,6 +132,58 @@ class TestMortgage(unittest.TestCase):
             self.assertEqual(net_worth, 140000.0)
         conn.close()
 
+    def test_delete_extra_principal_payment_and_recalc(self):
+        import sqlite3
+        from db import database
+        from services.mortgage import sync_liability_schedule
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        with conn:
+            with open(database.SCHEMA_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+            with open(database.SEED_FILE, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+            cur = conn.execute(
+                """
+                INSERT INTO liabilities (name, lender, loan_type, original_principal_minor, start_date, term_months)
+                VALUES ('Mortgage Deletion Test', 'ING', 'annuity', 30000000, '2024-01-01', 360)
+                """
+            )
+            lib_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO liability_rate_periods (liability_id, from_date, annual_rate, fixed_until) VALUES (?, '2024-01-01', 0.036, '2034-01-01')",
+                (lib_id,),
+            )
+            # Add extra payment
+            conn.execute(
+                "INSERT INTO liability_extra_payments (liability_id, paid_date, amount_minor, recalc) VALUES (?, '2025-01-01', 5000000, 'lower_payment')",
+                (lib_id,),
+            )
+
+        sync_liability_schedule(conn, lib_id)
+        pmt_with_extra = conn.execute(
+            "SELECT payment_minor FROM liability_schedule WHERE liability_id = ? AND month_idx = 15",
+            (lib_id,),
+        ).fetchone()["payment_minor"]
+
+        # Delete extra payment and re-sync
+        with conn:
+            conn.execute(
+                "DELETE FROM liability_extra_payments WHERE liability_id = ? AND paid_date = ?",
+                (lib_id, "2025-01-01"),
+            )
+        sync_liability_schedule(conn, lib_id)
+        pmt_after_delete = conn.execute(
+            "SELECT payment_minor FROM liability_schedule WHERE liability_id = ? AND month_idx = 15",
+            (lib_id,),
+        ).fetchone()["payment_minor"]
+
+        # After deleting the €50k prepayment, scheduled payments return to normal higher amount
+        self.assertGreater(pmt_after_delete, pmt_with_extra)
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

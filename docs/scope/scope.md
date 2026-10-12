@@ -27,8 +27,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 9 | Copilot Layout Scroll & Calculation Single Source of Truth | Slice 8 | done |
 | 10 | Spending Flow & Historical Burn Trajectory | Slice 9 | done |
 | 11 | Transactions Select Action Workflow | Slice 10 | done |
-| 12 | Investment Exposure Dimensions, TradingView Panel & Realized P&L | Slice 11 | in-progress |
-| 13 | Multi Bank Manual Accounts & Hybrid Statement Ingestion | Slice 12 | in-progress |
+| 12 | Investment Exposure Dimensions, TradingView Panel & Realized P&L | Slice 11 | done |
+| 13 | Multi Bank Manual Accounts & Hybrid Statement Ingestion | Slice 12 | done |
 | 14 | System Cleanup, Architecture Hardening & Regression Suite | Slice 13 | planned |
 
 ## Brownfield context
@@ -221,7 +221,7 @@ spec [0011](../specs/0011-spending-burn-trajectory-transactions-workflow/index.m
 
 ## Slice 11: Investment Exposure Dimensions, TradingView Panel & Realized P&L
 
-### 12. Investment Exposure Dimensions, TradingView Panel & Realized P&L · in-progress
+### 12. Investment Exposure Dimensions, TradingView Panel & Realized P&L · done
 Expand portfolio allocation beyond asset classes to sector, theme, region, currency, and commodity dimensions, embed a minimizable scrollable live TradingView watchlist of distinct holdings, report realized profit and loss from closed positions, and move market news to the page bottom.
 **Done when:** portfolio exposure charts display sector, theme, region, and currency breakdowns, a minimizable scrollable TradingView widget tracks distinct assets, realized profit and loss displays in its own panel, and market news rests at the bottom of the investments page.
 spec [0012](../specs/0012-investment-exposure-dimensions-tradingview-realized-pnl/index.md) · code in ui/pages/investments.py, db/migrations/, db/repositories/
@@ -233,12 +233,12 @@ spec [0012](../specs/0012-investment-exposure-dimensions-tradingview-realized-pn
   - [x] Dedicated Realized P&L panel and closed positions table (satisfies AC-6)
   - [x] Relocate cached market news fragment to investments page bottom (satisfies AC-7)
   - [x] Automated unit test suite for exposure, realized P&L, and masking (satisfies AC-1, AC-2, AC-4, AC-5, AC-6)
-- [ ] Verify it: /check verify investment exposure dimensions tradingview panel & realized p&l
-- [ ] Test it: /test investment exposure dimensions tradingview panel & realized p&l
+- [x] Verify it: /check verify investment exposure dimensions tradingview panel & realized p&l
+- [x] Test it: /test investment exposure dimensions tradingview panel & realized p&l
 
 ## Slice 12: Multi Bank Manual Accounts & Hybrid Statement Ingestion
 
-### 13. Multi Bank Manual Accounts & Hybrid Statement Ingestion · in-progress
+### 13. Multi Bank Manual Accounts & Hybrid Statement Ingestion · done
 Support manual bank account creation and balance tracking, paired with a hybrid ingestion pipeline combining deterministic table extraction and local Ollama fallback for diverse statements including Turkish and English Türkiye İş Bankası files.
 **Done when:** users can manually add bank accounts and track balances, and statement imports parse diverse PDF and CSV files (including Turkish and English İş Bankası statements) via deterministic parsers or local Ollama fallback.
 spec [0013](../specs/0013-multi-bank-manual-accounts-hybrid-statement-ingestion/index.md) · code in ui/dialogs.py, connectors/file_import/, ui/pages/import_files.py
@@ -250,8 +250,8 @@ spec [0013](../specs/0013-multi-bank-manual-accounts-hybrid-statement-ingestion/
   - [x] Ingestion dispatch with local Ollama fallback for unrecognized formats (satisfies AC-4)
   - [x] Account auto matching selectbox and ending balance confirmation in Import Files (satisfies AC-5, AC-7)
   - [x] Native currency support and unit test suite for accounts and PDF ingestion (satisfies AC-1, AC-2, AC-3, AC-5, AC-6)
-- [ ] Verify it: /check verify multi bank manual accounts & hybrid statement ingestion
-- [ ] Test it: /test multi bank manual accounts & hybrid statement ingestion
+- [x] Verify it: /check verify multi bank manual accounts & hybrid statement ingestion
+- [x] Test it: /test multi bank manual accounts & hybrid statement ingestion
 
 ## Slice 13: System Cleanup, Architecture Hardening & Regression Suite
 

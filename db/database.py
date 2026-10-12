@@ -19,6 +19,17 @@ def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def is_conn_open(conn: sqlite3.Connection | None) -> bool:
+    """Check if an SQLite connection object is active and open."""
+    if conn is None:
+        return False
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
 READONLY_ALLOWED_ACTIONS = {
     sqlite3.SQLITE_SELECT,
     sqlite3.SQLITE_READ,

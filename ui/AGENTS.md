@@ -16,6 +16,10 @@ The UI layer houses the Streamlit presentation tier for the personal finance ass
 | `ui/pages/transactions.py` | Searchable transaction ledger, inline filters, and manual edits |
 | `ui/dialogs.py` | Modal dialog popups for adding manual accounts, debts, and holdings |
 | `ui/charts.py` | Reusable Plotly chart builders for cash flows and allocation breakdowns |
+| `ui/pages/mortgage.py` | Dutch 30-year mortgage amortization curves, penalty-free prepayments, and home equity |
+| `ui/pages/tax.py` | Dutch Box 1, Box 3 wealth tax, Jaarruimte pension room, and Groenfondsen arbitrage |
+| `ui/pages/import_files.py` | Hybrid statement ingestion workflow, file format detection, and manual account linkage |
+| `ui/pages/settings.py` | API secrets vault, manual accounts setup, category management, and local database backups |
 
 ## Conventions
 

@@ -166,8 +166,10 @@ def _render_portfolio_fragment(
     if not consolidated_df.empty:
         with section_header("Sector & Strategic Allocation", "Portfolio exposure heatmap and multi-dimension distribution"):
             # Prominent Market Carpet Heatmap
-            carpet_fig = build_investments_market_carpet(consolidated_df, height=380)
-            render_chart(carpet_fig, use_container_width=True)
+            with st.container(border=True, key="investments_exposure_heatmap_panel"):
+                st.markdown("##### 🗺️ Portfolio Exposure Heatmap")
+                carpet_fig = build_investments_market_carpet(consolidated_df, height=380)
+                render_chart(carpet_fig, use_container_width=True, key="investments_market_carpet")
 
             dim_options = ["Sector", "Region", "Currency", "Nature"]
             selected_dim = st.pills(
@@ -182,78 +184,81 @@ def _render_portfolio_fragment(
             col_donut, col_bar = st.columns([1, 1])
 
             with col_donut:
-                color_map = SECTOR_COLORS if selected_dim == "Sector" else None
-                donut_fig = px.pie(
-                    dim_df,
-                    names="bucket",
-                    values="value_eur",
-                    hole=0.55,
-                    color="bucket" if color_map else None,
-                    color_discrete_map=color_map,
-                    title=f"Allocation by {selected_dim}",
-                )
-                if is_hidden():
-                    donut_fig.update_traces(
-                        texttemplate="%{label}<br>****%",
-                        hovertemplate="Censored<extra></extra>",
+                with st.container(border=True):
+                    color_map = SECTOR_COLORS if selected_dim == "Sector" else None
+                    donut_fig = px.pie(
+                        dim_df,
+                        names="bucket",
+                        values="value_eur",
+                        hole=0.55,
+                        color="bucket" if color_map else None,
+                        color_discrete_map=color_map,
+                        title=f"Allocation by {selected_dim}",
                     )
-                else:
-                    donut_fig.update_traces(
-                        texttemplate="%{label}<br>%{percent:.1%}",
-                        hovertemplate="<b>%{label}</b><br>Value: €%{value:,.2f}<br>%{percent:.1%}<extra></extra>",
+                    if is_hidden():
+                        donut_fig.update_traces(
+                            texttemplate="%{label}<br>****%",
+                            hovertemplate="Censored<extra></extra>",
+                        )
+                    else:
+                        donut_fig.update_traces(
+                            texttemplate="%{label}<br>%{percent:.1%}",
+                            hovertemplate="<b>%{label}</b><br>Value: €%{value:,.2f}<br>%{percent:.1%}<extra></extra>",
+                        )
+                    donut_fig.update_layout(
+                        showlegend=False,
+                        margin=dict(t=40, l=10, r=10, b=10),
+                        height=320,
                     )
-                donut_fig.update_layout(
-                    showlegend=True,
-                    margin=dict(t=40, l=10, r=10, b=10),
-                    height=320,
-                )
-                render_chart(donut_fig, use_container_width=True)
+                    render_chart(donut_fig, use_container_width=True)
 
             with col_bar:
-                bar_data = dim_df.sort_values(by="weight_pct", ascending=True)
-                bar_fig = px.bar(
-                    bar_data,
-                    x="weight_pct",
-                    y="bucket",
-                    orientation="h",
-                    text=bar_data["weight_pct"].map(
-                        lambda x: "****%" if is_hidden() else f"{x:.1f}%"
-                    ),
-                    color="bucket" if color_map else None,
-                    color_discrete_map=color_map,
-                    title=f"{selected_dim} Breakdown (%)",
-                )
-                if is_hidden():
-                    bar_fig.update_traces(hovertemplate="Censored<extra></extra>")
-                else:
-                    bar_fig.update_traces(
-                        hovertemplate="<b>%{y}</b><br>Weight: %{x:.1f}%<extra></extra>"
+                with st.container(border=True):
+                    bar_data = dim_df.sort_values(by="weight_pct", ascending=True)
+                    bar_fig = px.bar(
+                        bar_data,
+                        x="weight_pct",
+                        y="bucket",
+                        orientation="h",
+                        text=bar_data["weight_pct"].map(
+                            lambda x: "****%" if is_hidden() else f"{x:.1f}%"
+                        ),
+                        color="bucket" if color_map else None,
+                        color_discrete_map=color_map,
+                        title=f"{selected_dim} Breakdown (%)",
                     )
-                bar_fig.update_layout(
-                    showlegend=False,
-                    margin=dict(t=40, l=110, r=20, b=20),
-                    height=320,
-                    xaxis=dict(ticksuffix="%", automargin=True),
-                    yaxis=dict(automargin=True),
-                )
-                render_chart(bar_fig, use_container_width=True)
+                    if is_hidden():
+                        bar_fig.update_traces(hovertemplate="Censored<extra></extra>")
+                    else:
+                        bar_fig.update_traces(
+                            hovertemplate="<b>%{y}</b><br>Weight: %{x:.1f}%<extra></extra>"
+                        )
+                    bar_fig.update_layout(
+                        showlegend=False,
+                        margin=dict(t=40, l=110, r=20, b=20),
+                        height=320,
+                        xaxis=dict(ticksuffix="%", automargin=True),
+                        yaxis=dict(automargin=True),
+                    )
+                    render_chart(bar_fig, use_container_width=True)
 
             # Collapsible Asset Class Breakdown (default minimized)
             with st.expander("💼 Asset Class Breakdown (Stocks, ETFs, Crypto, Commodities)", expanded=False):
                 ac_dim_df = get_dimension_exposure_df(consolidated_df, "Asset Class")
                 ac_c1, ac_c2 = st.columns([1, 1])
                 with ac_c1:
-                    ac_fig = px.pie(
-                        ac_dim_df,
-                        names="bucket",
-                        values="value_eur",
-                        hole=0.5,
-                        color="bucket",
-                        color_discrete_map=ASSET_TYPE_COLORS,
-                        title="Asset Class Distribution",
-                    )
-                    ac_fig.update_layout(height=280, margin=dict(t=30, l=10, r=10, b=10))
-                    render_chart(ac_fig, use_container_width=True)
+                    with st.container(border=True):
+                        ac_fig = px.pie(
+                            ac_dim_df,
+                            names="bucket",
+                            values="value_eur",
+                            hole=0.5,
+                            color="bucket",
+                            color_discrete_map=ASSET_TYPE_COLORS,
+                            title="Asset Class Distribution",
+                        )
+                        ac_fig.update_layout(height=280, margin=dict(t=30, l=10, r=10, b=10))
+                        render_chart(ac_fig, use_container_width=True)
                 with ac_c2:
                     table_ac = ac_dim_df.copy()
                     if is_hidden():
@@ -473,142 +478,186 @@ def _render_portfolio_fragment(
             st.caption("No active holdings found for live market feed.")
 
     # 5. Dedicated Realized P&L Panel and closed positions (AC-6)
-    if conn is not None:
-        with section_header("Realized Profit & Loss", "Historical returns and proceeds from closed positions"):
-            pnl_summary = HoldingRepository.get_realized_pnl_summary(conn)
-            closed_df = HoldingRepository.get_closed_holdings_df(conn)
+    pnl_conn = conn
+    should_close_pnl = False
+    if not database.is_conn_open(pnl_conn):
+        try:
+            pnl_conn = database.connect(DB_PATH)
+            should_close_pnl = True
+        except Exception:
+            pnl_conn = None
 
-            r_pnl = float(pnl_summary.get("realized_pnl_eur", 0.0))
-            r_proc = float(pnl_summary.get("total_proceeds_eur", 0.0))
-            r_count = int(pnl_summary.get("closed_count", 0))
-            r_cost = r_proc - r_pnl
-            r_pct = (r_pnl / r_cost * 100.0) if r_cost > 0 else 0.0
+    if pnl_conn is not None:
+        try:
+            with section_header("Realized Profit & Loss", "Historical returns and proceeds from closed positions"):
+                pnl_summary = HoldingRepository.get_realized_pnl_summary(pnl_conn)
+                closed_df = HoldingRepository.get_closed_holdings_df(pnl_conn)
 
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                pnl_str = f"{'+' if r_pnl >= 0 else ''}{format_money(r_pnl)}"
-                kpi_card("Cumulative Realized P&L", pnl_str, delta_str=f"{r_pct:+.1f}%")
-            with rc2:
-                kpi_card("Total Closed Proceeds", format_money(r_proc))
-            with rc3:
-                cnt_str = "**** closed" if is_hidden() else f"{r_count} positions closed"
-                kpi_card("Closed Positions", cnt_str)
+                r_pnl = float(pnl_summary.get("realized_pnl_eur", 0.0))
+                r_proc = float(pnl_summary.get("total_proceeds_eur", 0.0))
+                r_count = int(pnl_summary.get("closed_count", 0))
+                r_cost = r_proc - r_pnl
+                r_pct = (r_pnl / r_cost * 100.0) if r_cost > 0 else 0.0
 
-            if not closed_df.empty:
-                disp_closed = closed_df.copy()
-                if is_hidden():
-                    disp_closed["Cost Basis (€)"] = "€****"
-                    disp_closed["Proceeds (€)"] = "€****"
-                    disp_closed["Realized P&L (€)"] = "€****"
-                    disp_closed["Return (%)"] = "****%"
-                else:
-                    disp_closed["Cost Basis (€)"] = disp_closed["cost_basis"].map(lambda x: f"€{x:,.2f}")
-                    disp_closed["Proceeds (€)"] = disp_closed["proceeds"].map(lambda x: f"€{x:,.2f}")
-                    disp_closed["Realized P&L (€)"] = disp_closed["realized_pnl"].map(
-                        lambda x: f"{'+' if x >= 0 else ''}€{x:,.2f}"
+                rc1, rc2, rc3 = st.columns(3)
+                with rc1:
+                    pnl_str = f"{'+' if r_pnl >= 0 else ''}{format_money(r_pnl)}"
+                    kpi_card("Cumulative Realized P&L", pnl_str, delta_str=f"{r_pct:+.1f}%")
+                with rc2:
+                    kpi_card("Total Closed Proceeds", format_money(r_proc))
+                with rc3:
+                    cnt_str = "**** closed" if is_hidden() else f"{r_count} positions closed"
+                    kpi_card("Closed Positions", cnt_str)
+
+                if not closed_df.empty:
+                    disp_closed = closed_df.copy()
+                    if is_hidden():
+                        disp_closed["Cost Basis (€)"] = "€****"
+                        disp_closed["Proceeds (€)"] = "€****"
+                        disp_closed["Realized P&L (€)"] = "€****"
+                        disp_closed["Return (%)"] = "****%"
+                    else:
+                        disp_closed["Cost Basis (€)"] = disp_closed["cost_basis"].map(lambda x: f"€{x:,.2f}")
+                        disp_closed["Proceeds (€)"] = disp_closed["proceeds"].map(lambda x: f"€{x:,.2f}")
+                        disp_closed["Realized P&L (€)"] = disp_closed["realized_pnl"].map(
+                            lambda x: f"{'+' if x >= 0 else ''}€{x:,.2f}"
+                        )
+                        disp_closed["Return (%)"] = disp_closed["return_pct"].map(lambda x: f"{x:+.2f}%")
+
+                    cols_to_show = ["ticker", "name", "closed_date", "Cost Basis (€)", "Proceeds (€)", "Realized P&L (€)", "Return (%)"]
+                    st.dataframe(
+                        disp_closed[[c for c in cols_to_show if c in disp_closed.columns]],
+                        use_container_width=True,
+                        hide_index=True,
                     )
-                    disp_closed["Return (%)"] = disp_closed["return_pct"].map(lambda x: f"{x:+.2f}%")
-
-                cols_to_show = ["ticker", "name", "closed_date", "Cost Basis (€)", "Proceeds (€)", "Realized P&L (€)", "Return (%)"]
-                st.dataframe(
-                    disp_closed[[c for c in cols_to_show if c in disp_closed.columns]],
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.caption("No closed positions recorded yet.")
+                else:
+                    st.caption("No closed positions recorded yet.")
+        finally:
+            if should_close_pnl:
+                pnl_conn.close()
 
 
 @st.fragment
 def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
-    # Fetch smart risk-tailored and saved allocation profiles
-    profiles = get_smart_allocation_profiles(conn, consolidated_df)
-    if not profiles:
-        st.info("No allocation profiles configured.")
+    alloc_conn = conn
+    should_close_alloc = False
+    if not database.is_conn_open(alloc_conn):
+        try:
+            alloc_conn = database.connect(DB_PATH)
+            should_close_alloc = True
+        except Exception:
+            alloc_conn = None
+
+    if alloc_conn is None:
         return
 
-    prof_map = {p["name"]: p for p in profiles}
-    col_prof, col_desc = st.columns([1, 1], vertical_alignment="center")
-    with col_prof:
-        selected_name = st.selectbox(
-            "Target Allocation Strategy",
-            options=list(prof_map.keys()),
-            index=0,
-            key="investments_allocation_profile_select",
-        )
-    profile = prof_map[selected_name]
-    with col_desc:
-        desc = profile.get("description", "")
-        dim_lbl = profile.get("dimension", "").title()
-        st.caption(f"**Strategy Focus:** {desc} • Dimension: `{dim_lbl}`")
+    try:
+        # Fetch smart risk-tailored and saved allocation profiles
+        profiles = get_smart_allocation_profiles(alloc_conn, consolidated_df)
+        if not profiles:
+            st.info("No allocation profiles configured.")
+            return
 
-    # Fetch targets from profile object
-    targets = profile.get("targets", {})
-    if not targets and "id" in profile:
-        targets = HoldingRepository.get_allocation_targets(conn, profile["id"])
+        prof_map = {p["name"]: p for p in profiles}
+        col_prof, col_desc = st.columns([1, 1], vertical_alignment="center")
+        with col_prof:
+            selected_name = st.selectbox(
+                "Target Allocation Strategy",
+                options=list(prof_map.keys()),
+                index=0,
+                key="investments_allocation_profile_select",
+            )
+        profile = prof_map[selected_name]
+        with col_desc:
+            desc = profile.get("description", "")
+            dim_lbl = profile.get("dimension", "").title()
+            st.caption(f"**Strategy Focus:** {desc} • Dimension: `{dim_lbl}`")
 
-    # Calculate actual values per bucket
-    dimension = profile.get("dimension", "asset_type")
-    current_values: dict[str, float] = {}
+        # Fetch targets from profile object
+        targets = profile.get("targets", {})
+        if not targets and "id" in profile:
+            targets = HoldingRepository.get_allocation_targets(alloc_conn, profile["id"])
 
-    if not consolidated_df.empty:
-        col_to_check = dimension if dimension in consolidated_df.columns else "asset_type"
-        for _, row in consolidated_df.iterrows():
-            b_key = str(row.get(col_to_check) or "other")
-            current_values[b_key] = current_values.get(
-                b_key, 0.0
-            ) + float(row.get("value_eur", 0.0))
+        # Calculate actual values per bucket
+        dimension = profile.get("dimension", "asset_type")
+        current_values: dict[str, float] = {}
 
-    if profile.get("include_cash"):
-        current_values["cash"] = AccountRepository.get_total_cash_balance(conn)
+        if not consolidated_df.empty:
+            col_to_check = dimension if dimension in consolidated_df.columns else "asset_type"
+            for _, row in consolidated_df.iterrows():
+                b_key = str(row.get(col_to_check) or "other")
+                current_values[b_key] = current_values.get(
+                    b_key, 0.0
+                ) + float(row.get("value_eur", 0.0))
 
-    if not current_values:
-        st.warning("No value to balance for this profile.")
-        return
+        if profile.get("include_cash"):
+            current_values["cash"] = AccountRepository.get_total_cash_balance(alloc_conn)
 
-    drift_data = calculate_drift(
-        current_values, targets, drift_band_pct=profile["drift_band_pct"]
-    )
+        if not current_values:
+            st.warning("No value to balance for this profile.")
+            return
 
-    col_chart, col_targets = st.columns([1, 1])
-    with col_chart:
-        render_chart(
-            build_drift_bar_chart(
-                drift_data, drift_band_pct=profile["drift_band_pct"]
-            ),
-            use_container_width=True,
+        drift_data = calculate_drift(
+            current_values, targets, drift_band_pct=profile["drift_band_pct"]
         )
 
-    with col_targets:
-        drift_df = pd.DataFrame(drift_data)[
-            ["bucket", "actual_pct", "target_pct", "drift_pp", "alert"]
-        ]
-        drift_df.columns = [
-            "Bucket",
-            "Actual %",
-            "Target %",
-            "Drift (pp)",
-            "Action Needed",
-        ]
-        if is_hidden():
-            drift_df["Actual %"] = "****%"
-            drift_df["Target %"] = "****%"
-            drift_df["Drift (pp)"] = "**** pp"
-        else:
-            drift_df["Actual %"] = drift_df["Actual %"].map(lambda x: f"{x:.1f}%")
-            drift_df["Target %"] = drift_df["Target %"].map(lambda x: f"{x:.1f}%")
-            drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
-        drift_df["Action Needed"] = drift_df["Action Needed"].map(
-            lambda x: "⚠️ Rebalance" if x else "✅ On Target"
-        )
-        st.dataframe(drift_df, use_container_width=True, hide_index=True)
+        col_chart, col_targets = st.columns([1, 1])
+        with col_chart:
+            with st.container(border=True):
+                st.markdown("##### ⚖️ Target vs Actual Drift")
+                render_chart(
+                    build_drift_bar_chart(
+                        drift_data, drift_band_pct=profile["drift_band_pct"]
+                    ),
+                    use_container_width=True,
+                )
+
+        with col_targets:
+            drift_df = pd.DataFrame(drift_data)[
+                ["bucket", "actual_pct", "target_pct", "drift_pp", "alert"]
+            ]
+            drift_df.columns = [
+                "Bucket",
+                "Actual %",
+                "Target %",
+                "Drift (pp)",
+                "Action Needed",
+            ]
+            if is_hidden():
+                drift_df["Actual %"] = "****%"
+                drift_df["Target %"] = "****%"
+                drift_df["Drift (pp)"] = "**** pp"
+            else:
+                drift_df["Actual %"] = drift_df["Actual %"].map(lambda x: f"{x:.1f}%")
+                drift_df["Target %"] = drift_df["Target %"].map(lambda x: f"{x:.1f}%")
+                drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
+            drift_df["Action Needed"] = drift_df["Action Needed"].map(
+                lambda x: "⚠️ Rebalance" if x else "✅ On Target"
+            )
+            st.dataframe(drift_df, use_container_width=True, hide_index=True)
+    finally:
+        if should_close_alloc:
+            alloc_conn.close()
 
 
 @st.fragment
 def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
-    # 1. Dividend Tracking & Cash Flow Projections
-    with section_header("Dividend & Passive Income Forecast"):
-        div_data = calculate_dividend_projections(conn)
+    inc_conn = conn
+    should_close_inc = False
+    if not database.is_conn_open(inc_conn):
+        try:
+            inc_conn = database.connect(DB_PATH)
+            should_close_inc = True
+        except Exception:
+            inc_conn = None
+
+    if inc_conn is None:
+        return
+
+    try:
+        # 1. Dividend Tracking & Cash Flow Projections
+        with section_header("Dividend & Passive Income Forecast"):
+            div_data = calculate_dividend_projections(inc_conn)
 
         d1, d2, d3 = st.columns(3)
         with d1:
@@ -659,7 +708,8 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                 )
                 if is_hidden():
                     dist_fig.update_traces(hovertemplate="Censored<extra></extra>")
-                render_chart(dist_fig, use_container_width=True)
+                with st.container(border=True):
+                    render_chart(dist_fig, use_container_width=True)
 
             with col_m_table:
                 h_df = div_data["holdings_df"]
@@ -694,137 +744,156 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                 else:
                     st.caption("No dividend-generating assets tracked.")
 
-    # 2. Tax-Loss Harvesting Assistant
-    with section_header("Tax-Loss Harvesting Assistant"):
-        loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(
-            by="unrealized_pnl_eur"
-        )
-        if not loss_df.empty:
-            disp_loss = loss_df[
-                ["ticker", "name", "value_eur", "unrealized_pnl_eur"]
-            ].copy()
-            disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
-            if is_hidden():
-                disp_loss["Value (€)"] = "€****"
-                disp_loss["Unrealized P&L (€)"] = "€****"
-                disp_loss["Asset"] = "****"
-                disp_loss["Ticker"] = "****"
-            else:
-                disp_loss["Value (€)"] = disp_loss["Value (€)"].map(
-                    lambda x: f"€{x:,.2f}"
+            with section_header("Tax-Loss Harvesting Assistant"):
+                loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(
+                    by="unrealized_pnl_eur"
                 )
-                disp_loss["Unrealized P&L (€)"] = disp_loss[
-                    "Unrealized P&L (€)"
-                ].map(lambda x: f"€{x:,.2f}")
-            st.dataframe(disp_loss, hide_index=True, use_container_width=True)
-        else:
-            st.caption("No significant unrealized losses available for harvesting.")
+                if not loss_df.empty:
+                    disp_loss = loss_df[
+                        ["ticker", "name", "value_eur", "unrealized_pnl_eur"]
+                    ].copy()
+                    disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
+                    if is_hidden():
+                        disp_loss["Value (€)"] = "€****"
+                        disp_loss["Unrealized P&L (€)"] = "€****"
+                        disp_loss["Asset"] = "****"
+                        disp_loss["Ticker"] = "****"
+                    else:
+                        disp_loss["Value (€)"] = disp_loss["Value (€)"].map(
+                            lambda x: f"€{x:,.2f}"
+                        )
+                        disp_loss["Unrealized P&L (€)"] = disp_loss[
+                            "Unrealized P&L (€)"
+                        ].map(lambda x: f"€{x:,.2f}")
+                    st.dataframe(disp_loss, hide_index=True, use_container_width=True)
+                else:
+                    st.caption("No significant unrealized losses available for harvesting.")
+    finally:
+        if should_close_inc:
+            inc_conn.close()
 
 
 @st.fragment
 def _render_goals_fragment(conn) -> None:
-    c_fire, c_goals = st.columns([1, 1])
+    goals_conn = conn
+    should_close_goals = False
+    if not database.is_conn_open(goals_conn):
+        try:
+            goals_conn = database.connect(DB_PATH)
+            should_close_goals = True
+        except Exception:
+            goals_conn = None
 
-    with c_fire:
-        st.subheader("🔥 FIRE Trajectory")
-        m_exp = TransactionRepository.get_average_monthly_expenses(conn)
-        annual_exp = abs(m_exp) * 12
-        fi_number = annual_exp * 25
+    if goals_conn is None:
+        return
 
-        m_sav = TransactionRepository.get_average_monthly_savings(conn)
-        curr_nw = AccountRepository.get_latest_net_worth_snapshot(conn)
+    try:
+        c_fire, c_goals = st.columns([1, 1])
 
-        c_sl1, c_sl2 = st.columns(2)
-        with c_sl1:
-            ret_rate = st.slider(
-                "Expected Annual Return (%)",
-                1.0,
-                15.0,
-                7.0,
-                0.5,
-                key="fire_return_slider",
-            )
-        with c_sl2:
-            inf_rate = st.slider(
-                "Expected Inflation (%)",
-                0.0,
-                10.0,
-                2.0,
-                0.5,
-                key="fire_inflation_slider",
-            )
-        real_return = (ret_rate - inf_rate) / 100.0
+        with c_fire:
+            st.subheader("🔥 FIRE Trajectory")
+            m_exp = TransactionRepository.get_average_monthly_expenses(goals_conn)
+            annual_exp = abs(m_exp) * 12
+            fi_number = annual_exp * 25
 
-        if is_hidden():
-            st.metric("FI Number (25x)", "€****")
-        else:
-            st.metric("FI Number (25x)", f"€{fi_number:,.2f}")
+            m_sav = TransactionRepository.get_average_monthly_savings(goals_conn)
+            curr_nw = AccountRepository.get_latest_net_worth_snapshot(goals_conn)
 
-        years = list(range(31))
-        proj = []
-        val = curr_nw
-        for _ in years:
-            proj.append(val)
-            val = val * (1 + real_return) + (m_sav * 12)
-
-        fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
-        fig_fire.add_hline(
-            y=fi_number,
-            line_dash="dash",
-            annotation_text="FI Target",
-            line_color="#2DD4BF",
-        )
-        fig_fire.update_layout(
-            xaxis=dict(title="Years from Now", automargin=True),
-            yaxis=dict(
-                title="Net Worth (€)",
-                tickprefix="€",
-                tickformat="~s",
-                automargin=True,
-            ),
-            margin=dict(t=35, l=55, r=20, b=25),
-        )
-        if is_hidden():
-            fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
-        render_chart(fig_fire, use_container_width=True)
-
-    with c_goals:
-        st.subheader("🎯 Savings Goals")
-
-        with st.expander("➕ Add New Goal", expanded=False):
-            with st.form("new_goal_form_investments"):
-                g_name = st.text_input("Goal Name")
-                g_target = st.number_input(
-                    "Target Amount (€)", min_value=1.0, step=100.0
+            c_sl1, c_sl2 = st.columns(2)
+            with c_sl1:
+                ret_rate = st.slider(
+                    "Expected Annual Return (%)",
+                    1.0,
+                    15.0,
+                    7.0,
+                    0.5,
+                    key="fire_return_slider",
                 )
-                cash_accounts = AccountRepository.get_cash_accounts(conn)
-                acc_options = {a.id: a.name for a in cash_accounts}
-                g_acc = st.selectbox(
-                    "Linked Account",
-                    options=list(acc_options.keys()),
-                    format_func=lambda x: acc_options[x],
+            with c_sl2:
+                inf_rate = st.slider(
+                    "Expected Inflation (%)",
+                    0.0,
+                    10.0,
+                    2.0,
+                    0.5,
+                    key="fire_inflation_slider",
                 )
+            real_return = (ret_rate - inf_rate) / 100.0
 
-                if st.form_submit_button("Save Goal"):
-                    TransactionRepository.add_goal(conn, g_name, g_target, g_acc)
-                    st.success("Goal added!")
-                    st.rerun(scope="app")
-
-        goals = TransactionRepository.get_goals(conn)
-        if not goals:
-            st.caption("No financial goals tracked yet.")
-        for g in goals:
-            tar = float(g["target_amount"])
-            bal = float(g["current_balance"] or 0)
-            pct = min(1.0, max(0.0, bal / tar)) if tar > 0 else 0
             if is_hidden():
-                st.write(f"**{g['name']}** — █% (in ****)")
-                st.progress(pct)
+                st.metric("FI Number (25x)", "€****")
             else:
-                st.write(
-                    f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}"
-                )
-                st.progress(pct)
+                st.metric("FI Number (25x)", f"€{fi_number:,.2f}")
+
+            years = list(range(31))
+            proj = []
+            val = curr_nw
+            for _ in years:
+                proj.append(val)
+                val = val * (1 + real_return) + (m_sav * 12)
+
+            fig_fire = px.line(x=years, y=proj, title="Net Worth Projection (Real)")
+            fig_fire.add_hline(
+                y=fi_number,
+                line_dash="dash",
+                annotation_text="FI Target",
+                line_color="#2DD4BF",
+            )
+            fig_fire.update_layout(
+                xaxis=dict(title="Years from Now", automargin=True),
+                yaxis=dict(
+                    title="Net Worth (€)",
+                    tickprefix="€",
+                    tickformat="~s",
+                    automargin=True,
+                ),
+                margin=dict(t=35, l=55, r=20, b=25),
+            )
+            if is_hidden():
+                fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
+            with st.container(border=True):
+                render_chart(fig_fire, use_container_width=True)
+
+        with c_goals:
+            st.subheader("🎯 Savings Goals")
+
+            with st.expander("➕ Add New Goal", expanded=False):
+                with st.form("new_goal_form_investments"):
+                    g_name = st.text_input("Goal Name")
+                    g_target = st.number_input(
+                        "Target Amount (€)", min_value=1.0, step=100.0
+                    )
+                    cash_accounts = AccountRepository.get_cash_accounts(goals_conn)
+                    acc_options = {a.id: a.name for a in cash_accounts}
+                    g_acc = st.selectbox(
+                        "Linked Account",
+                        options=list(acc_options.keys()),
+                        format_func=lambda x: acc_options[x],
+                    )
+
+                    if st.form_submit_button("Save Goal"):
+                        TransactionRepository.add_goal(goals_conn, g_name, g_target, g_acc)
+                        st.success("Goal added!")
+                        st.rerun(scope="app")
+
+            goals = TransactionRepository.get_goals(goals_conn)
+            if not goals:
+                st.caption("No financial goals tracked yet.")
+            for g in goals:
+                tar = float(g["target_amount"])
+                bal = float(g["current_balance"] or 0)
+                pct = min(1.0, max(0.0, bal / tar)) if tar > 0 else 0
+                if is_hidden():
+                    st.write(f"**{g['name']}** — █% (in ****)")
+                    st.progress(pct)
+                else:
+                    st.write(
+                        f"**{g['name']}** — €{bal:,.0f} / €{tar:,.0f} ({pct*100:.1f}%) in {g['account_name'] or 'None'}"
+                    )
+                    st.progress(pct)
+    finally:
+        if should_close_goals:
+            goals_conn.close()
 
 
 @st.fragment

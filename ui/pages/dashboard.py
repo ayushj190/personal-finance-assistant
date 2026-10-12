@@ -332,9 +332,19 @@ def _render_accounts_grid(
     acc_subtexts = _calculate_accrued_subtexts(accounts, latest_snapshots, today)
     currency_symbols = {"EUR": "€", "USD": "$", "TRY": "₺", "GBP": "£"}
 
+    cash_count = len([a for a in accounts if getattr(a, "asset_class", "cash") == "cash"])
+    invest_count = len([a for a in accounts if getattr(a, "asset_class", "cash") != "cash"])
+    if cash_count and invest_count:
+        badge_txt = f"{cash_count} cash • {invest_count} invest"
+    elif invest_count:
+        badge_txt = f"{invest_count} invest"
+    else:
+        badge_txt = f"{cash_count} cash"
+
     with section_header(
         "Accounts & Balances",
         "Real-time balances and connection statuses across connected institutions",
+        badge=badge_txt,
     ):
         def _render_account_card(acc: Any, group_type: str) -> None:
             bal = acc_balances.get(acc.id, 0.0)
@@ -443,71 +453,30 @@ def _render_accounts_grid(
         cash_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") == "cash"]
         investment_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") != "cash"]
 
-        from collections import defaultdict
-        cash_by_inst = defaultdict(list)
-        for a in cash_accounts:
-            inst = (getattr(a, "institution", "") or "Other").strip()
-            cash_by_inst[inst].append(a)
+        sorted_cash = sorted(
+            cash_accounts,
+            key=lambda a: (
+                (getattr(a, "institution", "") or "").lower(),
+                (getattr(a, "name", "") or "").lower(),
+            ),
+        )
+        sorted_invest = sorted(
+            investment_accounts,
+            key=lambda a: (
+                (getattr(a, "institution", "") or "").lower(),
+                (getattr(a, "name", "") or "").lower(),
+            ),
+        )
+        sorted_accounts = sorted_cash + sorted_invest
 
-        invest_by_inst = defaultdict(list)
-        for a in investment_accounts:
-            inst = (getattr(a, "institution", "") or "Other").strip()
-            invest_by_inst[inst].append(a)
-
-        sorted_cash_insts = sorted(cash_by_inst.keys(), key=lambda s: s.lower())
-        sorted_invest_insts = sorted(invest_by_inst.keys(), key=lambda s: s.lower())
-
-        col_cash, col_invest = st.columns(2, gap="medium")
-
-        with col_cash:
-            with st.container(border=True, key="bank_accounts_col"):
-                st.markdown(
-                    f"<div class='accounts-section-header'>"
-                    f"<span class='accounts-section-title'>Cash & Liquid Reserves</span>"
-                    f"<span class='accounts-section-count'>{len(cash_accounts)}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                if not cash_accounts:
-                    st.caption("No bank accounts connected.")
-                else:
-                    for inst in sorted_cash_insts:
-                        inst_accs = sorted(cash_by_inst[inst], key=lambda a: (getattr(a, "name", "") or "").lower())
-                        if len(inst_accs) > 1:
-                            logo_svg = get_institution_logo_svg(inst, size=18)
-                            st.markdown(
-                                f"<div style='display:flex;align-items:center;gap:6px;margin:8px 0 4px 2px;font-weight:600;font-size:0.9rem;opacity:0.85;'>"
-                                f"{logo_svg}<span>{inst}</span>"
-                                f"</div>",
-                                unsafe_allow_html=True,
-                            )
-                        for acc in inst_accs:
-                            _render_account_card(acc, "cash")
-
-        with col_invest:
-            with st.container(border=True, key="invest_accounts_col"):
-                st.markdown(
-                    f"<div class='accounts-section-header'>"
-                    f"<span class='accounts-section-title'>Investment Portfolios</span>"
-                    f"<span class='accounts-section-count'>{len(investment_accounts)}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                if not investment_accounts:
-                    st.caption("No investment accounts connected.")
-                else:
-                    for inst in sorted_invest_insts:
-                        inst_accs = sorted(invest_by_inst[inst], key=lambda a: (getattr(a, "name", "") or "").lower())
-                        if len(inst_accs) > 1:
-                            logo_svg = get_institution_logo_svg(inst, size=18)
-                            st.markdown(
-                                f"<div style='display:flex;align-items:center;gap:6px;margin:8px 0 4px 2px;font-weight:600;font-size:0.9rem;opacity:0.85;'>"
-                                f"{logo_svg}<span>{inst}</span>"
-                                f"</div>",
-                                unsafe_allow_html=True,
-                            )
-                        for acc in inst_accs:
-                            _render_account_card(acc, "investment")
+        cols_per_row = 4
+        for i in range(0, len(sorted_accounts), cols_per_row):
+            chunk = sorted_accounts[i : i + cols_per_row]
+            cols = st.columns(cols_per_row, gap="small")
+            for col, acc in zip(cols, chunk):
+                group_type = "cash" if getattr(acc, "asset_class", "cash") == "cash" else "investment"
+                with col:
+                    _render_account_card(acc, group_type)
 
 
 @st.dialog("Investments Exposure — Fullscreen Market Carpet", width="large")

@@ -29,8 +29,6 @@
         section[data-testid="stSidebar"],
         div[data-testid="stSidebarContent"],
         div[data-testid="stSidebarUserContent"],
-        div.st-key-bank_accounts_col > div[data-testid="stVerticalBlockBorderWrapper"],
-        div.st-key-invest_accounts_col > div[data-testid="stVerticalBlockBorderWrapper"],
         div.st-key-expenses_diagram_panel > div[data-testid="stVerticalBlockBorderWrapper"],
         div.st-key-portfolio_exposure_panel > div[data-testid="stVerticalBlockBorderWrapper"] {
             background-color: #FFFFFF !important;
@@ -125,11 +123,12 @@
         div[data-testid="stTabs"] [role="tablist"] {
             background-color: transparent !important;
             border-bottom: 2px solid #E2E8F0 !important;
-            gap: 0px !important;
+            gap: 4px !important;
             justify-content: flex-start !important;
             padding-left: 0 !important;
             margin-left: 0 !important;
             width: 100% !important;
+            overflow: visible !important;
         }
         [role="tab"],
         [data-baseweb="tab"],
@@ -140,11 +139,14 @@
             border: 1px solid transparent !important;
             border-bottom: none !important;
             border-radius: 8px 8px 0 0 !important;
-            padding: 10px 16px !important;
+            padding: 8px 16px !important;
             color: #334155 !important;
             opacity: 1 !important;
             transition: all 0.15s ease-in-out !important;
             cursor: pointer !important;
+            overflow: visible !important;
+            flex-shrink: 0 !important;
+            white-space: nowrap !important;
         }
         [role="tab"] *,
         [data-baseweb="tab"] *,
@@ -152,9 +154,13 @@
         div[data-testid="stTabs"] button *,
         div[data-testid="stTabs"] div[role="tab"] * {
             color: #334155 !important;
-            font-size: 0.92rem !important;
+            font-size: 0.95rem !important;
             font-weight: 600 !important;
             opacity: 1 !important;
+            line-height: 1.4 !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap !important;
         }
         [role="tab"]:hover,
         [role="tab"]:hover *,

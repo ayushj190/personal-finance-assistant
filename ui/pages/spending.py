@@ -170,14 +170,16 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
                     st.rerun()
 
             fig = build_spending_donut(display_df, drilldown_category=st.session_state[drill_key])
-            selection = st.plotly_chart(
-                fig,
-                use_container_width=True,
-                theme=None,
-                on_select="rerun",
-                selection_mode="points",
-                key=f"donut_chart_{selected_scope}",
-            )
+            with st.container(border=True):
+                st.markdown("##### 🍩 Spending by Category")
+                selection = st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                    theme=None,
+                    on_select="rerun",
+                    selection_mode="points",
+                    key=f"donut_chart_{selected_scope}",
+                )
 
             if selection and hasattr(selection, "selection") and selection.selection.get("points"):
                 clicked_point = selection.selection["points"][0]
@@ -436,13 +438,14 @@ def _render_budget_tracker_fragment(
                 )
             )
             f_fig.update_layout(
-                title="12-Month Cash Buffer Trajectory (3-Mo Burn vs Target Budget)",
                 xaxis=dict(title="Timeline", automargin=True),
                 yaxis=dict(title="Projected Cash Balance (€)", tickprefix="€", tickformat="~s", automargin=True),
                 margin=dict(t=35, l=55, r=20, b=25),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            render_chart(f_fig, use_container_width=True)
+            with st.container(border=True):
+                st.markdown("##### 📈 12-Month Cash Buffer Trajectory (3-Mo Burn vs Target Budget)")
+                render_chart(f_fig, use_container_width=True)
 
 
 def _render_uncategorized_triage(

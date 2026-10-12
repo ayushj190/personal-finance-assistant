@@ -181,6 +181,30 @@ class TestDashboardHardening(unittest.TestCase):
         self.assertIn("rgba", marker.line.color)
         self.assertEqual(marker.pad.t, 4)
         self.assertEqual(fig.data[0].tiling.pad, 6)
+        self.assertEqual(marker.cornerradius, 8)
+
+        # Verify uniformtext does not hide small tile names and transition is configured
+        self.assertFalse(fig.layout.uniformtext.mode)
+        self.assertEqual(fig.layout.uniformtext.minsize, 8)
+        self.assertIsNotNone(fig.layout.transition)
+
+    def test_clean_treemap_tile_label(self):
+        """Verify cleaning long legal/fund names into compact readable tile labels."""
+        from ui.charts import clean_treemap_tile_label
+
+        self.assertEqual(clean_treemap_tile_label("ASML", "ASML"), "ASML")
+        self.assertEqual(
+            clean_treemap_tile_label("SS SPDR MSCI Europe Energy UCITS ETF", "SPYN.DE"),
+            "MSCI Europe Energy",
+        )
+        self.assertEqual(
+            clean_treemap_tile_label("Amazon.com Inc", "AMZN"),
+            "Amazon.com",
+        )
+        self.assertEqual(
+            clean_treemap_tile_label("Taiwan Semiconductor Manufacturing Co Ltd - ADR", "TSM"),
+            "TSM",
+        )
 
     @patch("streamlit.form")
     @patch("streamlit.markdown")
@@ -234,11 +258,8 @@ class TestDashboardHardening(unittest.TestCase):
 
         md_calls = [c.args[0] for c in mock_markdown.call_args_list if c.args]
 
-        # Verify group headers are rendered
-        cash_header_found = any("Cash & Liquid Reserves" in m for m in md_calls)
-        inv_header_found = any("Investment Portfolios" in m for m in md_calls)
-        self.assertTrue(cash_header_found, "Cash group header should be rendered")
-        self.assertTrue(inv_header_found, "Investment group header should be rendered")
+        # Verify compact columns were instantiated (4 columns per row)
+        self.assertTrue(any(c[0] and c[0][0] == 4 for c in mock_cols.call_args_list))
 
         # Verify alphabetical ordering within groups:
         # Cash: ABN AMRO (id 3) then Revolut (id 1)

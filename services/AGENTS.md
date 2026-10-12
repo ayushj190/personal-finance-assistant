@@ -12,6 +12,7 @@ The services layer contains the core financial computation engines and business 
 | `services/budget_service.py` | Monthly budget variance rollups, category budget limits, and 12-month runway forecasting |
 | `services/tax_optimizer.py` | Dutch fiscal math for Jaarruimte, Box 3 asset taxes, and green investment arbitrage |
 | `services/mortgage.py` | Amortization tables, interest tax deductions (HRA), and early prepayment savings |
+| `services/portfolio.py` | Single source of truth portfolio valuations, multi-dimension exposures (sector, region, currency), and 5/25 rebalancing |
 | `services/analytics.py` | Aggregates liquid cash, investment portfolios, and real estate equity for net worth metrics |
 | `services/categorization.py` | Rule based and merchant pattern classification for raw transaction descriptions |
 | `services/rag_service.py` | Vector search and text chunk retrieval over Dutch tax guides and financial laws |
