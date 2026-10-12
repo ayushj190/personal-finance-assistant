@@ -1,6 +1,8 @@
 import threading
+import time
 from typing import Any
 from agent.copilot import run_copilot
+from services.llm_client import get_model_name
 
 
 class CopilotTask:
@@ -27,6 +29,8 @@ class CopilotTask:
         self.citations: Any = None
         self.diagnostics: list[dict[str, Any]] = []
         self.error: str | None = None
+        self.elapsed_seconds: float | None = None
+        self.model_name: str | None = None
         self._lock = threading.Lock()
         self.thread: threading.Thread | None = None
 
@@ -43,6 +47,7 @@ class CopilotTask:
         self.thread.start()
 
     def _run(self) -> None:
+        started = time.perf_counter()
         try:
             res = run_copilot(
                 user_message=self.prompt,
@@ -63,6 +68,8 @@ class CopilotTask:
                     self.chunks.append(chunk)
 
             with self._lock:
+                self.elapsed_seconds = time.perf_counter() - started
+                self.model_name = get_model_name()
                 self.status = "completed"
         except Exception as e:
             with self._lock:

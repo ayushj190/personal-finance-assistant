@@ -9,11 +9,21 @@ logger = logging.getLogger(__name__)
 from config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from services import secrets_vault
 
+# Keep the local model resident between turns to cut first token latency, and
+# cap the final summary length so answers stay snappy (spec 0016 tuning).
+OLLAMA_KEEP_ALIVE = "30m"
+SUMMARY_MAX_TOKENS = 600
+
 
 def get_ollama_client() -> tuple[Client, str]:
     endpoint = secrets_vault.get("ollama_endpoint") or DEFAULT_OLLAMA_URL
     model = secrets_vault.get("ollama_model") or DEFAULT_MODEL
     return Client(host=endpoint), model
+
+
+def get_model_name() -> str:
+    """Return the configured Copilot model name (Ollama override, else default)."""
+    return secrets_vault.get("ollama_model") or DEFAULT_MODEL
 
 
 def check_ollama_status() -> dict[str, Any]:
@@ -59,6 +69,7 @@ def chat_with_tools(
             tools=tools,
             stream=False,
             options={"temperature": 0.0},
+            keep_alive=OLLAMA_KEEP_ALIVE,
         )
         msg = response.get("message") if isinstance(response, dict) else getattr(response, "message", None)
         if hasattr(msg, "model_dump"):
@@ -77,7 +88,9 @@ def generate_stream(messages: list[dict[str, str]]) -> Any:
         response = client.chat(
             model=model,
             messages=messages,
-            stream=True
+            stream=True,
+            options={"temperature": 0.0, "num_predict": SUMMARY_MAX_TOKENS},
+            keep_alive=OLLAMA_KEEP_ALIVE,
         )
         for chunk in response:
             if 'message' in chunk and 'content' in chunk['message']:

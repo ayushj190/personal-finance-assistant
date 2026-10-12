@@ -88,26 +88,22 @@ def render_copy_portfolios(copy_df: pd.DataFrame, usd_to_eur: float) -> None:
 
 
 def render_holdings_table(holdings_df: pd.DataFrame) -> None:
-    df_disp = holdings_df.copy()
-    is_copy = df_disp["ticker"].str.startswith("COPY:", na=False)
-    df_disp["Position Type"] = is_copy.map(
-        lambda c: f"Copy: {c.replace('COPY:', '')}" if str(c).startswith("COPY:") else "Direct Holding"
-    )
+    from services.portfolio import aggregate_distinct_holdings
+
+    agg_df, avg_open_label = aggregate_distinct_holdings(holdings_df)
+    if agg_df.empty:
+        st.caption("No holdings to display.")
+        return
+
+    df_disp = agg_df.copy()
     df_disp["Position Type"] = [
-        f"Copy: {t.replace('COPY:', '')}" if t.startswith("COPY:") else "Direct Holding"
+        f"Copy: {t.replace('COPY:', '')}" if str(t).startswith("COPY:") else "Direct Holding"
         for t in df_disp["ticker"]
     ]
 
-    df_disp["Avg Open Price"] = (
-        df_disp["cost_basis_native"] / df_disp["quantity"]
-    ).fillna(0)
-
     delayed_mask = (df_disp["latest_close"] <= 0) | df_disp["latest_close"].isna()
-    df_disp["Quote Status"] = delayed_mask.map(
-        lambda d: "⏱️ Quote delayed" if d else "🟢 Live"
-    )
     df_disp["Market Price"] = df_disp["latest_close"]
-    df_disp.loc[delayed_mask, "Market Price"] = df_disp.loc[delayed_mask, "Avg Open Price"]
+    df_disp.loc[delayed_mask, "Market Price"] = df_disp.loc[delayed_mask, "avg_open_price"]
 
     df_disp["P&L (€)"] = df_disp["unrealized_pnl_eur"]
     df_disp["P&L (%)"] = (
@@ -120,13 +116,12 @@ def render_holdings_table(holdings_df: pd.DataFrame) -> None:
         "Position Type": "Type",
         "asset_type": "Asset Class",
         "quantity": "Units",
-        "Avg Open Price": "Avg Open",
+        "avg_open_price": avg_open_label,
         "cost_basis": "Cost Basis (€)",
         "Market Price": "Current Price",
         "value_eur": "Value (€)",
         "P&L (€)": "P&L (€)",
         "P&L (%)": "P&L (%)",
-        "Quote Status": "Status",
     }
     out_df = df_disp.rename(columns=disp_cols)[list(disp_cols.values())]
 
@@ -135,7 +130,7 @@ def render_holdings_table(holdings_df: pd.DataFrame) -> None:
         out_df["Ticker"] = "****"
         for col in [
             "Units",
-            "Avg Open",
+            avg_open_label,
             "Cost Basis (€)",
             "Current Price",
             "Value (€)",
@@ -145,7 +140,7 @@ def render_holdings_table(holdings_df: pd.DataFrame) -> None:
         out_df["P&L (%)"] = "****%"
     else:
         out_df["Units"] = out_df["Units"].map(lambda x: f"{x:,.4f}")
-        for col in ["Avg Open", "Current Price"]:
+        for col in [avg_open_label, "Current Price"]:
             out_df[col] = out_df[col].map(lambda x: f"{x:,.2f}")
         for col in ["Cost Basis (€)", "Value (€)"]:
             out_df[col] = out_df[col].map(lambda x: f"€{x:,.2f}")

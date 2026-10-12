@@ -11,6 +11,7 @@ from money import Money
 from services import secrets_vault
 from ui.components import section_header
 from ui.dialogs import manual_account_dialog
+from ui.allocation_ui import render_allocation_management
 
 
 def render():
@@ -524,6 +525,9 @@ def render():
                                 st.success(
                                     f"'{p['name']}' is now the active allocation profile.")
                                 st.rerun()
+
+                st.divider()
+                render_allocation_management(conn)
 
             # 4. LLM Tab
         elif selected_tab == "AI Model (Ollama)":

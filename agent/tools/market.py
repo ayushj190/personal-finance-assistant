@@ -103,10 +103,32 @@ def tool_analyze_mortgage() -> dict[str, Any]:
                 (lib_id,),
             ).fetchall()
 
+            def _eur(minor: Any) -> str:
+                return f"€{Money.from_cents(minor or 0).to_major():,.2f}"
+
+            # AC-15: pair every minor unit value with its euro formatted twin.
+            schedule_rows = []
+            for s in schedule:
+                row = dict(s)
+                row["payment_eur"] = _eur(row.get("payment_minor"))
+                row["interest_eur"] = _eur(row.get("interest_minor"))
+                row["principal_eur"] = _eur(row.get("principal_minor"))
+                row["balance_eur"] = _eur(row.get("balance_minor"))
+                schedule_rows.append(row)
+
+            liability_dict = dict(lib)
+            for minor_key, eur_key in (
+                ("original_principal_minor", "original_principal_eur"),
+                ("home_value_minor", "home_value_eur"),
+                ("balance_override_minor", "balance_override_eur"),
+            ):
+                if minor_key in liability_dict:
+                    liability_dict[eur_key] = _eur(liability_dict.get(minor_key))
+
             mortgage_data.append({
-                "liability": dict(lib),
+                "liability": liability_dict,
                 "current_rate": dict(rate) if rate else None,
-                "upcoming_schedule": [dict(s) for s in schedule],
+                "upcoming_schedule": schedule_rows,
             })
 
         return {

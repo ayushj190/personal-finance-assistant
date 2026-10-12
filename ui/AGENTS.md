@@ -11,7 +11,7 @@ The UI layer houses the Streamlit presentation tier for the personal finance ass
 | `ui/theme/` | Design system tokens (`tokens.py`), theme styles (`common.css`, `dark.css`, `light.css`), and Plotly theme engine (`charts.py`) |
 | `ui/copilot_sidebar.py` | Non blocking Copilot assistant panel, message threads, and quick actions |
 | `ui/pages/dashboard.py` | High level net worth KPIs, cash flow trends, and account summaries |
-| `ui/pages/investments.py` | Tabbed portfolio holdings, native allocation donut & exposure bars, drift analysis, dividends, and FIRE goals |
+| `ui/pages/investments/` | Tabbed portfolio holdings, native allocation donut & exposure bars, drift analysis, dividends, and FIRE goals |
 | `ui/pages/spending.py` | Expense categorization views, monthly burn rates, and budget allocations |
 | `ui/pages/transactions.py` | Searchable transaction ledger, inline filters, and manual edits |
 | `ui/dialogs.py` | Modal dialog popups for adding manual accounts, debts, and holdings |

@@ -246,6 +246,54 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
     return pd.DataFrame(consolidated_items)
 
 
+def aggregate_distinct_holdings(holdings_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    """Collapse the per lot v_holdings frame into one row per distinct ticker.
+
+    Quantity, cost basis, value, and unrealized profit are summed across lots.
+    Copied trader rows keep their own ``COPY:`` key so they stay attributable.
+    The average open price is the summed native cost over quantity when a group
+    holds one currency and carries native cost; otherwise it falls back to the
+    EUR cost column and the returned label is marked ``(EUR)``.
+    """
+    columns = [
+        "ticker", "name", "asset_type", "quantity", "cost_basis", "cost_basis_native",
+        "value_eur", "unrealized_pnl_eur", "latest_close", "currency", "avg_open_price",
+    ]
+    if holdings_df is None or holdings_df.empty:
+        return pd.DataFrame(columns=columns), "Avg Open"
+
+    rows: list[dict[str, Any]] = []
+    eur_fallback = False
+    for ticker, group in holdings_df.groupby("ticker", sort=False):
+        quantity = float(group["quantity"].sum())
+        cost_eur = float(group["cost_basis"].sum())
+        native = float(group["cost_basis_native"].sum()) if "cost_basis_native" in group else 0.0
+        currencies = [str(c) for c in group["currency"].dropna().unique()] if "currency" in group else []
+        single_currency = len(currencies) == 1
+        currency = currencies[0] if single_currency else "MIXED"
+        use_native = single_currency and native > 0 and quantity != 0
+        if not use_native:
+            eur_fallback = True
+        avg_open = (native / quantity) if use_native else (cost_eur / quantity if quantity else 0.0)
+        latest_close = float(group["latest_close"].max() or 0.0) if "latest_close" in group else 0.0
+        rows.append(
+            {
+                "ticker": ticker,
+                "name": group["name"].iloc[0] if "name" in group else ticker,
+                "asset_type": group["asset_type"].iloc[0] if "asset_type" in group else "",
+                "quantity": quantity,
+                "cost_basis": cost_eur,
+                "cost_basis_native": native,
+                "value_eur": float(group["value_eur"].sum()),
+                "unrealized_pnl_eur": float(group["unrealized_pnl_eur"].sum()),
+                "latest_close": latest_close,
+                "currency": currency,
+                "avg_open_price": avg_open,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns), ("Avg Open (EUR)" if eur_fallback else "Avg Open")
+
+
 def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> pd.DataFrame:
     """
     Aggregate portfolio exposure across a given dimension (Sector, Region, Currency, Asset Class, Nature/Commodity).

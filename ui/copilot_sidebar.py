@@ -124,6 +124,10 @@ def render_copilot_sidebar() -> None:
                                     with st.expander("Technical Traceback", expanded=False):
                                         st.code(diag["traceback"], language="python")
                                 st.divider()
+                    if msg.get("elapsed_seconds"):
+                        # AC-17: turn time and model name in the answer footer.
+                        model_label = f" · {msg['model']}" if msg.get("model") else ""
+                        st.caption(f"⏱️ {msg['elapsed_seconds']:.1f}s{model_label}")
 
             active_task: CopilotTask | None = st.session_state.get("copilot_active_task")
             if active_task:
@@ -166,6 +170,8 @@ def render_copilot_sidebar() -> None:
                             form_req = getattr(active_task, "form_request", None)
                             cits = getattr(active_task, "citations", None)
                             diags = getattr(active_task, "diagnostics", None)
+                            elapsed = getattr(active_task, "elapsed_seconds", None)
+                            model_name = getattr(active_task, "model_name", None)
 
                         text_so_far = "".join(chunks_snapshot)
                         if curr_status != "completed":
@@ -226,6 +232,8 @@ def render_copilot_sidebar() -> None:
                                 "df": df,
                                 "citations": cits,
                                 "diagnostics": diags,
+                                "elapsed_seconds": elapsed,
+                                "model": model_name,
                             })
                             st.session_state.pop("copilot_active_task", None)
 

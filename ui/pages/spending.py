@@ -1,13 +1,19 @@
 from typing import Any
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from config import DB_PATH
 from db import database
 from money import Money
-from services.analytics import calculate_current_net_worth, detect_recurring_charges
+from services.analytics import (
+    aggregate_top_merchants,
+    calculate_current_net_worth,
+    detect_recurring_charges,
+    get_merchant_context,
+)
 from services.budget_service import (
     calculate_12_month_runway_forecast,
     calculate_3_month_historical_burn_rate,
@@ -21,7 +27,7 @@ from services.fiscal_service import (
 )
 from ui.charts import build_monthly_spending_bar, build_spending_donut, render_cash_flow_sankey
 from ui.components import format_money, is_hidden, kpi_card, section_header
-from ui.theme import render_chart
+from ui.theme import mask_chart_if_hidden, render_chart
 from ui.dialogs import assign_mortgage_dialog, set_category_budget_dialog
 from ui.filters import build_where_clause, render_filters
 
@@ -147,9 +153,17 @@ def _render_kpi_ribbon(
             )
 
 
+# Shared fixed height so the two top panels align top and bottom (AC-4).
+_SPENDING_PANEL_HEIGHT = 420
+
+
 @st.fragment
-def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, conn: Any) -> None:
-    """AC-6: Isolated fragment for interactive category donut drilldown and recurring charges."""
+def _render_analytics_fragment(
+    display_df: pd.DataFrame,
+    selected_scope: str,
+    conn: Any,
+) -> None:
+    """Isolated fragment for the matched-height donut and subscription panels."""
     with section_header(
         f"Expense Breakdown ({selected_scope})",
         "Hierarchical spending across categories and merchants",
@@ -161,18 +175,18 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
-            drill_key = f"donut_drilldown_{selected_scope}"
-            if drill_key not in st.session_state:
-                st.session_state[drill_key] = None
-
-            if st.session_state[drill_key]:
-                if st.button("← Back to Categories", key=f"btn_back_donut_{selected_scope}"):
-                    st.session_state[drill_key] = None
-                    st.rerun()
-
-            fig = build_spending_donut(display_df, drilldown_category=st.session_state[drill_key])
-            with st.container(border=True):
+            with st.container(border=True, height=_SPENDING_PANEL_HEIGHT):
                 st.markdown("##### 🍩 Spending by Category")
+                drill_key = f"donut_drilldown_{selected_scope}"
+                if drill_key not in st.session_state:
+                    st.session_state[drill_key] = None
+
+                if st.session_state[drill_key]:
+                    if st.button("← Back to Categories", key=f"btn_back_donut_{selected_scope}"):
+                        st.session_state[drill_key] = None
+                        st.rerun()
+
+                fig = build_spending_donut(display_df, drilldown_category=st.session_state[drill_key])
                 selection = st.plotly_chart(
                     fig,
                     use_container_width=True,
@@ -182,52 +196,23 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
                     key=f"donut_chart_{selected_scope}",
                 )
 
-            if selection and hasattr(selection, "selection") and selection.selection.get("points"):
-                clicked_point = selection.selection["points"][0]
-                clicked_label = clicked_point.get("label") or clicked_point.get("x")
-                if st.session_state[drill_key] is None and clicked_label:
-                    st.session_state[drill_key] = clicked_label
-                    st.rerun()
-            elif selection and isinstance(selection, dict) and selection.get("selection", {}).get("points"):
-                clicked_point = selection["selection"]["points"][0]
-                clicked_label = clicked_point.get("label") or clicked_point.get("x")
-                if st.session_state[drill_key] is None and clicked_label:
-                    st.session_state[drill_key] = clicked_label
-                    st.rerun()
-
-            with section_header("Top Merchants", f"Highest spending in {selected_scope}"):
-                top_merchants = (
-                    display_df.groupby("merchant")["amount_eur"].sum().reset_index()
-                )
-                top_merchants = top_merchants.sort_values(
-                    by="amount_eur", ascending=False
-                ).head(10)
-                top_merchants.columns = ["Merchant", "Spent (€)"]
-                if is_hidden():
-                    top_merchants["Spent (€)"] = top_merchants["Spent (€)"].map(
-                        lambda x: format_money(x)
-                    )
-                    top_merchants["Merchant"] = "****"
-                    spent_cfg = st.column_config.TextColumn("Spent (€)", disabled=True)
-                else:
-                    spent_cfg = st.column_config.NumberColumn(
-                        "Spent (€)", format="€%.2f", disabled=True
-                    )
-                st.dataframe(
-                    top_merchants,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
-                        "Spent (€)": spent_cfg,
-                    },
-                )
+                if selection and hasattr(selection, "selection") and selection.selection.get("points"):
+                    clicked_point = selection.selection["points"][0]
+                    clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                    if st.session_state[drill_key] is None and clicked_label:
+                        st.session_state[drill_key] = clicked_label
+                        st.rerun()
+                elif selection and isinstance(selection, dict) and selection.get("selection", {}).get("points"):
+                    clicked_point = selection["selection"]["points"][0]
+                    clicked_label = clicked_point.get("label") or clicked_point.get("x")
+                    if st.session_state[drill_key] is None and clicked_label:
+                        st.session_state[drill_key] = clicked_label
+                        st.rerun()
 
         with col_right:
-            with section_header(
-                "Subscription Leak Detector",
-                "Recurring services and annual commitments",
-            ):
+            with st.container(border=True, height=_SPENDING_PANEL_HEIGHT):
+                st.markdown("##### 🔁 Subscription Leak Detector")
+                st.caption("Recurring services and annual commitments")
                 all_tx_rows = [
                     dict(r)
                     for r in conn.execute(
@@ -275,6 +260,88 @@ def _render_analytics_fragment(display_df: pd.DataFrame, selected_scope: str, co
                     )
                 else:
                     st.caption("No subscriptions detected.")
+
+
+def _merchant_category_label(row: dict[str, Any]) -> str:
+    """Category with its parent shown when the two differ."""
+    category = row.get("category") or "Uncategorized"
+    parent = row.get("parent")
+    if parent and str(parent) != str(category):
+        return f"{parent} / {category}"
+    return str(category)
+
+
+def _render_top_merchants(merchant_data: dict[str, Any] | None, selected_scope: str) -> None:
+    """AC-5, AC-6, AC-7: full width merchant table with location gated on IBAN data."""
+    with section_header("Top Merchants", f"Highest spending in {selected_scope}"):
+        data = merchant_data or {}
+        rows = data.get("rows") or []
+        if not rows:
+            st.caption("No merchant data available for this scope.")
+            return
+
+        has_location = bool(data.get("has_location"))
+        hidden = is_hidden()
+
+        if hidden:
+            avg_col = ["€****"] * len(rows)
+            total_col = ["€****"] * len(rows)
+            share_col = ["****%"] * len(rows)
+        else:
+            avg_col = [f"€{r['avg_eur']:,.2f}" for r in rows]
+            total_col = [f"€{r['total_eur']:,.2f}" for r in rows]
+            share_col = [f"{r['share_pct']:.1f}%" for r in rows]
+
+        disp = pd.DataFrame(
+            {
+                "Merchant": [r["merchant"] for r in rows],
+                "Category": [_merchant_category_label(r) for r in rows],
+                "Transactions": [r["transactions"] for r in rows],
+                "Avg per Visit (€)": avg_col,
+                "Total Spent (€)": total_col,
+                "Share (%)": share_col,
+                "Last Transaction": [r["last_date"] for r in rows],
+                "Accounts": [r["accounts"] for r in rows],
+            }
+        )
+        if has_location:
+            disp.insert(1, "Location", [r.get("location") or "—" for r in rows])
+
+        column_config = {
+            "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
+            "Transactions": st.column_config.NumberColumn("Transactions", format="%d"),
+            "Last Transaction": st.column_config.TextColumn("Last Transaction"),
+            "Accounts": st.column_config.TextColumn("Accounts", width="medium"),
+            "Avg per Visit (€)": st.column_config.TextColumn("Avg per Visit (€)", disabled=True),
+            "Total Spent (€)": st.column_config.TextColumn("Total Spent (€)", disabled=True),
+            "Share (%)": st.column_config.TextColumn("Share (%)", disabled=True),
+        }
+        st.dataframe(
+            disp,
+            use_container_width=True,
+            hide_index=True,
+            column_config=column_config,
+        )
+
+        if has_location and data.get("location_totals"):
+            loc_df = pd.DataFrame(data["location_totals"])
+            loc_df.columns = ["Location", "Spent (€)"]
+            loc_fig = px.bar(
+                loc_df,
+                x="Location",
+                y="Spent (€)",
+                title="Spending by Location",
+                color_discrete_sequence=["#2DD4BF"],
+            )
+            loc_fig.update_layout(
+                margin=dict(t=35, l=55, r=20, b=25),
+                xaxis=dict(title="Location", automargin=True),
+                yaxis=dict(title="Spent (€)", tickprefix="€", automargin=True),
+            )
+            if hidden:
+                loc_fig.update_traces(hovertemplate="Censored<extra></extra>")
+            with st.container(border=True):
+                render_chart(loc_fig, use_container_width=True)
 
 
 @st.fragment
@@ -721,9 +788,11 @@ def render():
             assign_mortgage_dialog()
 
     # Calculate exact scope KPIs
+    month_divisor = 1
     if selected_scope == "All Months (Monthly Average)":
         display_df = df_all.copy()
         n_months = max(1, len(months))
+        month_divisor = n_months
         # AC-7: Sum in minor units, divide by count, ensure exact equality
         avg_tot_minor = round(monthly_df["tot_minor"].sum() / n_months)
         avg_fix_minor = round(monthly_df["fix_minor"].sum() / n_months)
@@ -751,8 +820,27 @@ def render():
     # AC-1: Top 4 KPI Ribbon
     _render_kpi_ribbon(total_spent, fixed_spent, disc_spent, uncat_spent, header_title)
 
-    # AC-6: Analytics Section inside isolated Streamlit fragment
+    # AC-5, AC-6, AC-7: Top Merchants aggregation over the scope
+    merchant_context = get_merchant_context(
+        conn,
+        list(display_df["merchant"].dropna().unique()),
+        where_sql=where_sql,
+        params=params,
+        start_date=start_d_str,
+        end_date=end_d_str,
+    )
+    merchant_data = aggregate_top_merchants(
+        display_df,
+        merchant_context,
+        scope_total_eur=total_spent,
+        month_divisor=month_divisor,
+    )
+
+    # Analytics Section inside isolated Streamlit fragment
     _render_analytics_fragment(display_df, selected_scope, conn)
+
+    # AC-5: Top Merchants is its own panel spanning the full content width
+    _render_top_merchants(merchant_data, selected_scope)
 
     # AC-3, AC-4: Category Budget Tracker inside isolated Streamlit fragment
     _render_budget_tracker_fragment(conn, selected_scope, start_d_str, end_d_str, monthly_df)

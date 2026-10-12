@@ -30,6 +30,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 12 | Investment Exposure Dimensions, TradingView Panel & Realized P&L | Slice 11 | done |
 | 13 | Multi Bank Manual Accounts & Hybrid Statement Ingestion | Slice 12 | done |
 | 14 | System Cleanup, Architecture Hardening & Regression Suite | Slice 13 | in-progress |
+| 15 | UI Polish, Allocation Strategy Management & Copilot Hardening | Slice 14 | in-progress |
 
 ## Brownfield context
 
@@ -269,11 +270,29 @@ spec [0014](../specs/0014-system-cleanup-architecture-hardening/index.md)
 - [ ] Verify it: /check verify system cleanup architecture hardening & regression suite
 - [ ] Test it: /test system cleanup architecture hardening & regression suite
 
+## Slice 14: UI Polish, Allocation Strategy Management & Copilot Hardening
+
+### 15. UI Polish, Allocation Strategy Management & Copilot Hardening · in-progress
+Fix the layout and table defects found while clicking through the live app (dashboard top gap and panel order, KPI cards that change height, the half width Top Merchants table, the per lot holdings table, the duplicate quotes table, a blur over public market data), and give allocation strategies real create and delete paths in the UI and through the Copilot, with the tool surface and latency tuned from a measured evaluation.
+**Done when:** the dashboard opens flush under the navigation with the charts above the account cards, KPI rows keep one height with Hide values on, Spending panels line up with a full width merchant table, Investments shows distinct assets with the Status column and duplicate table gone, and an allocation strategy can be created and deleted from the UI and by asking the Copilot, with a confirmation before a delete.
+spec [0016](../specs/0016-ui-polish-allocation-strategy-copilot/index.md) · code in ui/theme/common.css, ui/pages/dashboard.py, ui/pages/spending.py, services/analytics.py, services/portfolio.py, services/allocation_service.py, ui/allocation_ui.py, ui/pages/investments/, ui/pages/settings.py, ui/copilot_sidebar.py, agent/tools/
+- [x] Design it (spec): `/architect ui polish, allocation strategy management & copilot hardening`
+- [x] Build it: /develop ui polish, allocation strategy management & copilot hardening
+  - [x] Dashboard layout and panel height parity (satisfies AC-1, AC-2, AC-3)
+  - [x] Spending merchant panel and investment table aggregation (satisfies AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10)
+  - [x] Allocation strategy create and delete, service layer plus both UI surfaces (satisfies AC-11, AC-12, AC-13)
+  - [x] Copilot tools, correctness fixes, latency tuning and timing footer (satisfies AC-12, AC-14, AC-15, AC-16, AC-17)
+  - [x] CSS and masking cleanup with regression tests (satisfies AC-18, AC-19)
+- [ ] Verify it: /check verify ui polish, allocation strategy management & copilot hardening
+- [ ] Test it: /test ui polish, allocation strategy management & copilot hardening
+
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.
 - **Deep tax schedule breakdown**: expanded regional Italian tax regimes · needs a decision
 - **Mortgage payoff scenario modeling**: advanced refinancing and early payoff comparisons · needs a decision
 - **Multi currency auto rebalancing**: portfolio currency conversion rebalance rules · needs a decision
+- **Copilot phrasing robustness**: a wording test set for allocation requests, and a larger default tool calling model or two stage routing if a first turn stays above roughly 30 seconds · from spec 0016
+- **Streamlit upgrade review**: re-verify the generated selectors behind the dashboard top gap and the options menu after a framework major version · from spec 0016
 
 ## Legend
 

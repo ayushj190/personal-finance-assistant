@@ -12,6 +12,9 @@
     --radius-md: 12px;
     --radius-lg: 16px;
 
+    /* Shared KPI card height so a row keeps one height with or without a delta value (AC-3) */
+    --kpi-card-min-height: 118px;
+
     /* Typography Scale */
     --font-family-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-family-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -79,8 +82,20 @@
 
 .block-container,
 div[data-testid="stMainBlockContainer"] {
-    padding: 0.25rem 1.5rem 1.5rem 1.5rem !important;
+    padding: 0 1.5rem 1.5rem 1.5rem !important;
     max-width: 100% !important;
+}
+
+/* AC-1: collapse the leading zero height rows in the main block so the first
+   real element (the ticker) sits flush under the navigation bar. The options
+   wrapper is taken out of the flex gap instead of removed, so its fixed
+   positioned popover keeps working. */
+div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:first-child {
+    display: none !important;
+}
+
+div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-top_navbar_actions) {
+    display: contents !important;
 }
 
 /* Native Top Navigation (AC-4, AC-5) */
@@ -1192,25 +1207,6 @@ div[data-testid="stTabs"] div[role="tab"] * {
             scrollbar-width: none !important;
             -ms-overflow-style: none !important;
         }
-        [data-testid="stSidebarUserContent"] .st-key-copilot_chat_history::-webkit-scrollbar,
-        .st-key-copilot_chat_history::-webkit-scrollbar {
-            width: 6px !important;
-            height: 6px !important;
-            display: block !important;
-        }
-        [data-testid="stSidebarUserContent"] .st-key-copilot_chat_history::-webkit-scrollbar-track,
-        .st-key-copilot_chat_history::-webkit-scrollbar-track {
-            background: transparent !important;
-        }
-        [data-testid="stSidebarUserContent"] .st-key-copilot_chat_history::-webkit-scrollbar-thumb,
-        .st-key-copilot_chat_history::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.5) !important;
-            border-radius: 4px !important;
-        }
-        [data-testid="stSidebarUserContent"] .st-key-copilot_chat_history::-webkit-scrollbar-thumb:hover,
-        .st-key-copilot_chat_history::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, 0.8) !important;
-        }
 
         /* Market Carpet Treemap Rounded Glassmorphic Styling & Animations (AC-5) */
         @keyframes treemapTileBloom {
@@ -1333,8 +1329,16 @@ div[data-testid="stTabs"] div[role="tab"] * {
             border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
             border-radius: var(--radius-md, 12px) !important;
             padding: var(--space-md, 12px) var(--space-lg, 16px) !important;
-            min-height: 104px !important;
+            min-height: var(--kpi-card-min-height, 118px) !important;
             box-sizing: border-box !important;
+        }
+
+        /* Reserve one row for the delta so a KPI without a delta stays the same
+           height as its neighbours (AC-3). */
+        div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+            min-height: 20px !important;
+            display: flex !important;
+            align-items: center !important;
         }
 
         .empty-state-card {

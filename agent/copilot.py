@@ -1,4 +1,5 @@
 from datetime import date
+import inspect
 import json
 from typing import Any, Iterator
 
@@ -6,26 +7,22 @@ from agent import tools
 from agent.tools import COPILOT_TOOLS_SCHEMA
 from services.llm_client import chat_with_tools, generate_stream
 
-SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app.
-You run locally and privately on the user's machine.
-You have access to native deterministic tools for querying net worth, category spending, recent transactions, cashflows, portfolio investments, tax analysis, mortgage schedules, financial simulations, and a local Dutch Financial Law Vector Vault.
+SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app, running locally and privately on the user's machine.
 
-CRITICAL FINANCIAL ACCURACY RULES:
-- Never confuse debt liabilities (e.g. mortgage balance, loans) with investment portfolio capital.
-- Always quote the exact numbers returned by tools. For investments, rely strictly on `total_portfolio_value_eur`, `total_portfolio_value_formatted`, and `holdings_by_asset_type_eur` from `analyze_investments`.
-- Never hallucinate portfolio amounts from liability amounts or other accounts.
+CRITICAL ACCURACY RULES:
+- Never confuse debt liabilities (mortgage, loans) with investment portfolio capital.
+- Always quote the exact numbers the tools return; never estimate or invent amounts.
+- For investments rely on `total_portfolio_value_eur`, `total_portfolio_value_formatted`, and `holdings_by_asset_type_eur` from `analyze_investments`.
+- Never present a minor unit (cents) figure; use the euro formatted fields the tools provide.
 
-Always call the relevant tool when the user asks about their financial data, accounts, spending, mortgage options, or tax strategies:
-- Use `analyze_investments` for portfolio value, asset allocation, stocks/ETFs/crypto breakdown, and risk drift.
-- Use `get_current_net_worth` for overall balance sheet (total assets, total liabilities, and net worth).
-- Use `search_dutch_law_vault` to search Dutch tax laws (Box 1 rates, Box 3 wealth tax & actual return rulings), mortgage deduction (HRA), Pillar 3 pension (Wet toekomst pensioenen / Jaarruimte), estate/gifting (Successiewet 1956), and expat 30% facility. Always cite the exact statutory articles returned.
-- Use `lookup_tax_law_article` when the user asks for a specific statutory provision (e.g. 'Art. 3.16', 'Art. 5.2', 'Art. 3.120', 'Hoge Raad 2024').
-- Use `search_financial_knowledge_base` as an alternative knowledge query tool.
-- Use `simulate_tax_optimization` when the user asks how to allocate capital (e.g. bonus, savings) between mortgage prepayment, pension (Jaarruimte), green funds, or ETFs.
-- Use `calculate_pension_room` for questions about Dutch pension gaps, Factor A, and tax rebates.
-- Use `analyze_green_fund_strategy` for questions about Groenfondsen double tax benefits.
-- Use `diagnose_tax_leaks` when the user asks for financial checkups or tax optimization tips.
-- Use deterministic tool outputs rather than calculating compound growth or tax brackets in raw tokens.
+Call the relevant tool whenever the user asks about their financial data:
+- analyze_investments: portfolio value, allocation, drift, and risk.
+- get_allocation_profiles, create_allocation_profile, delete_allocation_profile: manage target allocation strategies. A create needs targets that sum to 100 percent; a delete needs the confirmation token returned by the first call.
+- get_current_net_worth: overall balance sheet.
+- get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow.
+- analyze_mortgage: mortgage schedules and rates.
+- analyze_tax_situation, simulate_tax_optimization, calculate_pension_room, analyze_green_fund_strategy, diagnose_tax_leaks: Dutch tax questions.
+- search_dutch_law_vault and lookup_tax_law_article: cite exact Dutch statutory articles.
 
 Today's date is: {today}.
 """
@@ -46,6 +43,9 @@ TOOL_MAP = {
     "toggle_privacy_mode": tools.tool_toggle_privacy_mode,
     "set_theme": tools.tool_set_theme,
     "set_active_allocation_profile": tools.tool_set_active_allocation_profile,
+    "get_allocation_profiles": tools.tool_get_allocation_profiles,
+    "create_allocation_profile": tools.tool_create_allocation_profile,
+    "delete_allocation_profile": tools.tool_delete_allocation_profile,
     "update_savings_rate": tools.tool_update_savings_rate,
     "add_mortgage_payment": tools.tool_add_mortgage_payment,
     "save_risk_profile": tools.tool_save_risk_profile,
@@ -107,6 +107,39 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 "error_details": f"Tool '{tool_name}' is not recognized.",
             },
         }
+
+    arguments = arguments or {}
+
+    # Guided error for an argument a tool does not declare, instead of an internal TypeError (AC-16).
+    try:
+        signature = inspect.signature(fn)
+        accepts_kwargs = any(
+            p.kind == p.VAR_KEYWORD for p in signature.parameters.values()
+        )
+        if not accepts_kwargs:
+            allowed = {
+                name
+                for name, p in signature.parameters.items()
+                if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+            }
+            unknown = [k for k in arguments if k not in allowed]
+            if unknown:
+                accepts = ", ".join(sorted(allowed)) if allowed else "no arguments"
+                return {
+                    "success": False,
+                    "message": (
+                        f"Tool '{tool_name}' does not accept the argument(s): "
+                        f"{', '.join(unknown)}. It accepts: {accepts}."
+                    ),
+                    "diagnostics": {
+                        "tool": tool_name,
+                        "arguments": arguments,
+                        "error_type": "UnknownArgumentError",
+                        "error_details": f"Unexpected argument(s): {', '.join(unknown)}.",
+                    },
+                }
+    except (TypeError, ValueError):
+        pass
 
     try:
         res = fn(**arguments)

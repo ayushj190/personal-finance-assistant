@@ -30,6 +30,7 @@ from ui.components import (
 )
 from ui.logos import get_institution_logo_svg
 from ui.theme import render_chart
+from ui.tickers import TICKER_EXCHANGE_MAP, tradingview_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -133,48 +134,17 @@ def _calculate_accrued_subtexts(
     return acc_subtexts
 
 
-TICKER_EXCHANGE_MAP = {
-    ".AS": "EURONEXT:",
-    ".PA": "EURONEXT:",
-    ".BR": "EURONEXT:",
-    ".LS": "EURONEXT:",
-    ".L": "LSE:",
-    ".DE": "XETR:",
-    ".F": "FWB:",
-    ".MI": "MIL:",
-    ".MC": "BME:",
-    ".SW": "SIX:",
-}
-
-
 def _tradingview_symbols(tickers: list[str]) -> list[dict[str, str]]:
     """Map and deduplicate holding tickers to TradingView prefixed symbols."""
     symbols: list[dict[str, str]] = []
     seen: set[str] = set()
 
     for ticker in tickers:
-        if not ticker or not isinstance(ticker, str):
+        pro_name = tradingview_symbol(ticker)
+        if not pro_name or pro_name in seen:
             continue
-        t_clean = ticker.strip()
-        if not t_clean or t_clean.startswith("ID_") or "=" in t_clean or "^" in t_clean:
-            continue
-
-        if "." in t_clean:
-            matched = False
-            for suffix, prefix in TICKER_EXCHANGE_MAP.items():
-                if t_clean.upper().endswith(suffix):
-                    base = t_clean[:-len(suffix)]
-                    pro_name = f"{prefix}{base}"
-                    matched = True
-                    break
-            if not matched:
-                continue
-        else:
-            pro_name = t_clean
-
-        if pro_name not in seen:
-            seen.add(pro_name)
-            symbols.append({"proName": pro_name, "description": t_clean})
+        seen.add(pro_name)
+        symbols.append({"proName": pro_name, "description": ticker.strip()})
 
     if not symbols:
         return [
@@ -624,11 +594,11 @@ def render() -> None:
         # 2. Standardized 4-KPI Ribbon (AC-1)
         _render_kpi_ribbon(conn, nw_data, liabilities)
 
-        # 3. Accounts & Balances Grid (AC-4, AC-5)
-        _render_accounts_grid(accounts, nw_data, sync_logs)
-
-        # 4. Lower Grid: Spending Donut + Recurring Bills (AC-2, AC-6)
+        # 3. Expenses and Portfolio exposure panels (AC-2)
         _render_analytics_section()
+
+        # 4. Accounts & Balances Grid (AC-4, AC-5)
+        _render_accounts_grid(accounts, nw_data, sync_logs)
 
     finally:
         conn.close()

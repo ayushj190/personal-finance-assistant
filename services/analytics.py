@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 import statistics
 from typing import Any
 
-
+import pandas as pd
 import streamlit as st
 
 @st.cache_data(ttl=300)
@@ -205,3 +205,181 @@ def detect_recurring_charges(
             )
 
     return sorted(recurring, key=lambda x: x["annual_cost_eur"], reverse=True)
+
+
+# Country names for the IBAN country code (first two letters), used to resolve a
+# merchant's location. Only IBAN participating countries can resolve; there is no
+# currency fallback, so merchants without an IBAN location stay blank.
+IBAN_COUNTRY_NAMES: dict[str, str] = {
+    "AD": "Andorra", "AE": "United Arab Emirates", "AL": "Albania", "AT": "Austria",
+    "AZ": "Azerbaijan", "BA": "Bosnia and Herzegovina", "BE": "Belgium",
+    "BG": "Bulgaria", "BH": "Bahrain", "BR": "Brazil", "BY": "Belarus",
+    "CH": "Switzerland", "CR": "Costa Rica", "CY": "Cyprus", "CZ": "Czechia",
+    "DE": "Germany", "DK": "Denmark", "DO": "Dominican Republic", "EE": "Estonia",
+    "EG": "Egypt", "ES": "Spain", "FI": "Finland", "FO": "Faroe Islands",
+    "FR": "France", "GB": "United Kingdom", "GE": "Georgia", "GI": "Gibraltar",
+    "GL": "Greenland", "GR": "Greece", "GT": "Guatemala", "HR": "Croatia",
+    "HU": "Hungary", "IE": "Ireland", "IL": "Israel", "IQ": "Iraq", "IS": "Iceland",
+    "IT": "Italy", "JO": "Jordan", "KW": "Kuwait", "KZ": "Kazakhstan", "LB": "Lebanon",
+    "LC": "Saint Lucia", "LI": "Liechtenstein", "LT": "Lithuania", "LU": "Luxembourg",
+    "LV": "Latvia", "MC": "Monaco", "MD": "Moldova", "ME": "Montenegro",
+    "MK": "North Macedonia", "MR": "Mauritania", "MT": "Malta", "MU": "Mauritius",
+    "NL": "Netherlands", "NO": "Norway", "PK": "Pakistan", "PL": "Poland",
+    "PS": "Palestine", "PT": "Portugal", "QA": "Qatar", "RO": "Romania",
+    "RS": "Serbia", "SA": "Saudi Arabia", "SC": "Seychelles", "SE": "Sweden",
+    "SI": "Slovenia", "SK": "Slovakia", "SM": "San Marino", "ST": "Sao Tome and Principe",
+    "SV": "El Salvador", "TL": "Timor-Leste", "TN": "Tunisia", "TR": "Türkiye",
+    "UA": "Ukraine", "VA": "Vatican City", "VG": "Virgin Islands", "XK": "Kosovo",
+}
+
+
+def resolve_iban_country(iban: str | None) -> str | None:
+    """Return the country name for an IBAN's leading country code, else None."""
+    if not iban:
+        return None
+    code = str(iban).strip().upper()[:2]
+    if len(code) == 2 and code.isalpha():
+        return IBAN_COUNTRY_NAMES.get(code)
+    return None
+
+
+def _dominant_merchant_category(group: pd.DataFrame) -> tuple[str, str | None]:
+    """Most frequent category for a merchant, ties alphabetical, 'Mixed' when none exceeds half."""
+    cats = group["category"].fillna("Uncategorized")
+    counts = cats.value_counts()
+    total = len(group)
+    if total == 0 or counts.empty:
+        return ("Uncategorized", None)
+    top_count = int(counts.iloc[0])
+    if top_count * 2 <= total:
+        return ("Mixed", None)
+    top_cat = sorted(c for c, n in counts.items() if n == top_count)[0]
+    parents = group.loc[cats == top_cat, "parent_category"].dropna()
+    parents = parents[parents.astype(str).str.strip() != ""]
+    if parents.empty:
+        return (str(top_cat), None)
+    mode = parents.mode()
+    return (str(top_cat), str(mode.iloc[0]) if not mode.empty else None)
+
+
+def get_merchant_context(
+    conn: Any,
+    merchants: list[str],
+    where_sql: str = "",
+    params: list[Any] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Resolve each merchant's IBAN location and used accounts with a dedicated query."""
+    result: dict[str, dict[str, Any]] = {
+        m: {"location": None, "accounts": []} for m in merchants if m
+    }
+    if not result:
+        return result
+
+    names = list(result.keys())
+    placeholders = ",".join("?" for _ in names)
+    clauses = [f"t.merchant_normalized IN ({placeholders})"]
+    qparams: list[Any] = list(names)
+    if where_sql:
+        clauses.append(where_sql.replace("WHERE ", "", 1))
+        qparams.extend(params or [])
+    if start_date:
+        clauses.append("t.booking_date >= ?")
+        qparams.append(start_date)
+    if end_date:
+        clauses.append("t.booking_date <= ?")
+        qparams.append(end_date)
+
+    sql = f"""
+        SELECT t.merchant_normalized AS merchant,
+               t.counterparty_iban AS iban,
+               a.name AS account
+        FROM transactions t
+        LEFT JOIN accounts a ON a.id = t.account_id
+        WHERE {" AND ".join(clauses)}
+    """
+    rows = conn.execute(sql, qparams).fetchall()
+    for r in rows:
+        key = r["merchant"]
+        entry = result.get(key)
+        if entry is None:
+            continue
+        if entry["location"] is None:
+            country = resolve_iban_country(r["iban"])
+            if country:
+                entry["location"] = country
+        account = r["account"]
+        if account and account not in entry["accounts"]:
+            entry["accounts"].append(account)
+    return result
+
+
+def aggregate_top_merchants(
+    display_df: pd.DataFrame,
+    context: dict[str, dict[str, Any]] | None,
+    scope_total_eur: float,
+    month_divisor: int = 1,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Aggregate the scope frame into Top Merchant rows plus the IBAN country totals."""
+    empty = {"rows": [], "location_totals": [], "has_location": False}
+    if display_df is None or display_df.empty:
+        return empty
+
+    df = display_df.copy()
+    if "category" not in df.columns:
+        df["category"] = "Uncategorized"
+    if "parent_category" not in df.columns:
+        df["parent_category"] = "Uncategorized"
+    df["category"] = df["category"].fillna("Uncategorized")
+    df["parent_category"] = df["parent_category"].fillna("Uncategorized")
+    df["amount_eur_minor"] = pd.to_numeric(
+        df.get("amount_eur_minor", 0), errors="coerce"
+    ).fillna(0)
+    df["booking_date"] = df["booking_date"].astype(str)
+
+    divisor = month_divisor if month_divisor and month_divisor > 0 else 1
+    context = context or {}
+
+    all_rows: list[dict[str, Any]] = []
+    for merchant, group in df.groupby("merchant"):
+        if merchant is None or str(merchant).strip() == "":
+            continue
+        count = len(group)
+        total_eur = -int(group["amount_eur_minor"].sum()) / 100.0 / divisor
+        category, parent = _dominant_merchant_category(group)
+        ctx = context.get(merchant, {})
+        all_rows.append(
+            {
+                "merchant": str(merchant),
+                "location": ctx.get("location"),
+                "category": category,
+                "parent": parent,
+                "transactions": count,
+                "avg_eur": (total_eur / count) if count else 0.0,
+                "total_eur": total_eur,
+                "share_pct": (total_eur / scope_total_eur * 100.0)
+                if scope_total_eur and scope_total_eur > 0
+                else 0.0,
+                "last_date": str(group["booking_date"].max())[:10],
+                "accounts": ", ".join(ctx.get("accounts", [])),
+            }
+        )
+
+    all_rows.sort(key=lambda r: r["total_eur"], reverse=True)
+
+    location_totals: dict[str, float] = {}
+    for r in all_rows:
+        if r["location"]:
+            location_totals[r["location"]] = location_totals.get(r["location"], 0.0) + r["total_eur"]
+
+    return {
+        "rows": all_rows[:limit],
+        "location_totals": sorted(
+            ({"location": k, "total_eur": v} for k, v in location_totals.items()),
+            key=lambda x: x["total_eur"],
+            reverse=True,
+        ),
+        "has_location": bool(location_totals),
+    }

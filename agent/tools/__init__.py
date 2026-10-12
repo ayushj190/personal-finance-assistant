@@ -9,6 +9,9 @@ from agent.tools.net_worth import (
 )
 from agent.tools.investments import (
     tool_set_active_allocation_profile,
+    tool_get_allocation_profiles,
+    tool_create_allocation_profile,
+    tool_delete_allocation_profile,
     tool_save_risk_profile,
     tool_get_risk_profile,
     tool_analyze_investments,
@@ -55,6 +58,9 @@ __all__ = [
     "tool_toggle_privacy_mode",
     "tool_set_theme",
     "tool_set_active_allocation_profile",
+    "tool_get_allocation_profiles",
+    "tool_create_allocation_profile",
+    "tool_delete_allocation_profile",
     "tool_update_savings_rate",
     "tool_add_mortgage_payment",
     "tool_save_risk_profile",

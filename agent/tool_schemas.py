@@ -78,20 +78,6 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_financial_knowledge_base",
-            "description": "Search local unstructured knowledge base for Dutch tax laws, Box 1/3 rules, pension spaces (jaarruimte/lijfrente), or mortgage rules.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query about tax, mortgage, or financial concepts"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "search_web",
             "description": "Search web for news, company descriptions, or current market info.",
             "parameters": {
@@ -155,6 +141,63 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
                     "profile_name": {"type": "string", "description": "Name of the allocation profile"},
                 },
                 "required": ["profile_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_allocation_profiles",
+            "description": "List every saved investment allocation profile with its dimension, targets, drift band, and whether it is active.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_allocation_profile",
+            "description": "Create a new investment allocation profile. Targets must sum to 100 percent within 0.1 and every bucket must be valid for the chosen dimension.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Unique profile name (matched case insensitively)"},
+                    "dimension": {
+                        "type": "string",
+                        "enum": ["asset_class", "asset_type", "region", "sector", "currency", "ticker"],
+                        "description": "Dimension the targets are grouped by",
+                    },
+                    "targets": {
+                        "type": "object",
+                        "description": "Map of bucket name to target percent (0 to 100 at one decimal), e.g. {\"etf\": 70.0, \"crypto\": 30.0}",
+                        "additionalProperties": {"type": "number"},
+                    },
+                    "drift_band_pct": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "Absolute drift tolerance band in percentage points (default 5)",
+                    },
+                    "include_cash": {
+                        "type": "boolean",
+                        "description": "Treat liquid cash as an extra bucket (default false)",
+                    },
+                },
+                "required": ["name", "dimension", "targets"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_allocation_profile",
+            "description": "Delete an allocation profile. The first call returns a confirmation token; call again with the same name and that confirm_token to actually delete. Refuses the active or last remaining profile.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name of the profile to delete (matched case insensitively)"},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["name"],
             },
         },
     },

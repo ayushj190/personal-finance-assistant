@@ -6,6 +6,11 @@ from config import DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository
 from money import Money
+from services.allocation_service import (
+    create_allocation_profile,
+    delete_allocation_profile,
+    list_allocation_profiles,
+)
 from services.portfolio import calculate_drift, get_consolidated_holdings_df
 
 
@@ -124,20 +129,22 @@ def tool_analyze_investments() -> dict[str, Any]:
                 str(k): round(float(v), 2)
                 for k, v in consolidated_df.groupby("asset_type")["value_eur"].sum().to_dict().items()
             }
-            for _, row in consolidated_df.iterrows():
-                val = float(row.get("value_eur", 0.0) or 0.0)
+            # AC-8/AC-9: one entry per distinct asset, summed across lots.
+            for ticker, group in consolidated_df.groupby("ticker", sort=False):
+                val = float(group["value_eur"].sum() or 0.0)
+                first = group.iloc[0]
                 positions.append({
-                    "ticker": str(row.get("ticker", "")),
-                    "name": str(row.get("name", "")),
-                    "display_label": str(row.get("display_label", "")),
+                    "ticker": str(ticker),
+                    "name": str(first.get("name", "")),
+                    "display_label": str(first.get("display_label", "")),
                     "value_eur": round(val, 2),
                     "value_eur_formatted": f"€{val:,.2f}",
-                    "asset_class": str(row.get("asset_class", "investment")),
-                    "asset_type": str(row.get("asset_type", "")),
-                    "region": str(row.get("region", "")),
-                    "sector": str(row.get("sector", "")),
-                    "currency": str(row.get("currency", "EUR")),
-                    "source": str(row.get("source", "Direct Holdings")),
+                    "asset_class": str(first.get("asset_class", "investment")),
+                    "asset_type": str(first.get("asset_type", "")),
+                    "region": str(first.get("region", "")),
+                    "sector": str(first.get("sector", "")),
+                    "currency": str(first.get("currency", "EUR")),
+                    "source": str(first.get("source", "Direct Holdings")),
                 })
         else:
             total_portfolio_value_eur = 0.0
@@ -214,8 +221,9 @@ def tool_analyze_investments() -> dict[str, Any]:
         ]
         if active_profile:
             if rebalance_needed:
+                buckets = ", ".join(str(d.get("bucket")) for d in drift_alerts)
                 msg_parts.append(
-                    f"Active profile '{active_profile['name']}' indicates {len(drift_alerts)} allocation bucket(s) need rebalancing."
+                    f"Active profile '{active_profile['name']}' indicates {len(drift_alerts)} allocation bucket(s) need rebalancing: {buckets}."
                 )
             else:
                 msg_parts.append(f"Active profile '{active_profile['name']}' is on target.")
@@ -245,3 +253,43 @@ def tool_analyze_investments() -> dict[str, Any]:
 
 
 tool_get_portfolio_and_risk_summary = tool_analyze_investments
+
+
+def tool_get_allocation_profiles() -> dict[str, Any]:
+    """List every saved investment allocation profile with its target buckets."""
+    conn = database.connect_readonly(DB_PATH)
+    try:
+        return {"success": True, "profiles": list_allocation_profiles(conn)}
+    finally:
+        conn.close()
+
+
+def tool_create_allocation_profile(
+    name: str,
+    dimension: str,
+    targets: dict[str, float],
+    drift_band_pct: float = 5.0,
+    include_cash: bool = False,
+) -> dict[str, Any]:
+    """Create a validated allocation profile (unique name, valid buckets, targets summing to 100)."""
+    conn = database.connect(DB_PATH)
+    try:
+        return create_allocation_profile(
+            conn,
+            name=name,
+            dimension=dimension,
+            targets=targets,
+            drift_band_pct=drift_band_pct,
+            include_cash=include_cash,
+        )
+    finally:
+        conn.close()
+
+
+def tool_delete_allocation_profile(name: str, confirm_token: str = "") -> dict[str, Any]:
+    """Delete an allocation profile; the first call returns a one time confirmation token to echo back."""
+    conn = database.connect(DB_PATH)
+    try:
+        return delete_allocation_profile(conn, name=name, confirm_token=confirm_token)
+    finally:
+        conn.close()

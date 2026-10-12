@@ -13,6 +13,7 @@ from services.portfolio import calculate_drift, get_smart_allocation_profiles
 from ui.charts import build_drift_bar_chart
 from ui.components import format_money, kpi_card, section_header
 from ui.theme import render_chart
+from ui.allocation_ui import render_allocation_management
 from ui.pages.investments.holdings import render_copy_portfolios, render_holdings_table
 from ui.pages.investments.exposure import render_exposure_visualizer
 from ui.pages.investments.watchlist import render_live_quotes_and_watchlist
@@ -156,6 +157,9 @@ def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
                 drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
             drift_df["Action Needed"] = drift_df["Action Needed"].map(lambda x: "⚠️ Rebalance" if x else "✅ On Target")
             st.dataframe(drift_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+        render_allocation_management(alloc_conn)
     finally:
         if should_close_alloc:
             alloc_conn.close()

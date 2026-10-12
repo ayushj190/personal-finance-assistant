@@ -19,7 +19,7 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 - Every tool function must return a serializable dictionary containing a `success` boolean and an explanatory message.
 - Prefer deterministic service routines in `services/` over LLM token predictions for math and tax calculations.
 - Maintain strict typing and parameter documentation in `COPILOT_TOOLS_SCHEMA` for any newly added tool.
-- Execute all copilot database tools through `db.database.connect_readonly()` to guarantee strictly read only access.
+- Execute all Copilot query tools through `db.database.connect_readonly()` for read only SQL; writes happen only inside named, validated tool functions (for example the allocation create and delete tools), never through model generated SQL.
 
 ## Gotchas
 
