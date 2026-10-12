@@ -316,3 +316,4 @@ tests\test_ui_theme.py ..................                                [100%]
 - **[System Architecture](docs/ARCHITECTURE.md)**: Comprehensive guide to the threading model, security sandbox, quant calculation engines, and database schema.
 - **[Feature Scope](docs/scope/scope.md)**: Product roadmap, delivery slices, and implementation status.
 - **[Technical Specifications](docs/specs/)**: Detailed architectural specs and acceptance criteria for all 13 vertical feature slices.
+- **[UI/UX & Functioning Audit](docs/reviews/2026-10-12-ui-ux-audit.md)**: Hands-on polish pass — privacy-shield scope, functional bugs, deprecated APIs, and a prioritised fix list ahead of release.
