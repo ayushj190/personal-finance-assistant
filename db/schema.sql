@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS holdings (
   currency        TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
   closed_at       TEXT,
+  realized_pnl_minor INTEGER NOT NULL DEFAULT 0,
+  realized_proceeds_minor INTEGER NOT NULL DEFAULT 0,
   updated_at      TEXT NOT NULL,
   UNIQUE (account_id, ticker)
 );

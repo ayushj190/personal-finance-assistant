@@ -11,12 +11,15 @@ from ui.pages.dashboard import (
     _render_kpi_ribbon,
     _render_market_news_fragment,
     _render_ticker_fragment,
+    _tradingview_symbols,
     render,
 )
 
 
 class TestDashboardPage(unittest.TestCase):
     def setUp(self):
+        from streamlit.delta_generator import DeltaGenerator, context_dg_stack
+        context_dg_stack.set((DeltaGenerator(),))
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("""
@@ -30,6 +33,8 @@ class TestDashboardPage(unittest.TestCase):
         """)
 
     def tearDown(self):
+        from streamlit.delta_generator import DeltaGenerator, context_dg_stack
+        context_dg_stack.set((DeltaGenerator(),))
         self.conn.close()
 
     def test_fragments_decorated(self):
@@ -203,6 +208,7 @@ class TestDashboardPage(unittest.TestCase):
         self.assertEqual(submit_key, "dashboard_acc_42_submit_btn")
 
     @patch("ui.pages.dashboard.AccountRepository.get_all_latest_snapshots")
+    @patch("streamlit.form")
     @patch("streamlit.markdown")
     @patch("streamlit.columns")
     @patch("streamlit.container")
@@ -213,6 +219,7 @@ class TestDashboardPage(unittest.TestCase):
         mock_container,
         mock_cols,
         mock_markdown,
+        mock_form,
         mock_snapshots,
     ):
         """Verify account card markdown does not contain multi-line indentation that causes code block breakouts."""
@@ -222,6 +229,7 @@ class TestDashboardPage(unittest.TestCase):
         ]
         mock_container.return_value.__enter__.return_value = MagicMock()
         mock_popover.return_value.__enter__.return_value = MagicMock()
+        mock_form.return_value.__enter__.return_value = MagicMock()
 
         class DummyAcc:
             id = 99
@@ -331,6 +339,39 @@ class TestDashboardPage(unittest.TestCase):
 
         mock_render_sankey.assert_called_once()
         mock_render_chart.assert_called_once()
+
+    def test_tradingview_symbols_exchange_mapping_and_order(self):
+        """AC-8: Known exchange suffixes map to TradingView prefixes, dedupe on final symbol, keep order."""
+        result = _tradingview_symbols(["ASML.AS", "ASML.AS", "VUSA.L", "AAPL"])
+        expected = [
+            {"proName": "EURONEXT:ASML", "description": "ASML.AS"},
+            {"proName": "LSE:VUSA", "description": "VUSA.L"},
+            {"proName": "AAPL", "description": "AAPL"},
+        ]
+        self.assertEqual(result, expected)
+
+    def test_tradingview_symbols_filters_unknown_and_special(self):
+        """AC-8: Unknown suffixes, =, ^, and ID_ are skipped, yielding fallback if none remain."""
+        result = _tradingview_symbols(["RY.TO", "EURUSD=X", "^GSPC", "ID_123"])
+        self.assertEqual(
+            result,
+            [
+                {"proName": "SPY", "description": "S&P 500"},
+                {"proName": "QQQ", "description": "Nasdaq 100"},
+                {"proName": "FX:EURUSD", "description": "EUR / USD"},
+            ],
+        )
+
+    def test_tradingview_symbols_dedupe_collapsing_and_empty_fallback(self):
+        """AC-8: Collapsing symbols yield one entry; empty input returns fallback trio."""
+        result = _tradingview_symbols(["SAP.DE", "SAP.DE"])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["proName"], "XETR:SAP")
+        self.assertEqual(result[0]["description"], "SAP.DE")
+
+        empty_res = _tradingview_symbols([])
+        self.assertEqual(len(empty_res), 3)
+        self.assertEqual(empty_res[0]["proName"], "SPY")
 
 
 if __name__ == "__main__":

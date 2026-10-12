@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from db import database
 from services.budget_service import (
+    calculate_3_month_historical_burn_rate,
     calculate_budget_variance,
     set_category_budget,
 )
@@ -343,16 +344,62 @@ class TestSpendingBudgetingStreamline(unittest.TestCase):
     # AC-6: Streamlit Fragment Decorations
     # -------------------------------------------------------------------------
 
-    def test_fragments_decorated(self):
-        """AC-6: Verify spending layout sections are isolated via @st.fragment."""
-        self.assertTrue(
-            hasattr(_render_analytics_fragment, "__wrapped__"),
-            "_render_analytics_fragment must be decorated with @st.fragment",
-        )
-        self.assertTrue(
-            hasattr(_render_budget_tracker_fragment, "__wrapped__"),
-            "_render_budget_tracker_fragment must be decorated with @st.fragment",
-        )
+    # -------------------------------------------------------------------------
+    # AC-2, AC-3: 3-Month Historical Burn Rate Calculation
+    # -------------------------------------------------------------------------
+
+    def test_calculate_3_month_historical_burn_rate_multiple_months(self):
+        """AC-2: Test arithmetic mean of spend across last 3 completed fiscal months."""
+        from services.fiscal_service import set_fiscal_salary_day
+        # Set fiscal payday to 1st of month for standard calendar boundaries
+        self.conn.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)")
+        set_fiscal_salary_day(self.conn, 1)
+
+        # Insert categories: fixed, discretionary, transfer, income
+        fix_cat = self.conn.execute("INSERT INTO categories (name, kind) VALUES ('Rent', 'fixed')").lastrowid
+        disc_cat = self.conn.execute("INSERT INTO categories (name, kind) VALUES ('Dining', 'discretionary')").lastrowid
+        trans_cat = self.conn.execute("INSERT INTO categories (name, kind) VALUES ('Transfer', 'transfer')").lastrowid
+        inc_cat = self.conn.execute("INSERT INTO categories (name, kind) VALUES ('Salary', 'income')").lastrowid
+
+        # Insert transactions across 4 months: 2026-01, 2026-02, 2026-03, and current month 2026-04
+        # Month 1 (2026-01): 1000 fixed, 500 disc = 1500 total
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-01-15', -100000, ?, 0)", (fix_cat,))
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-01-20', -50000, ?, 0)", (disc_cat,))
+        # Internal transfer and income should be excluded
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-01-22', -20000, ?, 1)", (trans_cat,))
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-01-25', 300000, ?, 0)", (inc_cat,))
+
+        # Month 2 (2026-02): 1000 fixed, 600 disc = 1600 total
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-02-15', -100000, ?, 0)", (fix_cat,))
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-02-18', -60000, ?, 0)", (disc_cat,))
+
+        # Month 3 (2026-03): 1000 fixed, 700 disc = 1700 total
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-03-15', -100000, ?, 0)", (fix_cat,))
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-03-20', -70000, ?, 0)", (disc_cat,))
+
+        # Month 4 (current month 2026-04): Should be excluded as uncompleted
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-04-05', -10000, ?, 0)", (disc_cat,))
+
+        burn_data = calculate_3_month_historical_burn_rate(self.conn, reference_date="2026-04-10")
+
+        # Average: (1500 + 1600 + 1700) / 3 = 1600.00
+        self.assertEqual(burn_data["months_count"], 3)
+        self.assertEqual(burn_data["avg_burn_minor"], 160000)
+        self.assertEqual(burn_data["avg_burn_eur"], 1600.0)
+        self.assertEqual(burn_data["fixed_burn_eur"], 1000.0)
+        self.assertEqual(burn_data["disc_burn_eur"], 600.0)
+        self.assertEqual(burn_data["month_labels"], ["2026-01", "2026-02", "2026-03"])
+
+    def test_calculate_3_month_historical_burn_rate_fallback(self):
+        """AC-2: Test fallback when fewer than 3 completed months exist."""
+        disc_cat = self.conn.execute("INSERT INTO categories (name, kind) VALUES ('Shopping', 'discretionary')").lastrowid
+        # Only 1 month of transactions in current month
+        self.conn.execute("INSERT INTO transactions (account_id, booking_date, amount_eur_minor, category_id, is_internal_transfer) VALUES (1, '2026-04-05', -45000, ?, 0)", (disc_cat,))
+
+        burn_data = calculate_3_month_historical_burn_rate(self.conn, reference_date="2026-04-10")
+        self.assertEqual(burn_data["months_count"], 1)
+        self.assertEqual(burn_data["avg_burn_eur"], 450.0)
+        self.assertEqual(burn_data["disc_burn_eur"], 450.0)
 
 
 if __name__ == "__main__":

@@ -180,6 +180,120 @@ def calculate_budget_variance(
     }
 
 
+def calculate_3_month_historical_burn_rate(
+    conn: sqlite3.Connection,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Calculate average monthly burn rate across the past 3 completed fiscal months.
+
+    Computes arithmetic mean of total, fixed, and discretionary spend using integer cents.
+    Falls back gracefully to all available completed months when fewer than 3 exist.
+    Excludes internal transfers and non-expense categories (income, savings, transfer).
+    """
+    from services.fiscal_service import get_fiscal_salary_day, get_fiscal_month_for_date, get_fiscal_month_range
+
+    salary_day = get_fiscal_salary_day(conn)
+    today_iso = reference_date or date.today().isoformat()
+    current_fiscal_month = get_fiscal_month_for_date(today_iso, salary_day)
+
+    # Fetch all expense transactions excluding internal transfers and non-expense kinds
+    rows = conn.execute(
+        """
+        SELECT t.booking_date, t.amount_eur_minor, c.kind as category_kind
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.is_internal_transfer = 0
+          AND t.amount_eur_minor < 0
+          AND (c.kind IS NULL OR c.kind NOT IN ('savings', 'transfer', 'income'))
+        ORDER BY t.booking_date DESC
+        """
+    ).fetchall()
+
+    if not rows:
+        return {
+            "avg_burn_minor": 0,
+            "avg_burn_eur": 0.0,
+            "fixed_burn_eur": 0.0,
+            "disc_burn_eur": 0.0,
+            "uncat_burn_eur": 0.0,
+            "months_count": 0,
+            "month_labels": [],
+        }
+
+    # Group by completed fiscal months strictly prior to current fiscal month
+    month_totals: dict[str, dict[str, int]] = {}
+    for r in rows:
+        b_date = str(r["booking_date"])
+        fm = get_fiscal_month_for_date(b_date, salary_day)
+        # Only take completed fiscal months
+        if fm >= current_fiscal_month:
+            continue
+        if fm not in month_totals:
+            month_totals[fm] = {"tot_minor": 0, "fix_minor": 0, "disc_minor": 0, "uncat_minor": 0}
+
+        amt_minor = abs(int(r["amount_eur_minor"]))
+        cat_kind = r["category_kind"]
+
+        month_totals[fm]["tot_minor"] += amt_minor
+        if cat_kind == "fixed":
+            month_totals[fm]["fix_minor"] += amt_minor
+        elif cat_kind == "discretionary":
+            month_totals[fm]["disc_minor"] += amt_minor
+        else:
+            month_totals[fm]["uncat_minor"] += amt_minor
+
+    # If no prior completed months exist, fall back to current fiscal month
+    if not month_totals:
+        for r in rows:
+            b_date = str(r["booking_date"])
+            fm = get_fiscal_month_for_date(b_date, salary_day)
+            if fm not in month_totals:
+                month_totals[fm] = {"tot_minor": 0, "fix_minor": 0, "disc_minor": 0, "uncat_minor": 0}
+            amt_minor = abs(int(r["amount_eur_minor"]))
+            cat_kind = r["category_kind"]
+            month_totals[fm]["tot_minor"] += amt_minor
+            if cat_kind == "fixed":
+                month_totals[fm]["fix_minor"] += amt_minor
+            elif cat_kind == "discretionary":
+                month_totals[fm]["disc_minor"] += amt_minor
+            else:
+                month_totals[fm]["uncat_minor"] += amt_minor
+
+    # Take up to last 3 available months in reverse chronological order
+    sorted_months = sorted(month_totals.keys(), reverse=True)[:3]
+    count = len(sorted_months)
+    if count == 0:
+        return {
+            "avg_burn_minor": 0,
+            "avg_burn_eur": 0.0,
+            "fixed_burn_eur": 0.0,
+            "disc_burn_eur": 0.0,
+            "uncat_burn_eur": 0.0,
+            "months_count": 0,
+            "month_labels": [],
+        }
+
+    sum_tot = sum(month_totals[m]["tot_minor"] for m in sorted_months)
+    sum_fix = sum(month_totals[m]["fix_minor"] for m in sorted_months)
+    sum_disc = sum(month_totals[m]["disc_minor"] for m in sorted_months)
+    sum_uncat = sum(month_totals[m]["uncat_minor"] for m in sorted_months)
+
+    avg_burn_minor = int(round(sum_tot / count))
+    fixed_burn_minor = int(round(sum_fix / count))
+    disc_burn_minor = int(round(sum_disc / count))
+    uncat_burn_minor = avg_burn_minor - fixed_burn_minor - disc_burn_minor
+
+    return {
+        "avg_burn_minor": avg_burn_minor,
+        "avg_burn_eur": round(avg_burn_minor / 100.0, 2),
+        "fixed_burn_eur": round(fixed_burn_minor / 100.0, 2),
+        "disc_burn_eur": round(disc_burn_minor / 100.0, 2),
+        "uncat_burn_eur": round(uncat_burn_minor / 100.0, 2),
+        "months_count": count,
+        "month_labels": sorted(sorted_months),
+    }
+
+
 def calculate_12_month_runway_forecast(
     liquid_cash: float,
     projected_monthly_income: float,
@@ -205,3 +319,4 @@ def calculate_12_month_runway_forecast(
         })
 
     return forecast
+

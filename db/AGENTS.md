@@ -27,7 +27,7 @@ The database layer manages SQLite persistence for the personal finance assistant
 
 ## Gotchas
 
-- SQLite connections must not be shared across threads; background jobs must instantiate their own connection.
+- SQLite connections are initialized with check_same_thread=False for Streamlit dialog thread compatibility; background jobs must still instantiate their own connection.
 - `database.migrate()` runs during application startup; ensure all schema mutations remain safe to execute repeatedly without duplicating rows or columns.
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._

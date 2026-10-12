@@ -7,7 +7,11 @@ import streamlit as st
 from config import DB_PATH
 from db import database
 from services.analytics import calculate_current_net_worth, detect_recurring_charges
-from services.budget_service import calculate_12_month_runway_forecast, calculate_budget_variance
+from services.budget_service import (
+    calculate_12_month_runway_forecast,
+    calculate_3_month_historical_burn_rate,
+    calculate_budget_variance,
+)
 from services.fiscal_service import (
     format_fiscal_month_label,
     get_fiscal_month_for_date,
@@ -342,7 +346,7 @@ def _render_budget_tracker_fragment(
                 )
             st.dataframe(disp_b, use_container_width=True, hide_index=True)
 
-        # 12-Month Runway Projection Chart
+        # 12-Month Runway Projection Chart (AC-3: Baseline uses 3-month historical burn rate)
         st.markdown("#### 📈 12-Month Financial Trajectory Projection")
         nw_data = calculate_current_net_worth(conn)
         liq_cash = nw_data["liquid_cash"]
@@ -361,7 +365,12 @@ def _render_budget_tracker_fragment(
         ).fetchone()
         avg_income = float(inc_row["avg_inc"] or 0.0) if inc_row else 0.0
 
-        cur_burn = float(monthly_df["total_spent"].iloc[0]) if not monthly_df.empty else 0.0
+        # Calculate 3-month historical burn rate for stabilized trajectory
+        burn_3m_data = calculate_3_month_historical_burn_rate(conn)
+        cur_burn = float(burn_3m_data["avg_burn_eur"])
+        if cur_burn <= 0 and not monthly_df.empty:
+            cur_burn = float(monthly_df["total_spent"].iloc[0])
+
         bud_burn = float(b_data["total_budget_eur"]) if b_data["total_budget_eur"] > 0 else cur_burn
 
         forecast_data = calculate_12_month_runway_forecast(
@@ -372,6 +381,39 @@ def _render_budget_tracker_fragment(
             horizon_months=12,
         )
 
+        # Cash Runway KPI badge calculation (AC-3)
+        net_burn = cur_burn - avg_income
+        if net_burn <= 0:
+            runway_str = "Sustainable (Net Positive)"
+            runway_sub = f"+€{abs(net_burn):,.2f}/mo net cashflow"
+        else:
+            runway_months = liq_cash / net_burn if net_burn > 0 else float("inf")
+            if runway_months >= 120:
+                runway_str = "> 10 Years"
+            else:
+                runway_str = f"{runway_months:.1f} Months"
+            runway_sub = f"€{net_burn:,.2f}/mo net deficit"
+
+        k_col1, k_col2, k_col3 = st.columns(3)
+        with k_col1:
+            kpi_card(
+                "3-Month Avg Burn",
+                f"€{cur_burn:,.2f}",
+                subtext=f"Fixed €{burn_3m_data.get('fixed_burn_eur', 0):,.2f} | Disc €{burn_3m_data.get('disc_burn_eur', 0):,.2f}",
+            )
+        with k_col2:
+            kpi_card(
+                "Projected Income",
+                f"€{avg_income:,.2f}",
+                subtext="6-mo avg net income",
+            )
+        with k_col3:
+            kpi_card(
+                "Cash Runway",
+                runway_str,
+                subtext=runway_sub,
+            )
+
         if forecast_data:
             f_df = pd.DataFrame(forecast_data)
             f_fig = go.Figure()
@@ -380,7 +422,7 @@ def _render_budget_tracker_fragment(
                     x=f_df["month_label"],
                     y=f_df["current_spend_balance_eur"],
                     mode="lines+markers",
-                    name="Current Burn Trajectory",
+                    name="3-Mo Historical Burn Trajectory",
                     line=dict(color="#FB7185", width=2.5),
                 )
             )
@@ -394,7 +436,7 @@ def _render_budget_tracker_fragment(
                 )
             )
             f_fig.update_layout(
-                title="12-Month Cash Buffer Trajectory (Current vs Target Budget)",
+                title="12-Month Cash Buffer Trajectory (3-Mo Burn vs Target Budget)",
                 xaxis=dict(title="Timeline", automargin=True),
                 yaxis=dict(title="Projected Cash Balance (€)", tickprefix="€", tickformat="~s", automargin=True),
                 margin=dict(t=35, l=55, r=20, b=25),
@@ -629,7 +671,11 @@ def _render_monthly_trend(monthly_df: pd.DataFrame) -> None:
 
 
 def render():
-    filters = render_filters()
+    col_filt, col_scope, col_budgets, col_mortgage = st.columns(
+        [1.2, 2.2, 1.3, 1.3], vertical_alignment="bottom"
+    )
+    with col_filt:
+        filters = render_filters()
 
     conn = database.connect(DB_PATH)
     salary_day = get_fiscal_salary_day(conn)
@@ -647,21 +693,28 @@ def render():
     months = monthly_df["month"].tolist() if not monthly_df.empty else []
     month_options = months + ["All Months (Monthly Average)"]
 
-    col_sel, col_salary_info = st.columns([2, 3])
-    with col_sel:
+    fiscal_tooltip = (
+        f"Fiscal cycle runs from Day {salary_day} to Day {salary_day - 1}. Change payday in Settings."
+        if salary_day > 1
+        else "Fiscal cycle aligns with standard calendar months (Day 1 to month end)."
+    )
+
+    with col_scope:
         selected_scope = st.selectbox(
             "View Scope",
             options=month_options,
             index=0,
+            help=fiscal_tooltip,
             format_func=lambda m: format_fiscal_month_label(m, salary_day)
             if m != "All Months (Monthly Average)"
             else m,
         )
-    with col_salary_info:
-        if salary_day > 1:
-            st.caption(
-                f"🗓️ Fiscal cycle runs Day {salary_day} to Day {salary_day - 1}. Change payday in **Settings**."
-            )
+    with col_budgets:
+        if st.button("✏️ Set Budgets", use_container_width=True, key="btn_open_budget_dialog"):
+            set_category_budget_dialog()
+    with col_mortgage:
+        if st.button("🏠 Link Mortgage", use_container_width=True, key="btn_open_mortgage_dialog"):
+            assign_mortgage_dialog()
 
     # Calculate exact scope KPIs
     if selected_scope == "All Months (Monthly Average)":
@@ -693,15 +746,6 @@ def render():
 
     # AC-1: Top 4 KPI Ribbon
     _render_kpi_ribbon(total_spent, fixed_spent, disc_spent, uncat_spent, header_title)
-
-    # AC-4, AC-5: Action Header Bar for Dialog Modals
-    col_act1, col_act2, _ = st.columns([1, 1, 3])
-    with col_act1:
-        if st.button("✏️ Set Budgets", use_container_width=True, key="btn_open_budget_dialog"):
-            set_category_budget_dialog()
-    with col_act2:
-        if st.button("🏠 Link Mortgage", use_container_width=True, key="btn_open_mortgage_dialog"):
-            assign_mortgage_dialog()
 
     # AC-6: Analytics Section inside isolated Streamlit fragment
     _render_analytics_fragment(display_df, selected_scope, conn)

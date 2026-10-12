@@ -3,23 +3,24 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
+from ui.components import format_money, is_hidden
+from ui.dialogs import confirm_delete_transactions_dialog
 from ui.filters import build_where_clause, render_filters
 
 
 def render():
-    filters = render_filters()
+    col_filt, col_uncat, col_search = st.columns([1, 1.4, 2.6], vertical_alignment="bottom")
+    with col_filt:
+        filters = render_filters()
+    with col_uncat:
+        only_uncategorized = st.checkbox(
+            "Review Uncategorized Only", value=False)
+    with col_search:
+        search_query = st.text_input(
+            "Search merchant or description", placeholder="Filter by text...", label_visibility="collapsed")
 
     conn = database.connect(DB_PATH)
     where_sql, params = build_where_clause(filters, table_alias="t")
-
-    # Filter toggles
-    c_f1, c_f2 = st.columns([1, 2])
-    with c_f1:
-        only_uncategorized = st.checkbox(
-            "Review Uncategorized Only", value=False)
-    with c_f2:
-        search_query = st.text_input(
-            "Search merchant or description", placeholder="Filter by text...")
 
     extra_clauses = []
     if only_uncategorized:
@@ -56,15 +57,26 @@ def render():
     cat_names = [r["name"] for r in cat_rows]
     cat_name_to_id = {r["name"]: r["id"] for r in cat_rows}
 
-    st.markdown(
-        f"**Showing {len(df)} transactions** (editing category updates rules for merchant)")
-
-    # Data Editor with Privacy Mode support
-    from ui.components import format_money, is_hidden
+    col_count, col_sel_all, col_clear_all = st.columns([4, 1.2, 1.2], vertical_alignment="center")
+    with col_count:
+        st.markdown(
+            f"**Showing {len(df)} transactions** (editing category updates rules for merchant)"
+        )
+    with col_sel_all:
+        if st.button("Select All", key="tx_select_all_btn", use_container_width=True):
+            st.session_state["tx_select_all_flag"] = True
+            st.session_state["tx_editor_version"] = st.session_state.get("tx_editor_version", 0) + 1
+            st.rerun()
+    with col_clear_all:
+        if st.button("Clear All", key="tx_clear_all_btn", use_container_width=True):
+            st.session_state["tx_select_all_flag"] = False
+            st.session_state["tx_editor_version"] = st.session_state.get("tx_editor_version", 0) + 1
+            st.rerun()
 
     df_display = df.copy()
     if not df_display.empty:
-        df_display.insert(0, "select", False)
+        default_select = st.session_state.get("tx_select_all_flag", False)
+        df_display.insert(0, "select", default_select)
 
     if is_hidden():
         df_display["amount_eur"] = df_display["amount_eur"].map(
@@ -76,52 +88,84 @@ def render():
         amount_col_cfg = st.column_config.NumberColumn(
             "Amount (€)", format="€%.2f", disabled=True)
 
+    editor_key = f"tx_editor_{st.session_state.get('tx_editor_version', 0)}"
     edited_df = st.data_editor(
         df_display,
         column_config={
-            "select": st.column_config.CheckboxColumn("Select", help="Check to select transaction to delete", default=False),
+            "select": st.column_config.CheckboxColumn("Select", help="Check to select transactions for bulk actions", default=False),
             "id": None,
             "booking_date": st.column_config.DateColumn("Transaction Date"),
             "account": st.column_config.TextColumn("Account / Card", disabled=True),
             "amount_eur": amount_col_cfg,
             "merchant": st.column_config.TextColumn("Merchant / Payee", width="medium", disabled=True),
             "category": st.column_config.SelectboxColumn("Category", options=cat_names, required=True),
-            "is_internal_transfer": st.column_config.CheckboxColumn("Internal Transfer"),
+            "is_internal_transfer": None,
         },
         disabled=["id", "booking_date", "account", "amount_eur", "merchant"],
         use_container_width=True,
         hide_index=True,
-        key="tx_editor",
+        key=editor_key,
     )
 
-    # Check for selected rows to delete
+    # Check for selected rows
     selected_ids = []
     if not edited_df.empty and "select" in edited_df.columns:
         selected_mask = edited_df["select"] == True
         if selected_mask.any():
             selected_ids = [int(i) for i in edited_df.loc[selected_mask, "id"].tolist()]
 
-    col_save, col_del, _ = st.columns([1, 1, 2])
-    with col_save:
-        save_pressed = st.button("Save Changes", type="primary")
-    with col_del:
-        if selected_ids:
-            delete_pressed = st.button(
-                f"🗑️ Delete Selected ({len(selected_ids)})",
-                type="secondary",
-                help="Delete checked transactions from database"
+    # Persistent bottom action bar when rows are selected
+    if selected_ids:
+        st.markdown("---")
+        st.markdown(f"#### ⚡ Batch Actions ({len(selected_ids)} selected)")
+        col_tf1, col_tf2, col_cat_picker, col_cat_rule, col_cat_btn, col_del = st.columns(
+            [1.3, 1.3, 2.2, 1.8, 1.0, 1.4], vertical_alignment="bottom"
+        )
+        with col_tf1:
+            if st.button("🔄 Mark Transfer", use_container_width=True, help="Mark selected rows as internal transfers and assign Transfer category"):
+                count = database.set_transactions_internal_transfer(conn, selected_ids, is_transfer=True)
+                st.success(f"Marked {count} transaction(s) as internal transfers.")
+                st.rerun()
+        with col_tf2:
+            if st.button("↩️ Unmark Transfer", use_container_width=True, help="Revert selected rows internal transfer flag to 0"):
+                count = database.set_transactions_internal_transfer(conn, selected_ids, is_transfer=False)
+                st.success(f"Unmarked {count} transaction(s) from internal transfers.")
+                st.rerun()
+        with col_cat_picker:
+            selected_category = st.selectbox(
+                "Bulk Category",
+                options=cat_names,
+                label_visibility="collapsed",
+                placeholder="Choose category...",
+                key="bulk_cat_select",
             )
-        else:
-            delete_pressed = False
+        with col_cat_rule:
+            upsert_rules = st.checkbox("Update rules", value=True, help="Upsert merchant category rules for future imports", key="bulk_cat_rules")
+        with col_cat_btn:
+            if st.button("Apply", type="primary", use_container_width=True, key="bulk_cat_apply"):
+                if selected_category and selected_category in cat_name_to_id:
+                    target_cat_id = cat_name_to_id[selected_category]
+                    count = database.bulk_categorize_transactions(
+                        conn,
+                        selected_ids,
+                        target_cat_id,
+                        source="user",
+                        update_rules=upsert_rules,
+                    )
+                    st.success(f"Updated category for {count} transaction(s).")
+                    st.rerun()
+        with col_del:
+            if st.button(f"🗑️ Delete ({len(selected_ids)})", type="secondary", use_container_width=True, key="bulk_del_btn"):
+                confirm_delete_transactions_dialog(selected_ids)
+    else:
+        st.caption("💡 Select rows using checkboxes to mark internal transfers, bulk categorize, or delete.")
 
-    if delete_pressed and selected_ids:
-        deleted_count = database.delete_transactions(conn, selected_ids)
-        st.success(f"Successfully deleted {deleted_count} transaction(s)!")
-        st.rerun()
+    col_save, _ = st.columns([1.5, 4.5])
+    with col_save:
+        save_pressed = st.button("Save Inline Edits", type="secondary", key="btn_save_tx_inline")
 
     # Check for edits
     if save_pressed:
-        # Compare original df with edited_df
         updated_rules = 0
         for idx, row in edited_df.iterrows():
             orig_cat = df.loc[idx, "category"]
@@ -148,3 +192,4 @@ def render():
             st.rerun()
 
     conn.close()
+

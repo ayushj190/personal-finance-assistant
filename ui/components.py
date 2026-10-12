@@ -6,6 +6,21 @@ def is_hidden() -> bool:
     return bool(st.session_state.get("hide_amounts", False))
 
 
+def _on_privacy_toggle() -> None:
+    st.session_state["hide_amounts"] = bool(
+        st.session_state.get("global_privacy_toggle", False)
+    )
+
+
+def render_privacy_toggle() -> None:
+    st.toggle(
+        "Hide values",
+        key="global_privacy_toggle",
+        on_change=_on_privacy_toggle,
+    )
+
+
+
 def format_money(val: float | int | None, symbol: str = "€", decimals: int = 2) -> str:
     if is_hidden():
         return f"{symbol}****"

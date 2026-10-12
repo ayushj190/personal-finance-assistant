@@ -110,13 +110,12 @@ def render():
                 conn.execute("UPDATE tax_profile SET gross_annual_income = ? WHERE id = 1", (default_gross,))
         profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
 
-    st.markdown("## 💶 Tax Analysis (NL)")
-    st.markdown("Estimate your Dutch income tax (Box 1) and wealth tax (Box 3) based on your tracked assets and salary.")
-
     # 1. Tax Profile Settings
     from ui.dialogs import tax_profile_dialog
-    if st.button("⚙️ Edit Tax Profile", type="primary" if profile["gross_annual_income"] == 0 else "secondary"):
-        tax_profile_dialog()
+    col_space, col_btn = st.columns([0.75, 0.25], vertical_alignment="bottom")
+    with col_btn:
+        if st.button("⚙️ Edit Tax Profile", type="primary" if profile["gross_annual_income"] == 0 else "secondary", use_container_width=True):
+            tax_profile_dialog()
 
     current_income = float(profile["gross_annual_income"])
     has_partner = bool(profile["has_fiscal_partner"])

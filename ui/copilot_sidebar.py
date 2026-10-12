@@ -11,13 +11,10 @@ def render_copilot_sidebar() -> None:
 
     is_busy = "copilot_active_task" in st.session_state
 
-    # Sticky sidebar header: title, actions, and file import
+    # Sticky sidebar header: brand row, actions, and file import
     header_container = st.container(key="sticky_sidebar_header")
     with header_container:
-        st.markdown(
-            "<h1 style='margin-top: 0.0rem; margin-bottom: 0.5rem;'>Personal Finance Assistant</h1>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**:material/savings: Finance Assistant**")
 
         col_acts, col_files = st.columns(2)
         with col_acts:

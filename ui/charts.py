@@ -51,6 +51,8 @@ SECTOR_COLORS = {
     "Other": "#94A3B8",
 }
 
+SECTOR_RGBA_COLORS = {k: hex_to_rgba(v, 0.65) for k, v in SECTOR_COLORS.items()}
+
 
 def build_net_worth_area_chart(df: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
@@ -819,55 +821,33 @@ def render_cash_flow_sankey(
         return
 
     fig = build_cash_flow_sankey(sankey_data, drilldown_flow=current_drill, height=height)
+    render_chart(
+        fig,
+        use_container_width=True,
+        key=f"{key_prefix}_chart_widget",
+    )
 
-    # Render diagram with direct click-to-drilldown (no separate buttons)
+
+@st.dialog("Expenses — Fullscreen Flow", width="large")
+def open_sankey_fullscreen_dialog(
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Open full screen modal dialog displaying the high-resolution cash flow Sankey diagram."""
+    from config import DB_PATH
+    from db import database
+
+    dlg_conn = database.connect(DB_PATH)
     try:
-        from ui.sankey_component.component import render_interactive_sankey
-
-        click_event = render_interactive_sankey(
-            fig,
-            drilldown=current_drill,
-            key=f"{key_prefix}_interactive_widget",
+        render_cash_flow_sankey(
+            dlg_conn,
+            key_prefix="fullscreen_sankey",
+            start_date=start_date,
+            end_date=end_date,
+            height=620,
         )
-        if click_event and isinstance(click_event, dict) and "clicked" in click_event:
-            ts = click_event.get("ts")
-            if ts and ts != st.session_state.get(last_ts_key):
-                st.session_state[last_ts_key] = ts
-                clicked = str(click_event["clicked"]).strip()
-                target_drill = current_drill
-
-                if clicked == "RESET":
-                    target_drill = "Full Flow"
-                elif current_drill != "Full Flow" and (
-                    clicked == current_drill
-                    or (current_drill == "Net Income" and clicked == "Net Income")
-                    or (current_drill == "Fixed Expenses" and clicked == "Fixed Expenses")
-                    or (current_drill == "Discretionary" and clicked == "Discretionary")
-                    or (current_drill == "Savings" and clicked == "Savings & Investments")
-                    or (current_drill == "Taxes & Net" and clicked in ("Gross Salary", "Taxes (Box 1)"))
-                ):
-                    # Clicking the active root node in a drilled-down view toggles back to Full Flow
-                    target_drill = "Full Flow"
-                elif clicked == "Net Income":
-                    target_drill = "Net Income"
-                elif clicked == "Fixed Expenses" or clicked in sankey_data.get("fixed_cats", {}):
-                    target_drill = "Fixed Expenses"
-                elif clicked == "Discretionary" or clicked in sankey_data.get("disc_cats", {}):
-                    target_drill = "Discretionary"
-                elif clicked in ("Savings & Investments", "Emergency & Reserves", "Portfolio Wealth", "Savings"):
-                    target_drill = "Savings"
-                elif clicked in ("Gross Salary", "Taxes (Box 1)", "Taxes & Net"):
-                    target_drill = "Taxes & Net"
-
-                if target_drill != current_drill:
-                    st.session_state[drill_key] = target_drill
-                    st.rerun(scope="fragment")
-    except Exception:
-        render_chart(
-            fig,
-            use_container_width=True,
-            key=f"{key_prefix}_chart_widget",
-        )
+    finally:
+        dlg_conn.close()
 
 
 def build_investments_market_carpet(
@@ -902,15 +882,18 @@ def build_investments_market_carpet(
         path=["sector", "display_label"],
         values="value_eur",
         color="sector",
-        color_discrete_map=SECTOR_COLORS,
+        color_discrete_map=SECTOR_RGBA_COLORS,
     )
 
+    marker_line = dict(width=2, color="rgba(255, 255, 255, 0.22)")
     if is_hidden():
         fig.update_traces(
             textinfo="label",
             texttemplate="<b>%{label}</b><br>€****",
             hovertemplate="Censored<extra></extra>",
-            marker=dict(line=dict(width=1.5, color="#0F172A")),
+            marker=dict(line=marker_line, pad=dict(t=4, l=4, r=4, b=4)),
+            tiling=dict(pad=6, packing="squarify"),
+            opacity=0.85,
         )
     else:
         fig.update_traces(
@@ -922,14 +905,19 @@ def build_investments_market_carpet(
                 "Value: €%{value:,.2f}<br>"
                 "Weight: %{percentRoot:.1%}<extra></extra>"
             ),
-            marker=dict(line=dict(width=1.5, color="#0F172A")),
+            marker=dict(line=marker_line, pad=dict(t=4, l=4, r=4, b=4)),
+            tiling=dict(pad=6, packing="squarify"),
+            opacity=0.85,
         )
 
     fig.update_layout(
         height=height,
         margin=dict(t=25, l=10, r=10, b=15),
         showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     mask_chart_if_hidden(fig)
     return fig
+
 

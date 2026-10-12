@@ -73,6 +73,10 @@ class TestCopilotSidebar(unittest.TestCase):
         self.assertIn("box-sizing: border-box", content)
         self.assertIn("flex-shrink: 0", content)
         self.assertIn(".st-key-copilot_chat_history::-webkit-scrollbar-thumb", content)
+        self.assertIn("overscroll-behavior: contain", content)
+        self.assertIn("-webkit-overflow-scrolling: touch", content)
+        self.assertIn("margin-top: auto", content)
+        self.assertIn("100dvh", content)
 
     def test_copilot_sidebar_multiple_messages(self):
         """Verify that the sidebar renders with multiple messages without crashing."""

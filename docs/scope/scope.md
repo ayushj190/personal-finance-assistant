@@ -22,6 +22,14 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 4 | Investments & Holdings Simplification | Slice 3 | done |
 | 5 | Copilot Calming & Tool Hardening | Slice 4 | done |
 | 6 | Dutch Financial Law Vector Vault | Slice 5 | done |
+| 7 | Navigation Elevation & Compact Layout Foundation | Slice 6 | done |
+| 8 | Dashboard Hardening & Exposure Visuals | Slice 7 | done |
+| 9 | Copilot Layout Scroll & Calculation Single Source of Truth | Slice 8 | done |
+| 10 | Spending Flow & Historical Burn Trajectory | Slice 9 | done |
+| 11 | Transactions Select Action Workflow | Slice 10 | done |
+| 12 | Investment Exposure Dimensions, TradingView Panel & Realized P&L | Slice 11 | in-progress |
+| 13 | Multi Bank Manual Accounts & Hybrid Statement Ingestion | Slice 12 | in-progress |
+| 14 | System Cleanup, Architecture Hardening & Regression Suite | Slice 13 | planned |
 
 ## Brownfield context
 
@@ -131,6 +139,126 @@ spec [0005](../specs/0005-dutch-financial-law-vector-vault/index.md) · code in 
   - [x] Interactive law explorer UI and copilot citation chip components (satisfies AC-6)
 - [x] Verify it: /check verify dutch financial law vector vault
 - [x] Test it: /test dutch financial law vector vault
+
+## Slice 6: Navigation Elevation & Compact Layout Foundation
+
+### 7. Navigation Elevation & Compact Layout Foundation · done
+Eliminate excess top whitespace above the title, enlarge tab icons and labels with sticky highlighting, anchor the hide toggle to the right, position the ticker snugly below tabs with distinct assets, and pack page controls side by side.
+**Done when:** sidebar title hugs the top with no dead whitespace, tab bar shows enlarged flowing thematic icons with active page highlighting and a right anchored hide values toggle, ticker displays distinct assets below the tabs, and compact side by side controls increase usable height across all screens.
+spec [0008](../specs/0008-navigation-elevation-compact-layout/index.md)
+- [x] Design it (spec): `/architect navigation elevation & compact layout foundation`
+- [x] Build it: /develop navigation elevation & compact layout foundation
+  - [x] Native top navigation with Material icons and active pill styling (satisfies AC-4, AC-5, AC-6)
+  - [x] Sidebar brand row with privacy toggle and non collapsible sidebar (satisfies AC-1, AC-2, AC-3)
+  - [x] Ticker exchange mapping, dedupe, and flush placement (satisfies AC-7, AC-8)
+  - [x] Global density pass and per page compact control rows (satisfies AC-9)
+  - [x] Ticker unit tests and all pages AppTest smoke (satisfies AC-2, AC-8, AC-10)
+  code in `app.py`, `ui/theme/common.css`, `ui/components.py`, `ui/copilot_sidebar.py`, `ui/pages/`
+- [x] Verify it: /check verify navigation elevation & compact layout foundation
+- [x] Test it: /test navigation elevation & compact layout foundation
+
+## Slice 7: Dashboard Hardening & Exposure Visuals
+
+### 8. Dashboard Hardening & Exposure Visuals · done
+Fix SQLite cross thread exceptions in dialogs, replace the fragile interactive flow Sankey with standard fullscreen inside an Expenses panel, style Marketcarpet with rounded corners and translucent glassmorphic tiles inside a Portfolio exposure panel, and accent account panels in alphabetical order.
+**Done when:** category budget dialog opens without thread crashes, Expenses panel hosts the Sankey with clean native fullscreen, Portfolio exposure panel renders Marketcarpet with rounded glassmorphic tiles, and bank plus investment accounts show accent styling ordered alphabetically.
+spec [0010](../specs/0010-dashboard-hardening-exposure-visuals/index.md) · code in ui/pages/dashboard.py, ui/charts.py, ui/dialogs.py
+- [x] Design it (spec): `/architect dashboard hardening & exposure visuals`
+- [x] Build it: /develop dashboard hardening & exposure visuals
+  - [x] Add check_same_thread=False and isolate modal dialog connection lifecycles (satisfies AC-1, AC-2)
+  - [x] Centralize pure Plotly Sankey with fullscreen expand modal and retire iframe component (satisfies AC-3, AC-4)
+  - [x] Style Market Carpet treemap with rounded glassmorphic tiles and RGBA palette (satisfies AC-5)
+  - [x] Group and sort accounts alphabetically by asset class with semantic accents (satisfies AC-6)
+  - [x] Unit tests for multi thread safety, shared Sankey, and account sorting (satisfies AC-1, AC-2, AC-3, AC-5, AC-6)
+- [x] Verify it: /check verify dashboard hardening & exposure visuals
+- [x] Test it: /test dashboard hardening & exposure visuals
+
+## Slice 8: Copilot Layout Scroll & Calculation Single Source of Truth
+
+### 9. Copilot Layout Scroll & Calculation Single Source of Truth · done
+Constrain copilot chat flex containers to restore smooth vertical scrolling for lengthy responses, and unify portfolio calculations into a single source of truth so the assistant quotes verified ledger balances and percentages instead of unscaled cents or hallucinated metrics.
+**Done when:** copilot chat pane stays within the sidebar boundary and scrolls smoothly during long answers, and portfolio allocation queries report true holdings, euro totals, and target percentages matching the ledger.
+spec [0009](../specs/0009-copilot-layout-scroll-calculation-single-source-of-truth/index.md)
+- [x] Design it (spec): `/architect copilot layout scroll & calculation single source of truth`
+- [x] Build it: /develop copilot layout scroll & calculation single source of truth
+  - [x] Enforce sidebar flexbox boundaries and independent chat scrolling (satisfies AC-1, AC-2)
+  - [x] Integrate consolidated holdings engine and profile drift into analyze_investments (satisfies AC-3, AC-5)
+  - [x] Add currency scaling integrity and empty state guidance (satisfies AC-4, AC-6)
+  - [x] Regression suite for portfolio calculations and Copilot tool output (satisfies AC-3, AC-4, AC-5)
+code in agent/tools.py, ui/theme/common.css
+- [x] Verify it: /check verify copilot layout scroll & calculation single source of truth
+- [x] Test it: /test copilot layout scroll & calculation single source of truth
+
+## Slice 9: Spending Flow & Historical Burn Trajectory
+
+### 10. Spending Flow & Historical Burn Trajectory · done
+Declutter spending controls by removing redundant filter and transfer buttons, nest fiscal cycle dates into a scope tooltip, and compute burn and budget trajectories from the past three months of real ledger entries.
+**Done when:** spending header displays view scope with fiscal cycle tooltip, redundant filter buttons are removed, and the trajectory chart projects spending based on the actual burn rate of the past three months.
+spec [0011](../specs/0011-spending-burn-trajectory-transactions-workflow/index.md)
+- [x] Design it (spec): `/architect spending flow & historical burn trajectory`
+- [x] Build it: /develop spending flow & historical burn trajectory
+  - [x] Calculate 3-month historical burn rate in budget service (satisfies AC-2)
+  - [x] Compact spending toolbar with fiscal cycle tooltip (satisfies AC-1)
+  - [x] 12-month trajectory chart with 3-month burn and runway KPI badge (satisfies AC-3)
+  code in `services/budget_service.py` and `ui/pages/spending.py`
+- [x] Verify it: /check verify spending flow & historical burn trajectory
+- [x] Test it: /test spending flow & historical burn trajectory
+
+## Slice 10: Transactions Select Action Workflow
+
+### 11. Transactions Select Action Workflow · done
+Modernize transaction management by replacing inline transfer checkbox columns with standard row selection checkboxes on the left, paired with a bottom action bar to mark selected items as internal transfers alongside deletion.
+**Done when:** transaction table removes inline transfer checkboxes, left row selection checkboxes drive bulk actions, and a bottom action button marks selected rows as internal transfers.
+spec [0011](../specs/0011-spending-burn-trajectory-transactions-workflow/index.md)
+- [x] Design it (spec): `/architect transactions select action workflow`
+- [x] Build it: /develop transactions select action workflow
+  - [x] Atomic transaction batch helpers in database layer (satisfies AC-5, AC-6, AC-7)
+  - [x] Row selection checkboxes with Select All and Clear All helpers (satisfies AC-4)
+  - [x] Bottom action bar with transfer toggle, bulk categorize, and delete dialog (satisfies AC-5, AC-6)
+  code in `db/database.py`, `ui/pages/transactions.py`, and `ui/dialogs.py`
+- [x] Verify it: /check verify transactions select action workflow
+- [x] Test it: /test transactions select action workflow
+
+## Slice 11: Investment Exposure Dimensions, TradingView Panel & Realized P&L
+
+### 12. Investment Exposure Dimensions, TradingView Panel & Realized P&L · in-progress
+Expand portfolio allocation beyond asset classes to sector, theme, region, currency, and commodity dimensions, embed a minimizable scrollable live TradingView watchlist of distinct holdings, report realized profit and loss from closed positions, and move market news to the page bottom.
+**Done when:** portfolio exposure charts display sector, theme, region, and currency breakdowns, a minimizable scrollable TradingView widget tracks distinct assets, realized profit and loss displays in its own panel, and market news rests at the bottom of the investments page.
+spec [0012](../specs/0012-investment-exposure-dimensions-tradingview-realized-pnl/index.md) · code in ui/pages/investments.py, db/migrations/, db/repositories/
+- [x] Design it (spec): `/architect investment exposure dimensions tradingview panel & realized p&l`
+- [x] Build it: /develop investment exposure dimensions tradingview panel & realized p&l
+  - [x] Database migration and repository queries for closed positions realized P&L (satisfies AC-4, AC-5)
+  - [x] Multi dimension exposure aggregation and interactive pill switcher (satisfies AC-1, AC-2)
+  - [x] Compact minimizable TradingView live watchlist container (satisfies AC-3)
+  - [x] Dedicated Realized P&L panel and closed positions table (satisfies AC-6)
+  - [x] Relocate cached market news fragment to investments page bottom (satisfies AC-7)
+  - [x] Automated unit test suite for exposure, realized P&L, and masking (satisfies AC-1, AC-2, AC-4, AC-5, AC-6)
+- [ ] Verify it: /check verify investment exposure dimensions tradingview panel & realized p&l
+- [ ] Test it: /test investment exposure dimensions tradingview panel & realized p&l
+
+## Slice 12: Multi Bank Manual Accounts & Hybrid Statement Ingestion
+
+### 13. Multi Bank Manual Accounts & Hybrid Statement Ingestion · in-progress
+Support manual bank account creation and balance tracking, paired with a hybrid ingestion pipeline combining deterministic table extraction and local Ollama fallback for diverse statements including Turkish and English Türkiye İş Bankası files.
+**Done when:** users can manually add bank accounts and track balances, and statement imports parse diverse PDF and CSV files (including Turkish and English İş Bankası statements) via deterministic parsers or local Ollama fallback.
+spec [0013](../specs/0013-multi-bank-manual-accounts-hybrid-statement-ingestion/index.md) · code in ui/dialogs.py, connectors/file_import/, ui/pages/import_files.py
+- [x] Design it (spec): `/architect multi bank manual accounts & hybrid statement ingestion`
+- [x] Build it: /develop multi bank manual accounts & hybrid statement ingestion
+  - [x] Implement manual account creation database helpers (satisfies AC-2)
+  - [x] Build reusable manual account dialog in Settings and Import Files (satisfies AC-1, AC-2)
+  - [x] Deterministic Türkiye İş Bankası PDF extractor supporting Turkish and English headers (satisfies AC-3)
+  - [x] Ingestion dispatch with local Ollama fallback for unrecognized formats (satisfies AC-4)
+  - [x] Account auto matching selectbox and ending balance confirmation in Import Files (satisfies AC-5, AC-7)
+  - [x] Native currency support and unit test suite for accounts and PDF ingestion (satisfies AC-1, AC-2, AC-3, AC-5, AC-6)
+- [ ] Verify it: /check verify multi bank manual accounts & hybrid statement ingestion
+- [ ] Test it: /test multi bank manual accounts & hybrid statement ingestion
+
+## Slice 13: System Cleanup, Architecture Hardening & Regression Suite
+
+### 14. System Cleanup, Architecture Hardening & Regression Suite · needs a decision
+Perform a comprehensive cleanup pass to remove dead code and orphan routines, harden single source of truth financial services, ensure error free navigation across all pages, and verify end to end test suite stability.
+**Done when:** dead code is pruned, financial calculations share a unified tested core, all pages render without warnings, and automated test suite passes completely.
+- [ ] Design it (spec): `/architect system cleanup architecture hardening & regression suite`
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.

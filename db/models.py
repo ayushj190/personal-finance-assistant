@@ -68,10 +68,20 @@ class Holding:
     cost_basis_minor: Optional[int] = None
     status: str = "active"
     closed_at: Optional[str] = None
+    realized_pnl_minor: int = 0
+    realized_proceeds_minor: int = 0
 
     @property
     def cost_basis(self) -> float:
         return (self.cost_basis_minor or 0) / 100.0
+
+    @property
+    def realized_pnl(self) -> float:
+        return self.realized_pnl_minor / 100.0
+
+    @property
+    def realized_proceeds(self) -> float:
+        return self.realized_proceeds_minor / 100.0
 
 
 @dataclass

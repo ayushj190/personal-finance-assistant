@@ -40,11 +40,6 @@ else:
         st.session_state["hide_amounts"])
 
 
-def _on_privacy_toggle() -> None:
-    st.session_state["hide_amounts"] = bool(
-        st.session_state["global_privacy_toggle"])
-
-
 # Apply styling and database migrations
 database.migrate()
 theme.register_plotly_theme()
@@ -104,39 +99,42 @@ if stale_accounts and "stale_notified" not in st.session_state:
     st.session_state["stale_notified"] = True
 
 # Navigation definition: all 7 pages with Settings as the last tab
+settings_page = st.Page(
+    settings.render,
+    title="Settings",
+    icon=":material/settings:",
+    url_path="settings",
+    visibility="hidden",
+)
 pages = [
     st.Page(dashboard.render, title="Dashboard",
-            icon="📊", url_path="dashboard", default=True),
-    st.Page(spending.render, title="Spending", icon="🛒", url_path="spending"),
+            icon=":material/space_dashboard:", url_path="dashboard", default=True),
+    st.Page(spending.render, title="Spending",
+            icon=":material/shopping_cart:", url_path="spending"),
     st.Page(investments.render, title="Investments",
-            icon="📈", url_path="investments"),
-    st.Page(mortgage.render, title="Mortgage", icon="🏠", url_path="mortgage"),
+            icon=":material/trending_up:", url_path="investments"),
+    st.Page(mortgage.render, title="Mortgage",
+            icon=":material/home:", url_path="mortgage"),
     st.Page(transactions.render, title="Transactions",
-            icon="📝", url_path="transactions"),
-    st.Page(tax.render, title="Tax Analysis", icon="💶", url_path="tax"),
-    st.Page(settings.render, title="Settings", icon="⚙️", url_path="settings"),
+            icon=":material/receipt_long:", url_path="transactions"),
+    st.Page(tax.render, title="Tax Analysis",
+            icon=":material/account_balance:", url_path="tax"),
+    settings_page,
 ]
-active_page = st.navigation(pages, position="hidden")
-
-# Global top app bar
-with st.container(key="top_app_bar"):
-    tabs_col, toggle_col = st.columns([0.84, 0.16])
-    with tabs_col:
-        tab_cols = st.columns(len(pages))
-        for i, p in enumerate(pages):
-            with tab_cols[i]:
-                st.page_link(p, label=p.title, icon=p.icon)
-    with toggle_col:
-        st.toggle(
-            "Hide values",
-            key="global_privacy_toggle",
-            on_change=_on_privacy_toggle,
-        )
+active_page = st.navigation(pages, position="top")
 
 # Global sidebar
 with st.sidebar:
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
+
+# Top navbar 3-dots menu (Options / Settings / Privacy toggle)
+with st.container(key="top_navbar_actions"):
+    with st.popover("", icon=":material/more_vert:", help="Options"):
+        st.page_link(settings_page, label="Settings", icon=":material/settings:")
+        st.divider()
+        from ui.components import render_privacy_toggle
+        render_privacy_toggle()
 
 # Render active main page
 active_page.run()

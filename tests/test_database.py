@@ -2,7 +2,14 @@ import os
 import tempfile
 import unittest
 
-from db.database import connect, migrate, upsert_account, upsert_transactions
+from db.database import (
+    bulk_categorize_transactions,
+    connect,
+    migrate,
+    set_transactions_internal_transfer,
+    upsert_account,
+    upsert_transactions,
+)
 from services.normalization import dedup_hash
 
 
@@ -157,7 +164,121 @@ class TestDatabase(unittest.TestCase):
         remaining_after = self.conn.execute("SELECT id FROM transactions WHERE account_id = ?", (acc_id,)).fetchall()
         self.assertEqual(len(remaining_after), 0)
 
+    def test_set_transactions_internal_transfer(self):
+        acc_id = upsert_account(
+            self.conn,
+            {
+                "provider": "manual",
+                "institution": "TestBank",
+                "name": "Checking",
+                "external_id": "test_tf_acc",
+            },
+        )
+        txs = [
+            {
+                "account_id": acc_id,
+                "dedup_hash": f"hash_tf_{i}",
+                "booking_date": "2026-10-01",
+                "amount_minor": -5000,
+                "amount_eur_minor": -5000,
+                "description_raw": f"Transfer {i}",
+                "merchant_normalized": f"Merchant {i}",
+            }
+            for i in range(1, 3)
+        ]
+        upsert_transactions(self.conn, txs)
+        rows = self.conn.execute("SELECT id FROM transactions WHERE account_id = ?", (acc_id,)).fetchall()
+        tx_ids = [r["id"] for r in rows]
+
+        # 1. Mark as transfer
+        updated = set_transactions_internal_transfer(self.conn, tx_ids, is_transfer=True)
+        self.assertEqual(updated, 2)
+        check_rows = self.conn.execute(
+            "SELECT is_internal_transfer, category_id, category_source FROM transactions WHERE account_id = ?",
+            (acc_id,),
+        ).fetchall()
+        for r in check_rows:
+            self.assertEqual(r["is_internal_transfer"], 1)
+            self.assertEqual(r["category_source"], "user")
+            self.assertIsNotNone(r["category_id"])
+
+        # 2. Unmark as transfer
+        updated_unmark = set_transactions_internal_transfer(self.conn, tx_ids, is_transfer=False)
+        self.assertEqual(updated_unmark, 2)
+        check_unmarked = self.conn.execute(
+            "SELECT is_internal_transfer FROM transactions WHERE account_id = ?",
+            (acc_id,),
+        ).fetchall()
+        for r in check_unmarked:
+            self.assertEqual(r["is_internal_transfer"], 0)
+
+        # 3. Empty input returns 0
+        self.assertEqual(set_transactions_internal_transfer(self.conn, []), 0)
+
+    def test_bulk_categorize_transactions(self):
+        acc_id = upsert_account(
+            self.conn,
+            {
+                "provider": "manual",
+                "institution": "TestBank",
+                "name": "Checking",
+                "external_id": "test_cat_acc",
+            },
+        )
+        txs = [
+            {
+                "account_id": acc_id,
+                "dedup_hash": f"hash_bulkcat_{i}",
+                "booking_date": "2026-10-01",
+                "amount_minor": -1500,
+                "amount_eur_minor": -1500,
+                "description_raw": f"Coffee {i}",
+                "merchant_normalized": "Espresso Bar",
+            }
+            for i in range(1, 3)
+        ]
+        upsert_transactions(self.conn, txs)
+        rows = self.conn.execute("SELECT id FROM transactions WHERE account_id = ?", (acc_id,)).fetchall()
+        tx_ids = [r["id"] for r in rows]
+
+        cat_row = self.conn.execute("SELECT id FROM categories WHERE name = 'Food & Restaurants' OR kind = 'discretionary' LIMIT 1").fetchone()
+        self.assertIsNotNone(cat_row)
+        target_cat_id = cat_row["id"]
+
+        # Bulk categorize with rule updates
+        count = bulk_categorize_transactions(
+            self.conn,
+            tx_ids,
+            target_cat_id,
+            source="user",
+            update_rules=True,
+        )
+        self.assertEqual(count, 2)
+
+        # Verify transaction rows
+        res_rows = self.conn.execute(
+            "SELECT category_id, category_source FROM transactions WHERE account_id = ?",
+            (acc_id,),
+        ).fetchall()
+        for r in res_rows:
+            self.assertEqual(r["category_id"], target_cat_id)
+            self.assertEqual(r["category_source"], "user")
+
+        # Verify merchant_category_rules upserted
+        rule_row = self.conn.execute(
+            "SELECT category_id, source, confidence FROM merchant_category_rules WHERE merchant_normalized = ?",
+            ("Espresso Bar",),
+        ).fetchone()
+        self.assertIsNotNone(rule_row)
+        self.assertEqual(rule_row["category_id"], target_cat_id)
+        self.assertEqual(rule_row["source"], "user")
+        self.assertEqual(rule_row["confidence"], 1.0)
+
+        # Empty list returns 0
+        self.assertEqual(bulk_categorize_transactions(self.conn, [], target_cat_id), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

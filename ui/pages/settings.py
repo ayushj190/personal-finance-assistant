@@ -9,6 +9,7 @@ from config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from db import database
 from services import secrets_vault
 from ui.components import section_header
+from ui.dialogs import manual_account_dialog
 
 
 def render():
@@ -290,6 +291,24 @@ def render():
                         st.success("eToro credentials saved!")
 
                 st.divider()
+
+                with section_header("Manual Bank & Investment Accounts", "Manage manual accounts and balances (Türkiye İş Bankası, Garanti, cash, etc.)"):
+                    col_m_btn, _ = st.columns([1, 2])
+                    with col_m_btn:
+                        if st.button("➕ Add Manual Account", key="settings_add_manual_acc_btn"):
+                            manual_account_dialog()
+
+                    manual_accs = conn.execute(
+                        "SELECT id, name, institution, currency, asset_class FROM accounts WHERE provider = 'manual' ORDER BY name ASC"
+                    ).fetchall()
+                    if manual_accs:
+                        for acc in manual_accs:
+                            c_acc, c_edit = st.columns([4, 1], vertical_alignment="center")
+                            with c_acc:
+                                st.write(f"**{acc['name']}** ({acc['institution']}) • {acc['currency']} • {acc['asset_class'].capitalize()}")
+                            with c_edit:
+                                if st.button("✏️ Edit", key=f"settings_edit_acc_{acc['id']}"):
+                                    manual_account_dialog(account_id=acc["id"])
 
                 st.divider()
 

@@ -3,6 +3,9 @@ from enum import Enum
 import re
 from typing import Callable
 
+import io
+import pypdf
+
 from services.llm_client import generate_json
 from connectors.base import RawHolding, RawTransaction
 from connectors.file_import.camt053 import parse_camt053
@@ -13,6 +16,7 @@ from connectors.file_import.csv_profiles import (
     parse_etoro_statement_transactions,
     parse_revolut_csv,
 )
+from connectors.file_import.isbank_pdf import parse_isbank_pdf
 from connectors.file_import.mt940 import parse_mt940
 
 
@@ -23,12 +27,19 @@ class FileFormat(str, Enum):
     ABN_AMRO_TAB = "abn_amro_tab"
     MT940 = "mt940"
     CAMT053 = "camt053"
+    ISBANK_PDF = "isbank_pdf"
     UNKNOWN = "unknown"
 
 
 def detect_format(content: str | bytes) -> FileFormat:
     if isinstance(content, bytes):
         if content.startswith(b"%PDF"):
+            try:
+                txs, bal, iban = parse_isbank_pdf(content)
+                if txs or bal is not None or iban:
+                    return FileFormat.ISBANK_PDF
+            except Exception:
+                pass
             return FileFormat.UNKNOWN
         try:
             content = content.decode("utf-8", errors="replace")
@@ -93,6 +104,27 @@ def get_parser(fmt: FileFormat) -> Callable[[str, str], list[RawTransaction]] | 
 
 
 def parse_statement(content: str | bytes, default_account_id: str = "imported_account") -> tuple[FileFormat, list[RawTransaction]]:
+    if isinstance(content, bytes) and content.startswith(b"%PDF"):
+        try:
+            txs, bal, iban = parse_isbank_pdf(content, default_account_id)
+            if txs:
+                return FileFormat.ISBANK_PDF, txs
+        except Exception:
+            pass
+
+        # Fallback to local Ollama LLM extraction if deterministic returns empty (AC-4)
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            if extracted_text.strip():
+                llm_txs = parse_statement_with_llm(extracted_text, default_account_id)
+                if llm_txs:
+                    return FileFormat.UNKNOWN, llm_txs
+        except Exception:
+            pass
+
+        return FileFormat.UNKNOWN, []
+
     fmt = detect_format(content)
 
     if isinstance(content, bytes):
@@ -169,5 +201,41 @@ def parse_statement_holdings(content: str | bytes, default_account_id: str = "im
 
 
 def parse_statement_balance(content: str | bytes, default_account_id: str = "imported_account") -> int | None:
+    if isinstance(content, bytes) and content.startswith(b"%PDF"):
+        try:
+            _, bal, _ = parse_isbank_pdf(content, default_account_id)
+            if bal is not None:
+                return bal
+        except Exception:
+            pass
     detect_format(content)
     return None
+
+
+def detect_statement_account_hint(content: str | bytes) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extract institution name and IBAN hints from statement content to auto-match candidate accounts.
+    Returns: (institution_hint, iban_hint)
+    """
+    if isinstance(content, bytes) and content.startswith(b"%PDF"):
+        try:
+            _, _, iban = parse_isbank_pdf(content)
+            return "Türkiye İş Bankası", iban
+        except Exception:
+            return None, None
+
+    snippet = content[:4000] if isinstance(content, str) else content[:4000].decode("utf-8", errors="replace")
+    fmt = detect_format(content)
+
+    if fmt == FileFormat.ISBANK_PDF:
+        return "Türkiye İş Bankası", None
+    elif fmt == FileFormat.ABN_AMRO_TAB:
+        m = re.search(r"\b(NL\d{2}[A-Z]{4}\d{10})\b", snippet)
+        return "ABN AMRO", m.group(1) if m else None
+    elif fmt == FileFormat.REVOLUT_CSV:
+        return "Revolut", None
+    elif fmt in (FileFormat.ETORO_STATEMENT_CSV, FileFormat.ETORO_MONEY_TSV):
+        return "eToro", None
+
+    return None, None
+

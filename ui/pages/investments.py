@@ -6,11 +6,16 @@ import plotly.express as px
 import streamlit as st
 
 from config import DB_PATH
+from connectors.etoro_service import EtoroService
 from connectors.market_data_service import classify_asset, enrich_ticker_metadata, update_quotes
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
 from services.dividend_service import calculate_dividend_projections
-from services.portfolio import calculate_drift, get_consolidated_holdings_df
+from services.portfolio import (
+    calculate_drift,
+    get_consolidated_holdings_df,
+    get_dimension_exposure_df,
+)
 from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_drift_bar_chart
 from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.theme import render_chart
@@ -125,6 +130,7 @@ def _render_portfolio_fragment(
     consolidated_df: pd.DataFrame,
     usd_to_eur: float,
     active_positions_count: int | None = None,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     # 1. 4-KPI ribbon (AC-1, AC-7)
     total_value = float(holdings_df["value_eur"].sum())
@@ -155,29 +161,31 @@ def _render_portfolio_fragment(
         pos_str = "**** assets" if is_hidden() else f"{active_positions_count} assets"
         kpi_card("Active Positions", pos_str, subtext=sub)
 
-    # 2. Exposure Visualizer (AC-3: Donut chart and horizontal exposure bar)
+    # 2. Multi-dimension Exposure Visualizer (AC-1, AC-2)
     if not consolidated_df.empty:
-        with section_header("Portfolio Allocation & Exposure"):
+        with section_header("Portfolio Allocation & Exposure", "Multi-dimension asset diversification"):
+            dim_options = ["Asset Class", "Sector", "Region", "Currency"]
+            selected_dim = st.pills(
+                "Exposure Dimension",
+                options=dim_options,
+                default="Asset Class",
+                key="portfolio_exposure_dim_pills",
+                label_visibility="collapsed",
+            ) or "Asset Class"
+
+            dim_df = get_dimension_exposure_df(consolidated_df, selected_dim)
             col_donut, col_bar = st.columns([1, 1])
-            total_portfolio_eur = consolidated_df["value_eur"].sum()
 
             with col_donut:
-                # Group by Asset Class for clean allocation donut
-                asset_summary = (
-                    consolidated_df.groupby("asset_type_display")["value_eur"]
-                    .sum()
-                    .reset_index()
-                )
-                asset_summary.columns = ["Asset Class", "value_eur"]
-
+                color_map = ASSET_TYPE_COLORS if selected_dim == "Asset Class" else (SECTOR_COLORS if selected_dim == "Sector" else None)
                 donut_fig = px.pie(
-                    asset_summary,
-                    names="Asset Class",
+                    dim_df,
+                    names="bucket",
                     values="value_eur",
                     hole=0.55,
-                    color="Asset Class",
-                    color_discrete_map=ASSET_TYPE_COLORS,
-                    title="Allocation by Asset Class",
+                    color="bucket" if color_map else None,
+                    color_discrete_map=color_map,
+                    title=f"Allocation by {selected_dim}",
                 )
                 if is_hidden():
                     donut_fig.update_traces(
@@ -197,30 +205,18 @@ def _render_portfolio_fragment(
                 render_chart(donut_fig, use_container_width=True)
 
             with col_bar:
-                # Group by sector/theme for horizontal exposure bar
-                sec_df = (
-                    consolidated_df.groupby("sector")["value_eur"]
-                    .sum()
-                    .reset_index()
-                )
-                sec_df["weight_pct"] = (
-                    (sec_df["value_eur"] / total_portfolio_eur * 100.0)
-                    if total_portfolio_eur > 0
-                    else 0.0
-                )
-                sec_df = sec_df.sort_values(by="weight_pct", ascending=True)
-
+                bar_data = dim_df.sort_values(by="weight_pct", ascending=True)
                 bar_fig = px.bar(
-                    sec_df,
+                    bar_data,
                     x="weight_pct",
-                    y="sector",
+                    y="bucket",
                     orientation="h",
-                    text=sec_df["weight_pct"].map(
+                    text=bar_data["weight_pct"].map(
                         lambda x: "****%" if is_hidden() else f"{x:.1f}%"
                     ),
-                    color="sector",
-                    color_discrete_map=SECTOR_COLORS,
-                    title="Sector & Thematic Exposure (%)",
+                    color="bucket" if color_map else None,
+                    color_discrete_map=color_map,
+                    title=f"{selected_dim} Breakdown (%)",
                 )
                 if is_hidden():
                     bar_fig.update_traces(hovertemplate="Censored<extra></extra>")
@@ -236,6 +232,21 @@ def _render_portfolio_fragment(
                     yaxis=dict(automargin=True),
                 )
                 render_chart(bar_fig, use_container_width=True)
+
+            with st.expander(f"📋 View {selected_dim} Breakdown Table", expanded=False):
+                table_df = dim_df.copy()
+                if is_hidden():
+                    table_df["Value (€)"] = "€****"
+                    table_df["Weight (%)"] = "****%"
+                else:
+                    table_df["Value (€)"] = table_df["value_eur"].map(lambda v: f"€{v:,.2f}")
+                    table_df["Weight (%)"] = table_df["weight_pct"].map(lambda w: f"{w:.1f}%")
+                table_df.rename(columns={"bucket": selected_dim}, inplace=True)
+                st.dataframe(
+                    table_df[[selected_dim, "Value (€)", "Weight (%)"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     # 3. Active Holdings Table (AC-2, AC-7)
     with section_header("Portfolio Holdings"):
@@ -355,34 +366,43 @@ def _render_portfolio_fragment(
 
             st.dataframe(disp_perf, use_container_width=True, hide_index=True)
 
-            # AC-4: On-demand toggle prevents heavy external iframe embed unless requested
-            show_tv = st.toggle(
-                "Show external TradingView live quote stream",
-                value=False,
-                key="toggle_tv_quotes",
-                help="Loads the external TradingView widget on demand.",
-            )
-            if show_tv:
+        # 4. Minimizable live TradingView watchlist card (AC-3)
+        direct_tickers = [t for t in direct_df["ticker"].unique() if not str(t).startswith("ID_")]
+        if direct_tickers:
+            if "tv_watchlist_minimized" not in st.session_state:
+                st.session_state["tv_watchlist_minimized"] = False
+
+            c_tv_head, c_tv_act = st.columns([0.88, 0.12], vertical_alignment="center")
+            with c_tv_head:
+                section_header("Live Market Watchlist", "Direct active holdings quotes • TradingView live stream")
+            with c_tv_act:
+                is_min = st.session_state["tv_watchlist_minimized"]
+                btn_txt = "➕ Expand" if is_min else "➖ Minimize"
+                if st.button(btn_txt, key="btn_toggle_tv_watchlist"):
+                    st.session_state["tv_watchlist_minimized"] = not is_min
+                    st.rerun()
+
+            if not st.session_state["tv_watchlist_minimized"]:
                 tv_symbols = [
                     {"name": t.split(".")[0] if "." in t else t}
-                    for t in direct_df["ticker"].unique()
+                    for t in direct_tickers
                 ]
                 theme = st.get_option("theme.base")
-                tv_height = max(300, len(tv_symbols) * 45 + 90)
+                tv_content_height = max(320, len(tv_symbols) * 45 + 90)
                 blur_overlay = (
                     """<div style="position: absolute; top: 0; right: 0; width: 60%; height: 100%; backdrop-filter: blur(8px); z-index: 1000; pointer-events: none;"></div>"""
                     if is_hidden()
                     else ""
                 )
                 tv_html = f"""
-                <div style="position: relative; width: 100%; height: {tv_height}px;">
+                <div style="position: relative; width: 100%; height: 320px; max-height: 320px; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid rgba(128,128,128,0.2);">
                     {blur_overlay}
                     <div class="tradingview-widget-container">
                       <div class="tradingview-widget-container__widget"></div>
                       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
                       {{
                       "width": "100%",
-                      "height": {tv_height},
+                      "height": {tv_content_height},
                       "symbolsGroups": [
                         {{
                           "name": "Live Market Prices",
@@ -399,9 +419,55 @@ def _render_portfolio_fragment(
                     </div>
                 </div>
                 """
-                st.components.v1.html(tv_html, height=tv_height)
+                st.components.v1.html(tv_html, height=330)
         else:
             st.caption("No direct broker holdings found.")
+
+    # 5. Dedicated Realized P&L Panel and closed positions (AC-6)
+    if conn is not None:
+        with section_header("Realized Profit & Loss", "Historical returns and proceeds from closed positions"):
+            pnl_summary = HoldingRepository.get_realized_pnl_summary(conn)
+            closed_df = HoldingRepository.get_closed_holdings_df(conn)
+
+            r_pnl = float(pnl_summary.get("realized_pnl_eur", 0.0))
+            r_proc = float(pnl_summary.get("total_proceeds_eur", 0.0))
+            r_count = int(pnl_summary.get("closed_count", 0))
+            r_cost = r_proc - r_pnl
+            r_pct = (r_pnl / r_cost * 100.0) if r_cost > 0 else 0.0
+
+            rc1, rc2, rc3 = st.columns(3)
+            with rc1:
+                pnl_str = f"{'+' if r_pnl >= 0 else ''}{format_money(r_pnl)}"
+                kpi_card("Cumulative Realized P&L", pnl_str, delta_str=f"{r_pct:+.1f}%")
+            with rc2:
+                kpi_card("Total Closed Proceeds", format_money(r_proc))
+            with rc3:
+                cnt_str = "**** closed" if is_hidden() else f"{r_count} positions closed"
+                kpi_card("Closed Positions", cnt_str)
+
+            if not closed_df.empty:
+                disp_closed = closed_df.copy()
+                if is_hidden():
+                    disp_closed["Cost Basis (€)"] = "€****"
+                    disp_closed["Proceeds (€)"] = "€****"
+                    disp_closed["Realized P&L (€)"] = "€****"
+                    disp_closed["Return (%)"] = "****%"
+                else:
+                    disp_closed["Cost Basis (€)"] = disp_closed["cost_basis"].map(lambda x: f"€{x:,.2f}")
+                    disp_closed["Proceeds (€)"] = disp_closed["proceeds"].map(lambda x: f"€{x:,.2f}")
+                    disp_closed["Realized P&L (€)"] = disp_closed["realized_pnl"].map(
+                        lambda x: f"{'+' if x >= 0 else ''}€{x:,.2f}"
+                    )
+                    disp_closed["Return (%)"] = disp_closed["return_pct"].map(lambda x: f"{x:+.2f}%")
+
+                cols_to_show = ["ticker", "name", "closed_date", "Cost Basis (€)", "Proceeds (€)", "Realized P&L (€)", "Return (%)"]
+                st.dataframe(
+                    disp_closed[[c for c in cols_to_show if c in disp_closed.columns]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No closed positions recorded yet.")
 
 
 @st.fragment
@@ -413,12 +479,14 @@ def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
         return
 
     prof_map = {p["name"]: p for p in profiles}
-    selected_name = st.selectbox(
-        "Allocation Profile",
-        options=list(prof_map.keys()),
-        index=0,
-        key="investments_allocation_profile_select",
-    )
+    col_prof, _ = st.columns([1, 2])
+    with col_prof:
+        selected_name = st.selectbox(
+            "Allocation Profile",
+            options=list(prof_map.keys()),
+            index=0,
+            key="investments_allocation_profile_select",
+        )
     profile = prof_map[selected_name]
 
     # Fetch targets
@@ -703,6 +771,42 @@ def _render_goals_fragment(conn) -> None:
                 st.progress(pct)
 
 
+@st.fragment
+def _render_market_news_fragment() -> None:
+    """Render cached market news inside an isolated fragment at bottom of investments page."""
+    with section_header("Market News", "Latest market news from eToro feed"):
+        etoro = EtoroService()
+        news = etoro.fetch_news(limit=10)
+        is_configured = etoro.is_configured()
+
+        if news:
+            with st.container(height=300, border=True):
+                for item in news:
+                    c1, c2 = st.columns([1, 15])
+                    with c1:
+                        if item.get("avatar"):
+                            st.image(item["avatar"], width=24)
+                        else:
+                            st.write("👤")
+                    with c2:
+                        text = item.get("text", "")
+                        if len(text) > 200:
+                            text = text[:200] + "..."
+                        username = item.get("username", "eToro")
+                        created = (item.get("created") or "")[:10]
+                        st.markdown(
+                            f"**@{username}** <span style='color: gray; font-size: 0.8em;'>• {created}</span><br/>"
+                            f"<span style='font-size: 0.9em;'>{text}</span>",
+                            unsafe_allow_html=True,
+                        )
+                    st.divider()
+        else:
+            if not is_configured:
+                st.info("Connect eToro in Settings to view market news.")
+            else:
+                st.info("No news available right now.")
+
+
 def render() -> None:
     conn = database.connect(DB_PATH)
     try:
@@ -756,6 +860,7 @@ def render() -> None:
                 consolidated_df,
                 usd_to_eur,
                 active_positions_count=active_positions_count,
+                conn=conn,
             )
 
         with t_alloc:
@@ -767,5 +872,9 @@ def render() -> None:
         with t_goals:
             _render_goals_fragment(conn)
 
+        st.divider()
+        _render_market_news_fragment()
+
     finally:
         conn.close()
+

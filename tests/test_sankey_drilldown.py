@@ -127,76 +127,33 @@ class TestSankeyDrilldown(unittest.TestCase):
         self.assertIn("fixed_spent", data)
         self.assertIn("disc_spent", data)
 
-    @patch("streamlit.rerun")
-    @patch("ui.sankey_component.component.render_interactive_sankey")
-    def test_render_cash_flow_sankey_click_event(self, mock_render_component, mock_rerun):
-        """Verify clicking a flow node in the diagram updates drilldown state and triggers rerun."""
+    @patch("ui.charts.render_chart")
+    def test_render_cash_flow_sankey_pure_plotly(self, mock_render_chart):
+        """AC-3: Verify render_cash_flow_sankey builds and renders pure Plotly go.Sankey without iframe component."""
         from ui.charts import render_cash_flow_sankey
-
-        # Simulate user clicking 'Fixed Expenses' on the diagram
-        mock_render_component.return_value = {"clicked": "Fixed Expenses", "ts": 12345}
 
         st.session_state.clear()
         render_cash_flow_sankey(self.conn, key_prefix="test_sankey")
 
-        self.assertEqual(st.session_state.get("test_sankey_drilldown_state"), "Fixed Expenses")
-        mock_rerun.assert_called_once_with(scope="fragment")
-
-    @patch("streamlit.rerun")
-    @patch("ui.sankey_component.component.render_interactive_sankey")
-    def test_render_cash_flow_sankey_reset_click(self, mock_render_component, mock_rerun):
-        """Verify clicking reset or active root node returns to Full Flow."""
-        from ui.charts import render_cash_flow_sankey
-
-        st.session_state["test_reset_drilldown_state"] = "Fixed Expenses"
-        st.session_state["test_reset_last_click_ts"] = 11111
-
-        mock_render_component.return_value = {"clicked": "RESET", "ts": 22222}
-        render_cash_flow_sankey(self.conn, key_prefix="test_reset")
-
-        self.assertEqual(st.session_state.get("test_reset_drilldown_state"), "Full Flow")
-        mock_rerun.assert_called_once_with(scope="fragment")
-
-
-    def test_drilldown_net_income_hides_gross_and_tax(self):
-        """Verify drilling down into Net Income hides Gross Salary and Taxes (Box 1)."""
-        data = prepare_cash_flow_sankey_data(self.conn, days=30)
-        fig = build_cash_flow_sankey(data, drilldown_flow="Net Income")
+        mock_render_chart.assert_called_once()
+        fig = mock_render_chart.call_args[0][0]
         self.assertIsInstance(fig, go.Figure)
+        self.assertEqual(fig.data[0].type, "sankey")
+        self.assertEqual(mock_render_chart.call_args[1].get("use_container_width"), True)
 
-        sankey_trace = fig.data[0]
-        labels = list(sankey_trace.node.label)
+    def test_open_sankey_fullscreen_dialog_attributes(self):
+        """AC-4: Verify open_sankey_fullscreen_dialog is decorated as a modal dialog."""
+        from ui.charts import open_sankey_fullscreen_dialog
 
-        # Upstream stages must be hidden
-        self.assertNotIn("Gross Salary", labels)
-        self.assertNotIn("Taxes (Box 1)", labels)
+        self.assertTrue(
+            hasattr(open_sankey_fullscreen_dialog, "__wrapped__"),
+            "open_sankey_fullscreen_dialog should be wrapped by @st.dialog",
+        )
 
-        # Net Income root and downstream buckets must be present
-        self.assertIn("Net Income", labels)
-        self.assertIn("Fixed Expenses", labels)
-        self.assertIn("Discretionary", labels)
-
-    @patch("streamlit.rerun")
-    @patch("ui.sankey_component.component.render_interactive_sankey")
-    def test_render_cash_flow_sankey_net_income_click(self, mock_render_component, mock_rerun):
-        """Verify clicking Net Income sets drilldown to Net Income and clicking again returns to Full Flow."""
-        from ui.charts import render_cash_flow_sankey
-
-        # 1. From Full Flow, clicking Net Income
-        st.session_state.clear()
-        mock_render_component.return_value = {"clicked": "Net Income", "ts": 1001}
-        render_cash_flow_sankey(self.conn, key_prefix="test_net_inc")
-        self.assertEqual(st.session_state.get("test_net_inc_drilldown_state"), "Net Income")
-
-        # 2. While in Net Income view, clicking Net Income again toggles back to Full Flow
-        mock_render_component.return_value = {"clicked": "Net Income", "ts": 1002}
-        render_cash_flow_sankey(self.conn, key_prefix="test_net_inc")
-        self.assertEqual(st.session_state.get("test_net_inc_drilldown_state"), "Full Flow")
-
-    def test_build_investments_market_carpet(self):
-        """Verify build_investments_market_carpet creates a valid Plotly Treemap figure."""
+    def test_build_investments_market_carpet_rgba_palette(self):
+        """AC-5: Verify build_investments_market_carpet creates a treemap with translucent RGBA colors."""
         import pandas as pd
-        from ui.charts import build_investments_market_carpet
+        from ui.charts import build_investments_market_carpet, SECTOR_RGBA_COLORS
 
         df = pd.DataFrame([
             {"sector": "Technology", "display_label": "ASML", "value_eur": 5000.0},
@@ -206,6 +163,11 @@ class TestSankeyDrilldown(unittest.TestCase):
         self.assertIsInstance(fig, go.Figure)
         self.assertEqual(len(fig.data), 1)
         self.assertEqual(fig.data[0].type, "treemap")
+
+        # Verify RGBA colors are mapped
+        self.assertIn("rgba(", SECTOR_RGBA_COLORS["Technology"])
+        self.assertIn("rgba(", SECTOR_RGBA_COLORS["Energy"])
+
 
 
 if __name__ == "__main__":

@@ -23,7 +23,10 @@ def process_and_save_transactions(
     own_ibans = database.get_own_ibans(conn)
     acc_row = conn.execute("SELECT currency FROM accounts WHERE id = ?", (account_id,)).fetchone()
     acc_curr = acc_row["currency"] if acc_row else "EUR"
-    fx_rate = get_latest_fx_to_eur(acc_curr, conn)
+    if acc_curr and acc_curr.upper() != "EUR":
+        fx_rate = 1.0
+    else:
+        fx_rate = get_latest_fx_to_eur(acc_curr, conn)
 
     # Dedup occurrence index tracking within batch
     batch_counts: dict[str, int] = {}
@@ -88,7 +91,7 @@ def process_and_save_transactions(
 
 def import_statement_content(
     conn: sqlite3.Connection,
-    content: str,
+    content: str | bytes,
     target_account_id: int,
     source_name: str = "csv",
     enable_llm: bool = False,
@@ -102,6 +105,8 @@ def import_statement_content(
         source_type = "mt940"
     elif fmt == FileFormat.CAMT053:
         source_type = "camt053"
+    elif fmt == FileFormat.ISBANK_PDF or (isinstance(content, bytes) and content.startswith(b"%PDF")):
+        source_type = "pdf"
 
     inserted, skipped = process_and_save_transactions(
         conn,

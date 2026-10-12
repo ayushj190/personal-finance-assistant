@@ -1,4 +1,6 @@
 import unittest
+from unittest.mock import MagicMock, patch
+import pandas as pd
 from agent import tools
 
 
@@ -44,6 +46,59 @@ class TestCopilotTools(unittest.TestCase):
         summary = tools.tool_get_portfolio_and_risk_summary()
         self.assertTrue(summary["success"])
         self.assertIn("asset_classes_eur", summary)
+        self.assertIn("total_portfolio_value_eur", summary)
+        self.assertIn("positions", summary)
+
+    def test_portfolio_summary_and_drift_single_source(self):
+        """Verify analyze_investments uses unified calculation engine, scaled euros, and returns drift & positions."""
+        summary = tools.tool_analyze_investments()
+        self.assertTrue(summary["success"])
+        self.assertIn("asset_classes_eur", summary)
+        self.assertIn("total_portfolio_value_eur", summary)
+        self.assertIn("total_portfolio_value_formatted", summary)
+        self.assertIn("cash_balance_eur", summary)
+        self.assertIn("cash_balance_formatted", summary)
+        self.assertIn("positions", summary)
+        self.assertIn("allocation_targets", summary)
+        self.assertIn("allocation_drift", summary)
+        self.assertIn("rebalance_needed", summary)
+        self.assertIsInstance(summary["rebalance_needed"], bool)
+        self.assertIsInstance(summary["positions"], list)
+        self.assertIsInstance(summary["allocation_drift"], list)
+
+        if summary["positions"]:
+            pos = summary["positions"][0]
+            self.assertIn("ticker", pos)
+            self.assertIn("name", pos)
+            self.assertIn("value_eur", pos)
+            self.assertIn("value_eur_formatted", pos)
+            self.assertTrue(pos["value_eur_formatted"].startswith("€"))
+
+        if summary["allocation_drift"]:
+            drift = summary["allocation_drift"][0]
+            self.assertIn("bucket", drift)
+            self.assertIn("actual_pct", drift)
+            self.assertIn("target_pct", drift)
+            self.assertIn("drift_pp", drift)
+            self.assertIn("alert", drift)
+
+    def test_analyze_investments_empty_state_guidance(self):
+        """Verify graceful empty state handling when no holdings or snapshots exist."""
+        with patch("agent.tools.get_consolidated_holdings_df", return_value=pd.DataFrame()):
+            with patch("agent.tools.AccountRepository.get_total_cash_balance", return_value=0.0):
+                with patch("db.database.connect_readonly") as mock_conn_fn:
+                    mock_conn = MagicMock()
+                    mock_conn.execute.return_value.fetchall.return_value = []
+                    mock_conn.execute.return_value.fetchone.return_value = None
+                    mock_conn_fn.return_value = mock_conn
+                    with patch("agent.tools.HoldingRepository.get_allocation_profiles", return_value=[]):
+                        with patch("db.database.get_latest_risk_profile", return_value=None):
+                            summary = tools.tool_analyze_investments()
+                            self.assertTrue(summary["success"])
+                            self.assertTrue(summary.get("empty_dataset"))
+                            self.assertIn("guidance", summary)
+                            self.assertEqual(summary["total_portfolio_value_eur"], 0.0)
+                            self.assertEqual(summary["total_portfolio_value_formatted"], "€0.00")
 
     def test_deterministic_financial_tools(self):
         # 1. Spending by category

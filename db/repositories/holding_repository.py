@@ -24,6 +24,8 @@ class HoldingRepository:
             cost_basis_minor=row.get("cost_basis_minor") if isinstance(row, dict) else row["cost_basis_minor"],
             status=row.get("status", "active") if isinstance(row, dict) else (row["status"] if "status" in row.keys() else "active"),
             closed_at=row.get("closed_at") if isinstance(row, dict) else (row["closed_at"] if "closed_at" in row.keys() else None),
+            realized_pnl_minor=row.get("realized_pnl_minor", 0) if isinstance(row, dict) else (row["realized_pnl_minor"] if "realized_pnl_minor" in row.keys() else 0),
+            realized_proceeds_minor=row.get("realized_proceeds_minor", 0) if isinstance(row, dict) else (row["realized_proceeds_minor"] if "realized_proceeds_minor" in row.keys() else 0),
         )
 
     @classmethod
@@ -110,16 +112,20 @@ class HoldingRepository:
         query = """
         INSERT INTO holdings (
             account_id, ticker, isin, name, asset_type, region, sector,
-            quantity, cost_basis_minor, currency, status, closed_at, updated_at
+            quantity, cost_basis_minor, currency, status, closed_at,
+            realized_pnl_minor, realized_proceeds_minor, updated_at
         ) VALUES (
             :account_id, :ticker, :isin, :name, :asset_type, :region, :sector,
-            :quantity, :cost_basis_minor, :currency, :status, :closed_at, :updated_at
+            :quantity, :cost_basis_minor, :currency, :status, :closed_at,
+            :realized_pnl_minor, :realized_proceeds_minor, :updated_at
         ) ON CONFLICT(account_id, ticker) DO UPDATE SET
             quantity = excluded.quantity,
             cost_basis_minor = excluded.cost_basis_minor,
             updated_at = excluded.updated_at,
             status = excluded.status,
             closed_at = excluded.closed_at,
+            realized_pnl_minor = excluded.realized_pnl_minor,
+            realized_proceeds_minor = excluded.realized_proceeds_minor,
             name = COALESCE(excluded.name, holdings.name),
             isin = COALESCE(excluded.isin, holdings.isin),
             asset_type = COALESCE(excluded.asset_type, holdings.asset_type),
@@ -142,6 +148,8 @@ class HoldingRepository:
                     "currency": h.currency,
                     "status": h.status or "active",
                     "closed_at": h.closed_at,
+                    "realized_pnl_minor": h.realized_pnl_minor or 0,
+                    "realized_proceeds_minor": h.realized_proceeds_minor or 0,
                     "updated_at": h.updated_at,
                 })
             else:
@@ -158,6 +166,8 @@ class HoldingRepository:
                     "currency": h.get("currency", "EUR"),
                     "status": h.get("status", "active"),
                     "closed_at": h.get("closed_at"),
+                    "realized_pnl_minor": int(h.get("realized_pnl_minor", 0) or 0),
+                    "realized_proceeds_minor": int(h.get("realized_proceeds_minor", 0) or 0),
                     "updated_at": h.get("updated_at") or datetime.now().isoformat(),
                 }
                 records.append(rec)
@@ -264,3 +274,85 @@ class HoldingRepository:
             (profile_id,),
         )
         return {r["bucket"]: float(r["target_pct"]) for r in cur.fetchall()}
+
+    @staticmethod
+    def get_realized_pnl_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+        """
+        Aggregate realized profit/loss and total proceeds for closed holdings,
+        converting USD to EUR via latest FX quote.
+        Returns dict with realized_pnl_eur, total_proceeds_eur, closed_count.
+        """
+        query = """
+        SELECT 
+            h.realized_pnl_minor,
+            h.realized_proceeds_minor,
+            h.currency,
+            (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END) AS fx_rate
+        FROM holdings h
+        LEFT JOIN (
+            SELECT close
+            FROM market_quotes
+            WHERE ticker = 'EURUSD=X' AND quote_date = (SELECT MAX(quote_date) FROM market_quotes WHERE ticker = 'EURUSD=X')
+        ) fx ON 1=1
+        WHERE h.status = 'closed';
+        """
+        rows = conn.execute(query).fetchall()
+        if not rows:
+            return {
+                "realized_pnl_eur": 0.0,
+                "total_proceeds_eur": 0.0,
+                "closed_count": 0,
+            }
+
+        total_pnl_eur = 0.0
+        total_proceeds_eur = 0.0
+        for r in rows:
+            rate = float(r["fx_rate"] or 1.0)
+            pnl_native = (r["realized_pnl_minor"] or 0) / 100.0
+            proceeds_native = (r["realized_proceeds_minor"] or 0) / 100.0
+            total_pnl_eur += pnl_native * rate
+            total_proceeds_eur += proceeds_native * rate
+
+        return {
+            "realized_pnl_eur": total_pnl_eur,
+            "total_proceeds_eur": total_proceeds_eur,
+            "closed_count": len(rows),
+        }
+
+    @staticmethod
+    def get_closed_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
+        """
+        Return DataFrame of closed positions with ticker, name, cost_basis,
+        proceeds, realized_pnl, closed_date, currency, closed_at, and return_pct.
+        """
+        query = """
+        SELECT 
+            h.id,
+            h.ticker,
+            h.name,
+            h.currency,
+            h.closed_at,
+            ((COALESCE(h.cost_basis_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS cost_basis,
+            ((COALESCE(h.realized_proceeds_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS proceeds,
+            ((COALESCE(h.realized_pnl_minor, 0) / 100.0) * (CASE WHEN h.currency = 'USD' THEN (1.0 / COALESCE(fx.close, 1.0)) ELSE 1.0 END)) AS realized_pnl
+        FROM holdings h
+        LEFT JOIN (
+            SELECT close
+            FROM market_quotes
+            WHERE ticker = 'EURUSD=X' AND quote_date = (SELECT MAX(quote_date) FROM market_quotes WHERE ticker = 'EURUSD=X')
+        ) fx ON 1=1
+        WHERE h.status = 'closed'
+        ORDER BY h.closed_at DESC, h.ticker ASC;
+        """
+        df = pd.read_sql_query(query, conn)
+        if df.empty:
+            return pd.DataFrame(columns=[
+                "id", "ticker", "name", "currency", "closed_at", "closed_date",
+                "cost_basis", "proceeds", "realized_pnl", "return_pct"
+            ])
+        df["closed_date"] = df["closed_at"].fillna("").astype(str).str.slice(0, 10)
+        df["return_pct"] = df.apply(
+            lambda r: (r["realized_pnl"] / r["cost_basis"] * 100.0) if r["cost_basis"] > 0 else 0.0,
+            axis=1,
+        )
+        return df

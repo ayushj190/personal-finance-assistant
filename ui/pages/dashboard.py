@@ -10,7 +10,11 @@ from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
 from services.analytics import calculate_current_net_worth
 from services.portfolio import get_consolidated_holdings_df
-from ui.charts import build_investments_market_carpet, render_cash_flow_sankey
+from ui.charts import (
+    build_investments_market_carpet,
+    open_sankey_fullscreen_dialog,
+    render_cash_flow_sankey,
+)
 from ui.components import empty_state, format_money, is_hidden, kpi_card, mask_if_hidden, section_header, status_badge
 from ui.logos import get_institution_logo_svg
 from ui.theme import render_chart
@@ -120,20 +124,83 @@ def _calculate_accrued_subtexts(
     return acc_subtexts
 
 
+TICKER_EXCHANGE_MAP = {
+    ".AS": "EURONEXT:",
+    ".PA": "EURONEXT:",
+    ".BR": "EURONEXT:",
+    ".LS": "EURONEXT:",
+    ".L": "LSE:",
+    ".DE": "XETR:",
+    ".F": "FWB:",
+    ".MI": "MIL:",
+    ".MC": "BME:",
+    ".SW": "SIX:",
+}
+
+
+def _tradingview_symbols(tickers: list[str]) -> list[dict[str, str]]:
+    """Map and deduplicate holding tickers to TradingView prefixed symbols."""
+    symbols: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    for ticker in tickers:
+        if not ticker or not isinstance(ticker, str):
+            continue
+        t_clean = ticker.strip()
+        if not t_clean or t_clean.startswith("ID_") or "=" in t_clean or "^" in t_clean:
+            continue
+
+        if "." in t_clean:
+            matched = False
+            for suffix, prefix in TICKER_EXCHANGE_MAP.items():
+                if t_clean.upper().endswith(suffix):
+                    base = t_clean[:-len(suffix)]
+                    pro_name = f"{prefix}{base}"
+                    matched = True
+                    break
+            if not matched:
+                continue
+        else:
+            pro_name = t_clean
+
+        if pro_name not in seen:
+            seen.add(pro_name)
+            symbols.append({"proName": pro_name, "description": t_clean})
+
+    if not symbols:
+        return [
+            {"proName": "SPY", "description": "S&P 500"},
+            {"proName": "QQQ", "description": "Nasdaq 100"},
+            {"proName": "FX:EURUSD", "description": "EUR / USD"},
+        ]
+    return symbols
+
+
+def _is_conn_open(conn: sqlite3.Connection | None) -> bool:
+    if conn is None:
+        return False
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
 @st.fragment
 def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
     """Render TradingView scrolling ticker tape inside an isolated fragment."""
     should_close = False
-    if conn is None:
+    db_conn = conn
+    if not _is_conn_open(db_conn):
         try:
-            conn = database.connect(DB_PATH)
+            db_conn = database.connect(DB_PATH)
             should_close = True
         except Exception:
             return
 
     all_tickers = []
     try:
-        h_tickers = HoldingRepository.get_distinct_tickers(conn)
+        h_tickers = HoldingRepository.get_distinct_tickers(db_conn)
         cache_path = DATA_DIR / "etoro_mirrors_cache.json"
         mirrors_map = {}
         if cache_path.exists():
@@ -159,26 +226,15 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
     except Exception:
         pass
     finally:
-        if should_close:
-            conn.close()
+        if should_close and db_conn is not None:
+            db_conn.close()
 
-    deduped_tickers = list(dict.fromkeys(all_tickers))
-    symbols = []
-    for ticker in deduped_tickers:
-        clean_ticker = ticker.split(".")[0] if isinstance(ticker, str) and "." in ticker else ticker
-        symbols.append({"proName": clean_ticker, "description": ticker})
-
-    if not symbols:
-        symbols = [
-            {"proName": "SPY", "description": "S&P 500"},
-            {"proName": "QQQ", "description": "Nasdaq 100"},
-            {"proName": "FX:EURUSD", "description": "EUR / USD"},
-        ]
+    symbols = _tradingview_symbols(all_tickers)
 
     theme = st.get_option("theme.base")
     tape_html = f"""
     <!-- TradingView Widget BEGIN -->
-    <div class="tradingview-widget-container" style="margin-bottom: 8px;">
+    <div class="tradingview-widget-container" style="margin: 0; padding: 0;">
       <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
       {{
@@ -264,7 +320,7 @@ def _render_accounts_grid(
     latest_snapshots: dict[int, Any] = {}
     should_close = False
     db_conn = conn
-    if db_conn is None:
+    if not _is_conn_open(db_conn):
         try:
             db_conn = database.connect(DB_PATH)
             should_close = True
@@ -285,131 +341,152 @@ def _render_accounts_grid(
         "Accounts & Balances",
         "Real-time balances and connection statuses across connected institutions",
     ):
-        COLS_PER_ROW = 4
-        for i in range(0, len(accounts), COLS_PER_ROW):
-            row_accounts = accounts[i : i + COLS_PER_ROW]
-            cols = st.columns(COLS_PER_ROW)
-            for idx, acc in enumerate(row_accounts):
-                col = cols[idx]
-                bal = acc_balances.get(acc.id, 0.0)
-                sub = acc_subtexts.get(acc.id, "")
-                curr = acc.currency or "EUR"
-                sym = currency_symbols.get(curr, "€")
-                badge_txt, badge_kind = get_account_status(
-                    {"provider": acc.provider, "institution": acc.institution},
-                    sync_logs,
-                )
-                disp_name = clean_account_name(
-                    {
-                        "institution": acc.institution,
-                        "name": acc.name,
-                        "currency": acc.currency,
-                        "asset_class": acc.asset_class,
-                    },
-                    accounts_dicts,
-                )
-                logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
+        def _render_cards_for_group(acc_group: list[Any], group_type: str) -> None:
+            COLS_PER_ROW = 4
+            for i in range(0, len(acc_group), COLS_PER_ROW):
+                row_accounts = acc_group[i : i + COLS_PER_ROW]
+                cols = st.columns(COLS_PER_ROW)
+                for idx, acc in enumerate(row_accounts):
+                    col = cols[idx]
+                    bal = acc_balances.get(acc.id, 0.0)
+                    sub = acc_subtexts.get(acc.id, "")
+                    curr = acc.currency or "EUR"
+                    sym = currency_symbols.get(curr, "€")
+                    badge_txt, badge_kind = get_account_status(
+                        {"provider": acc.provider, "institution": acc.institution},
+                        sync_logs,
+                    )
+                    disp_name = clean_account_name(
+                        {
+                            "institution": acc.institution,
+                            "name": acc.name,
+                            "currency": acc.currency,
+                            "asset_class": acc.asset_class,
+                        },
+                        accounts_dicts,
+                    )
+                    logo_svg = get_institution_logo_svg(acc.institution or "", size=20)
+                    accent_cls = "account-accent-cash" if group_type == "cash" else "account-accent-investment"
 
-                with col:
-                    with st.container(border=True, key=f"account_card_{acc.id}"):
-                        # Top Row: Vector Logo + Account Name (top-left) and Settings Popover (top-right)
-                        c_header_info, c_header_cog = st.columns(
-                            [0.85, 0.15], gap=0, vertical_alignment="center", wrap=False
-                        )
-                        with c_header_info:
-                            header_html = (
-                                f"<div class='account-card-marker'>"
-                                f"{logo_svg}"
-                                f"<span class='account-card-name' title='{disp_name}'>{disp_name}</span>"
+                    with col:
+                        with st.container(border=True, key=f"account_card_{acc.id}"):
+                            c_header_info, c_header_cog = st.columns(
+                                [0.85, 0.15], gap=0, vertical_alignment="center", wrap=False
+                            )
+                            with c_header_info:
+                                header_html = (
+                                    f"<div class='account-card-marker {accent_cls}'>"
+                                    f"{logo_svg}"
+                                    f"<span class='account-card-name' title='{disp_name}'>{disp_name}</span>"
+                                    f"</div>"
+                                )
+                                st.markdown(header_html, unsafe_allow_html=True)
+                            with c_header_cog:
+                                with st.popover(
+                                    "",
+                                    icon=":material/settings:",
+                                    help="Account Settings",
+                                    key=f"dashboard_acc_{acc.id}_popover",
+                                ):
+                                    st.markdown(f"**{acc.name}**")
+                                    st.write(f"**Institution:** {acc.institution}")
+                                    st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
+                                    st.write(f"**Currency:** {curr}")
+                                    st.caption(f"Status: {badge_txt}")
+
+                                    if acc.asset_class == "cash":
+                                        st.divider()
+                                        with st.form(f"dashboard_acc_{acc.id}_adjust_form"):
+                                            st.caption(f"Adjust balance ({sym})")
+                                            new_adj_bal = st.number_input(
+                                                f"New Balance ({sym})",
+                                                value=float(bal),
+                                                min_value=0.0,
+                                                step=50.0,
+                                                format="%.2f",
+                                                key=f"dashboard_acc_{acc.id}_bal_in",
+                                            )
+                                            if st.form_submit_button(
+                                                "Update Balance",
+                                                type="primary",
+                                                use_container_width=True,
+                                                key=f"dashboard_acc_{acc.id}_submit_btn",
+                                            ):
+                                                val_min = int(round(new_adj_bal * 100))
+                                                save_conn = database.connect(DB_PATH)
+                                                try:
+                                                    database.upsert_snapshots(
+                                                        save_conn,
+                                                        [
+                                                            {
+                                                                "account_id": acc.id,
+                                                                "snapshot_date": today.isoformat(),
+                                                                "balance_minor": val_min,
+                                                                "balance_eur_minor": val_min,
+                                                            }
+                                                        ],
+                                                    )
+                                                finally:
+                                                    save_conn.close()
+                                                st.rerun(scope="app")
+
+                            val_display = "****" if is_hidden() else f"{bal:,.2f}"
+                            details_html = ""
+                            if sub:
+                                masked_sub = mask_if_hidden(sub) if is_hidden() else sub
+                                details_html = f"<span class='account-card-details details-accrued' title='{masked_sub}'>✨ {masked_sub}</span>"
+                            elif acc.apy:
+                                details_html = f"<span class='account-card-details details-apy' title='{acc.apy}% APY'>📈 {acc.apy}% APY</span>"
+
+                            card_bottom_html = (
+                                f"<div class='account-card-bottom'>"
+                                f"<div class='account-card-amount-group'>"
+                                f"<span class='account-currency-symbol'>{sym}</span>"
+                                f"<span class='account-balance-number'>{val_display}</span>"
+                                f"{details_html}"
+                                f"</div>"
+                                f"<div class='account-card-status-slot'>"
+                                f"{status_badge(badge_txt, badge_kind)}"
+                                f"</div>"
                                 f"</div>"
                             )
-                            st.markdown(header_html, unsafe_allow_html=True)
-                        with c_header_cog:
-                            with st.popover(
-                                "",
-                                icon=":material/settings:",
-                                help="Account Settings",
-                                key=f"dashboard_acc_{acc.id}_popover",
-                            ):
-                                st.markdown(f"**{acc.name}**")
-                                st.write(f"**Institution:** {acc.institution}")
-                                st.write(f"**Asset Class:** {(acc.asset_class or 'cash').title()}")
-                                st.write(f"**Currency:** {curr}")
-                                st.caption(f"Status: {badge_txt}")
+                            st.markdown(card_bottom_html, unsafe_allow_html=True)
 
-                                if acc.asset_class == "cash":
-                                    st.divider()
-                                    with st.form(f"dashboard_acc_{acc.id}_adjust_form"):
-                                        st.caption(f"Adjust balance ({sym})")
-                                        new_adj_bal = st.number_input(
-                                            f"New Balance ({sym})",
-                                            value=float(bal),
-                                            min_value=0.0,
-                                            step=50.0,
-                                            format="%.2f",
-                                            key=f"dashboard_acc_{acc.id}_bal_in",
-                                        )
-                                        if st.form_submit_button(
-                                            "Update Balance",
-                                            type="primary",
-                                            use_container_width=True,
-                                            key=f"dashboard_acc_{acc.id}_submit_btn",
-                                        ):
-                                            val_min = int(round(new_adj_bal * 100))
-                                            save_conn = database.connect(DB_PATH)
-                                            try:
-                                                database.upsert_snapshots(
-                                                    save_conn,
-                                                    [
-                                                        {
-                                                            "account_id": acc.id,
-                                                            "snapshot_date": today.isoformat(),
-                                                            "balance_minor": val_min,
-                                                            "balance_eur_minor": val_min,
-                                                        }
-                                                    ],
-                                                )
-                                            finally:
-                                                save_conn.close()
-                                            st.rerun(scope="app")
+        cash_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") == "cash"]
+        investment_accounts = [a for a in accounts if getattr(a, "asset_class", "cash") != "cash"]
 
-                        # Bottom Row: Currency Symbol + Balance + APY/Details (bottom-left) and Status Dot (bottom-right)
-                        val_display = "****" if is_hidden() else f"{bal:,.2f}"
-                        details_html = ""
-                        if sub:
-                            masked_sub = mask_if_hidden(sub) if is_hidden() else sub
-                            details_html = f"<span class='account-card-details details-accrued' title='{masked_sub}'>✨ {masked_sub}</span>"
-                        elif acc.apy:
-                            details_html = f"<span class='account-card-details details-apy' title='{acc.apy}% APY'>📈 {acc.apy}% APY</span>"
-
-                        card_bottom_html = (
-                            f"<div class='account-card-bottom'>"
-                            f"<div class='account-card-amount-group'>"
-                            f"<span class='account-currency-symbol'>{sym}</span>"
-                            f"<span class='account-balance-number'>{val_display}</span>"
-                            f"{details_html}"
-                            f"</div>"
-                            f"<div class='account-card-status-slot'>"
-                            f"{status_badge(badge_txt, badge_kind)}"
-                            f"</div>"
-                            f"</div>"
-                        )
-                        st.markdown(card_bottom_html, unsafe_allow_html=True)
-
-
-@st.dialog("Expenses — Fullscreen Flow", width="large")
-def _expenses_fullscreen_dialog(start_d: str, end_d: str) -> None:
-    dlg_conn = database.connect(DB_PATH)
-    try:
-        render_cash_flow_sankey(
-            dlg_conn,
-            key_prefix="modal_sankey",
-            start_date=start_d,
-            end_date=end_d,
-            height=560,
+        cash_accounts.sort(
+            key=lambda a: (
+                (getattr(a, "institution", "") or "").lower(),
+                (getattr(a, "name", "") or "").lower(),
+            )
         )
-    finally:
-        dlg_conn.close()
+        investment_accounts.sort(
+            key=lambda a: (
+                (getattr(a, "institution", "") or "").lower(),
+                (getattr(a, "name", "") or "").lower(),
+            )
+        )
+
+        if cash_accounts:
+            st.markdown(
+                f"<div class='accounts-section-header'>"
+                f"<span class='accounts-section-title'>Cash & Liquid Reserves</span>"
+                f"<span class='accounts-section-count'>{len(cash_accounts)}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            _render_cards_for_group(cash_accounts, "cash")
+
+        if investment_accounts:
+            st.markdown(
+                f"<div class='accounts-section-header'>"
+                f"<span class='accounts-section-title'>Investment Portfolios</span>"
+                f"<span class='accounts-section-count'>{len(investment_accounts)}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            _render_cards_for_group(investment_accounts, "investment")
 
 
 @st.dialog("Investments Exposure — Fullscreen Market Carpet", width="large")
@@ -431,7 +508,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
     """Render Expenses Sankey diagram and Investments Sector/Themes Market Carpet heatmap side-by-side."""
     should_close = False
     db_conn = conn
-    if db_conn is None:
+    if not _is_conn_open(db_conn):
         try:
             db_conn = database.connect(DB_PATH)
             should_close = True
@@ -463,7 +540,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
                 section_header("Expenses", f"{period_sub} • Interactive drilldown")
             with c_exp_act:
                 if st.button("⛶", key="expand_expenses_flow_btn", help="Expand Expenses to Fullscreen"):
-                    _expenses_fullscreen_dialog(start_date, end_date)
+                    open_sankey_fullscreen_dialog(start_date, end_date)
 
             spend_df = TransactionRepository.get_recent_spending_df(
                 db_conn, start_date=start_date, end_date=end_date
@@ -550,7 +627,7 @@ def render() -> None:
             return
 
         # 0. Scrolling Ticker Tape Widget (AC-3)
-        _render_ticker_fragment(conn)
+        _render_ticker_fragment()
 
         # 1. Compute current net worth balances
         nw_data = calculate_current_net_worth(conn)
@@ -561,13 +638,10 @@ def render() -> None:
         _render_kpi_ribbon(conn, nw_data, liabilities)
 
         # 3. Accounts & Balances Grid (AC-4, AC-5)
-        _render_accounts_grid(accounts, nw_data, sync_logs, conn)
+        _render_accounts_grid(accounts, nw_data, sync_logs)
 
         # 4. Lower Grid: Spending Donut + Recurring Bills (AC-2, AC-6)
-        _render_analytics_section(conn)
-
-        # 5. Market News (AC-3)
-        _render_market_news_fragment()
+        _render_analytics_section()
 
     finally:
         conn.close()

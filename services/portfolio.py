@@ -220,3 +220,43 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
         enrich_ticker_metadata(list(set(all_syms)), names_map=names_map)
 
     return pd.DataFrame(consolidated_items)
+
+
+def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> pd.DataFrame:
+    """
+    Aggregate portfolio exposure across a given dimension (Sector, Region, Currency, Asset Class).
+    Returns DataFrame with columns ['bucket', 'value_eur', 'weight_pct'].
+    Falls back to 'Other' for missing or unknown values.
+    """
+    if consolidated_df.empty or "value_eur" not in consolidated_df.columns:
+        return pd.DataFrame(columns=["bucket", "value_eur", "weight_pct"])
+
+    dim_key = str(dimension).lower().strip().replace(" ", "_").replace("-", "_")
+
+    # Map dimension name to DataFrame column
+    if dim_key in ("asset_class", "asset_type", "asset_type_display", "assetclass"):
+        col = "asset_type_display" if "asset_type_display" in consolidated_df.columns else "asset_type"
+    elif dim_key in ("sector", "sectors"):
+        col = "sector"
+    elif dim_key in ("region", "regions", "country"):
+        col = "region"
+    elif dim_key in ("currency", "currencies"):
+        col = "currency"
+    else:
+        col = dimension if dimension in consolidated_df.columns else "sector"
+
+    df = consolidated_df.copy()
+    if col not in df.columns:
+        df[col] = "Other"
+    else:
+        df[col] = df[col].fillna("Other").replace({"": "Other", "Unknown": "Other"})
+
+    grouped = df.groupby(col, as_index=False)["value_eur"].sum()
+    grouped.rename(columns={col: "bucket"}, inplace=True)
+
+    total_val = float(grouped["value_eur"].sum())
+    grouped["weight_pct"] = (
+        (grouped["value_eur"] / total_val * 100.0) if total_val > 0 else 0.0
+    )
+    grouped = grouped.sort_values(by="value_eur", ascending=False).reset_index(drop=True)
+    return grouped[["bucket", "value_eur", "weight_pct"]]

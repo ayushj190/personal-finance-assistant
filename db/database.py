@@ -1,5 +1,7 @@
-import sqlite3
+from datetime import datetime
 from pathlib import Path
+import re
+import sqlite3
 from typing import Any, Iterable
 
 from config import DB_PATH
@@ -10,7 +12,7 @@ SEED_FILE = DB_DIR / "seed.sql"
 
 
 def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -69,10 +71,10 @@ def connect_readonly(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     """Connect to database with read only authorizer and URI mode=ro."""
     path_str = str(db_path)
     if path_str == ":memory:":
-        conn = sqlite3.connect("file::memory:?mode=ro", uri=True)
+        conn = sqlite3.connect("file::memory:?mode=ro", uri=True, check_same_thread=False)
     else:
         resolved_path = Path(db_path).resolve().as_posix()
-        conn = sqlite3.connect(f"file:{resolved_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{resolved_path}?mode=ro", uri=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.set_authorizer(readonly_authorizer)
     return conn
@@ -121,6 +123,53 @@ def upsert_account(conn: sqlite3.Connection, acc: dict[str, Any]) -> int:
             (params["provider"], params["external_id"]),
         ).fetchone()
         return row[0] if row else 0
+
+
+def create_manual_account(
+    conn: sqlite3.Connection,
+    account_dict: dict[str, Any],
+    initial_balance_minor: int | None = None,
+) -> int:
+    """
+    Create or update a manual account and optionally record an initial balance snapshot.
+    Returns the integer account ID.
+    """
+    provider = account_dict.get("provider", "manual")
+    inst = account_dict.get("institution", "Manual")
+    name = account_dict["name"]
+    currency = account_dict.get("currency", "EUR").upper()
+    asset_class = account_dict.get("asset_class", "cash")
+    apy = account_dict.get("apy")
+    iban = account_dict.get("iban")
+
+    external_id = account_dict.get("external_id")
+    if not external_id:
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{inst}_{name}_{currency}").strip("_").lower()
+        external_id = f"manual_{slug}"
+
+    with conn:
+        acc_id = upsert_account(conn, {
+            "provider": provider,
+            "institution": inst,
+            "external_id": external_id,
+            "iban": iban,
+            "name": name,
+            "currency": currency,
+            "asset_class": asset_class,
+            "apy": apy,
+            "is_active": account_dict.get("is_active", 1),
+        })
+
+        if initial_balance_minor is not None:
+            today_iso = datetime.now().date().isoformat()
+            upsert_snapshots(conn, [{
+                "account_id": acc_id,
+                "snapshot_date": today_iso,
+                "balance_minor": initial_balance_minor,
+                "balance_eur_minor": initial_balance_minor,
+            }])
+
+    return acc_id
 
 
 def get_account_by_provider_ext_id(conn: sqlite3.Connection, provider: str, ext_id: str) -> sqlite3.Row | None:
@@ -401,5 +450,80 @@ def delete_transactions(conn: sqlite3.Connection, transaction_ids: Iterable[int]
     with conn:
         cur = conn.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", ids)
         return cur.rowcount
+
+
+def set_transactions_internal_transfer(
+    conn: sqlite3.Connection,
+    tx_ids: Iterable[int],
+    is_transfer: bool = True,
+) -> int:
+    """Atomically set or clear is_internal_transfer flag for transaction IDs, auto-assigning transfer category when True."""
+    ids = [int(i) for i in tx_ids]
+    if not ids:
+        return 0
+    placeholders = ",".join("?" for _ in ids)
+    with conn:
+        if is_transfer:
+            row = conn.execute(
+                """
+                SELECT id FROM categories
+                WHERE LOWER(name) IN ('internal transfer', 'transfers', 'transfer') OR kind = 'transfer'
+                ORDER BY
+                    CASE
+                        WHEN LOWER(name) = 'internal transfer' THEN 1
+                        WHEN LOWER(name) = 'transfers' THEN 2
+                        WHEN LOWER(name) = 'transfer' THEN 3
+                        ELSE 4
+                    END
+                LIMIT 1
+                """
+            ).fetchone()
+            transfer_cat_id = (row["id"] if isinstance(row, sqlite3.Row) else row[0]) if row else None
+            if transfer_cat_id is not None:
+                cur = conn.execute(
+                    f"UPDATE transactions SET is_internal_transfer = 1, category_id = ?, category_source = 'user' WHERE id IN ({placeholders})",
+                    [transfer_cat_id] + ids,
+                )
+            else:
+                cur = conn.execute(
+                    f"UPDATE transactions SET is_internal_transfer = 1 WHERE id IN ({placeholders})",
+                    ids,
+                )
+        else:
+            cur = conn.execute(
+                f"UPDATE transactions SET is_internal_transfer = 0 WHERE id IN ({placeholders})",
+                ids,
+            )
+        return cur.rowcount
+
+
+def bulk_categorize_transactions(
+    conn: sqlite3.Connection,
+    tx_ids: Iterable[int],
+    category_id: int,
+    source: str = "user",
+    update_rules: bool = False,
+) -> int:
+    """Atomically update category_id and category_source for multiple transactions, optionally upserting merchant rules."""
+    ids = [int(i) for i in tx_ids]
+    if not ids:
+        return 0
+    placeholders = ",".join("?" for _ in ids)
+    with conn:
+        if update_rules:
+            rows = conn.execute(
+                f"SELECT DISTINCT merchant_normalized FROM transactions WHERE id IN ({placeholders}) AND merchant_normalized IS NOT NULL AND merchant_normalized != ''",
+                ids,
+            ).fetchall()
+            for r in rows:
+                merchant = r["merchant_normalized"] if isinstance(r, sqlite3.Row) else r[0]
+                if merchant:
+                    upsert_category_rule(conn, merchant, category_id, source=source, confidence=1.0)
+        cur = conn.execute(
+            f"UPDATE transactions SET category_id = ?, category_source = ? WHERE id IN ({placeholders})",
+            [category_id, source] + ids,
+        )
+        return cur.rowcount
+
 
 

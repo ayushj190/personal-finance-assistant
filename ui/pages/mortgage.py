@@ -16,16 +16,20 @@ def render():
     liabilities = conn.execute("SELECT * FROM liabilities").fetchall()
 
     if not liabilities:
+        col_msg, col_btn = st.columns([0.7, 0.3], vertical_alignment="bottom")
+        with col_btn:
+            from ui.dialogs import mortgage_config_dialog
+            if st.button("⚙️ Configure Mortgage / Loan", type="primary", use_container_width=True):
+                mortgage_config_dialog()
         st.info("No mortgage or liability configured yet. Enter your mortgage details below to generate the schedule.")
-        from ui.dialogs import mortgage_config_dialog
-        if st.button("⚙️ Configure Mortgage / Loan", type="primary"):
-            mortgage_config_dialog()
         conn.close()
         return
 
     from ui.dialogs import mortgage_config_dialog
-    if st.button("⚙️ Add / Edit Mortgage Configuration"):
-        mortgage_config_dialog(liabilities[0]["id"])
+    col_space, col_btn = st.columns([0.7, 0.3], vertical_alignment="bottom")
+    with col_btn:
+        if st.button("⚙️ Add / Edit Mortgage Configuration", use_container_width=True):
+            mortgage_config_dialog(liabilities[0]["id"])
 
     lib = dict(liabilities[0])
     lib_id = lib["id"]
