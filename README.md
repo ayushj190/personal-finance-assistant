@@ -9,6 +9,12 @@
 
 > **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
 
+<p align="center">
+  <img src="docs/assets/screenshots/dashboard.png" width="32%" alt="Executive wealth dashboard" />
+  <img src="docs/assets/screenshots/investments.png" width="32%" alt="Multi-asset portfolio allocation" />
+  <img src="docs/assets/screenshots/spending.png" width="32%" alt="Spending topology and cash flow" />
+</p>
+
 ---
 
 ## ⚡ Core Capabilities & Technical Highlights (At a Glance)
