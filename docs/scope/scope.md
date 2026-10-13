@@ -295,12 +295,12 @@ Give the local Copilot an action layer: open any page, open a tab, and apply the
 **Done when:** asking the Copilot about spending, or any question naming a screen, lands on that page already filtered to the asked for date scope with the page's own charts up and the chat answer agreeing with the page; explicit navigation phrasing is instant; Hide values masks money only so charts and tables stay readable; and the app runs warning free with a README and screenshots that match it.
 spec [0017](../specs/0017-copilot-action-layer-and-polish/index.md) · code in app.py, services/date_scope.py, services/navigation.py, ui/filters.py, ui/copilot_sidebar.py, ui/pages/investments/, ui/tickers.py, agent/
 - [x] Design it (spec): `/architect copilot action layer & daily use release polish`
-- [ ] Build it: /develop copilot action layer & daily use release polish
+- [x] Build it: /develop copilot action layer & daily use release polish
   - [x] Intent transport, shared date resolver, persistent filter state, and writable tab (satisfies AC-2, AC-3, AC-19)
   - [x] open_view tool, fast path, and shared scope across the data tools (satisfies AC-1, AC-3, AC-18, AC-21)
   - [x] Honesty and safety, page charts and Spending scope mapping, and sidebar chips (satisfies AC-4, AC-5, AC-6, AC-7, AC-9, AC-17)
   - [x] Money only masking, deprecated API migration, and the small bugs (satisfies AC-8, AC-10, AC-11, AC-12, AC-13)
-  - [ ] Perceived polish, README and screenshots, and the regression net (satisfies AC-14, AC-15, AC-16, AC-20, AC-22)
+  - [x] Perceived polish, README and screenshots, and the regression net (satisfies AC-14, AC-15, AC-16, AC-20, AC-22)
 - [ ] Verify it: /check verify copilot action layer & daily use release polish
 - [ ] Test it: /test copilot action layer & daily use release polish
 
@@ -309,10 +309,10 @@ spec [0017](../specs/0017-copilot-action-layer-and-polish/index.md) · code in a
 ### 17. Data Product Robustness · in-progress
 Check data coming in from the banks and eToro before storage, record every sync run and its health, encrypt counterparty identifiers at rest, harden the migration runner, link each ledger row to its origin, and redact sensitive values from logs.
 **Done when:** malformed provider payloads are quarantined instead of stored, every connector's sync and health is visible in Settings with a stale warning, counterparty identifiers are encrypted at rest with the plaintext nulled, the migration runner checksums and backs up before it migrates, and no amount, IBAN or name reaches a log.
-spec [0018](../specs/0018-data-product-robustness/index.md)
+spec [0018](../specs/0018-data-product-robustness/index.md) · code in db/migrations/runner.py, db/migrations/__init__.py, app.py
 - [x] Design it (spec): `/architect data product robustness`
 - [ ] Build it: /develop data product robustness
-  - [ ] Harden the migration runner: checksums, transactions, backup and Python data migrations (satisfies database-durability AC-1 to AC-7)
+  - [x] Harden the migration runner: checksums, transactions, backup and Python data migrations (satisfies database-durability AC-1 to AC-7)
   - [ ] Inbound validation gate, quarantine, sync runs and the Settings health panel on Enable Banking (satisfies ingestion-contracts AC-1 to AC-6, connector-resilience-health AC-1 to AC-4)
   - [ ] Field level encryption of counterparty identifiers with the backfill (satisfies encryption-at-rest AC-1 to AC-9)
   - [ ] Widen to eToro, market data and file imports, then the redaction filter and the copilot context rule (satisfies ingestion-contracts AC-1 to AC-5, connector-resilience-health AC-5 to AC-7, lineage-observability AC-1 to AC-5)

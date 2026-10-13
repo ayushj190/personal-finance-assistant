@@ -42,7 +42,13 @@ Stored in `docs/specs/`. Format: `docs/specs/NNNN-title.md`.
 
 ## Agent skills
 
-Declined: python-resource-management, sqlite-database-expert
+- [building-pydantic-ai-agents](.agents/skills/building-pydantic-ai-agents/): `pydantic/skills`, building AI agents with Pydantic AI (tools, capabilities, structured output, streaming, testing)
+- [developing-with-streamlit](.agents/skills/developing-with-streamlit/): `streamlit/agent-skills`, Streamlit app patterns, styling, theming, components, and version matched docs
+- [logfire-evals](.agents/skills/logfire-evals/): `pydantic/skills`, offline evaluations with Pydantic Evals and Logfire
+- [logfire-infrastructure](.agents/skills/logfire-infrastructure/): `pydantic/skills`, infrastructure monitoring via the OpenTelemetry Collector
+- [logfire-instrumentation](.agents/skills/logfire-instrumentation/): `pydantic/skills`, application observability and AI agent spans
+
+The Logfire skills send telemetry to a hosted service, so they conflict with the local first rule; use them only if you accept that tradeoff. Declined: python-resource-management, sqlite-database-expert
 
 ## Context files
 

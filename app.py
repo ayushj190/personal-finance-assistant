@@ -14,6 +14,7 @@ logging_setup.configure()
 import streamlit as st
 
 from db import database
+from db.migrations import MigrationError
 from config import DB_PATH, DEMO
 from ui import theme
 importlib.reload(theme)
@@ -31,7 +32,12 @@ state.init_defaults()
 
 
 # Apply styling and database migrations
-database.migrate()
+try:
+    database.migrate()
+except MigrationError as exc:
+    st.error("Database migration failed. The app will not start until this is resolved.")
+    st.error(str(exc))
+    st.stop()
 theme.register_plotly_theme()
 theme.inject_custom_css()
 

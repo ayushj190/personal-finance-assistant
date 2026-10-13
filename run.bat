@@ -1,5 +1,14 @@
 @echo off
+setlocal
 cd /d "%~dp0"
+
+netstat -ano -p tcp | findstr /r /c:":8501 .*LISTENING" >nul
+if not errorlevel 1 (
+    echo Port 8501 already in use - another instance is already running.
+    echo Close it first, or just open http://localhost:8501 in your browser.
+    pause
+    exit /b 1
+)
 
 if "%~1"=="--demo" (
     set PFA_DEMO=1

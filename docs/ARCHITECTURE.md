@@ -19,7 +19,7 @@
 ┌───────────────────────────────────────────────┐   ┌──────────────────────────────────────┐
 │             DOMAIN SERVICES CORE              │   │           AI AGENT ENGINE            │
 │ • services/portfolio.py (5/25 Drift & Multi-D)│◀──│ • Ollama (Local Qwen 2.5 7B)         │
-│ • services/budget_service.py (3-Mo Burn Rate) │   │ • 25 Deterministic Tool Handlers     │
+│ • services/budget_service.py (3-Mo Burn Rate) │   │ • 28 Deterministic Tool Handlers     │
 │ • services/tax_optimizer.py (Box 1, 3 & RAG)  │   │ • Strict C-Level SQLite Authorizer   │
 │ • services/mortgage.py (30-Yr Amortization)   │   │ • Plotly Interactive Chart Generator │
 │ • services/analytics.py (Liquidity & Runway)  │   │ • Legal Vector Vault (RRF Hybrid)    │
@@ -107,7 +107,11 @@ Business logic and financial mathematics are strictly isolated in `services/`, d
 ### Local Inference via Ollama
 - Connects to locally hosted open weight LLMs (default: `qwen2.5:7b-instruct`).
 - Employs upfront connectivity health checks (`agent/copilot.py`) and graceful degradation if the model daemon is offline.
-- Features **25 native deterministic tools** mapped to underlying Python service calculations for math, tax calculations, and database queries.
+- Features **28 native deterministic tools** mapped to underlying Python service calculations for math, tax calculations, and database queries.
+
+### Copilot Action Layer (`services/navigation.py`, `services/date_scope.py`)
+- A single validated `open_view` tool (`agent/tools/navigation.py`) plus a deterministic fast path (`match_fast_path` in `services/navigation.py`) let the Copilot open a page, an Investments tab, and a date scope.
+- The page and tab are checked against a whitelist, and the date scope is resolved once by `services/date_scope.py` so the page and the chat answer agree. The tool sets a session intent only; it never touches SQL.
 
 ### Dutch Financial Law Vector Vault (`services/legal_vault_service.py`)
 - Persistent legal knowledge vault embedded in SQLite using `sqlite-vec` virtual tables and FastEmbed CPU embeddings (384-dimensional dense vectors).
@@ -170,4 +174,4 @@ The relational schema in `data/finance.db` enforces financial accuracy and audit
 
 - **Minor-Unit Integer Storage**: All monetary fields (`balance_minor`, `amount_minor`, `realized_pnl_minor`, `cost_basis_minor`) are stored in integer minor units (cents / kuruş) to prevent IEEE 754 floating point rounding drift. Conversion to decimals occurs solely at presentation boundaries.
 - **WAL Mode & Foreign Keys**: SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL`) enables concurrent reads while background transactions commit. Foreign key integrity (`PRAGMA foreign_keys=ON`) is enforced on all connections.
-- **Idempotent Versioned Migrations**: Startup schema runner executes incremental SQL scripts under `db/migrations/` (`0001_initial_schema.sql` through `0006_holdings_realized_pnl.sql`), recording completed migrations in `schema_migrations`.
+- **Hardened Forward-Only Migrations**: The startup runner (`db/migrations/runner.py`) applies numbered `NNNN_name.sql` schema files and `NNNN_name.py` Python data migrations in order. Each run holds a `BEGIN IMMEDIATE` lock, runs every migration inside one transaction, records a SHA256 checksum (over LF normalized bytes) in `schema_version`, and writes a verified backup to `data/backups/` before the first pending migration. A migration file changed after it was applied stops startup unless `PFA_ALLOW_MIGRATION_DRIFT=1`; `PFA_BACKUP_KEEP` sets backup retention (default 5). The applied range is `0001_initial_schema.sql` through `0006_holdings_realized_pnl.sql`.

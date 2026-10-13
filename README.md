@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![Database: SQLite WAL](https://img.shields.io/badge/Database-SQLite%20(WAL)-green.svg)](https://www.sqlite.org/)
 [![AI Engine: Ollama Local](https://img.shields.io/badge/AI%20Engine-Ollama%20(Qwen%202.5)-purple.svg)](https://ollama.com/)
-[![Tests: 260 Passed](https://img.shields.io/badge/Tests-260%20Passed-brightgreen.svg)](tests/)
+[![Tests: 273 Passed](https://img.shields.io/badge/Tests-273%20Passed-brightgreen.svg)](tests/)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
 
 > **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
@@ -270,18 +270,18 @@ python run_tests.py
 ============================= test session starts =============================
 platform win32 -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
 rootdir: C:\Users\ayush\Documents\Repos\personal-finance-assistant
-collected 260 items
+collected 273 items
 
 tests\ ...                                                                [100%]
   covers analytics, copilot calming and the action layer, dashboard,
-  fiscal, investments, imports, mortgage, portfolio, spending, tax,
-  transactions, and UI theme.
+  fiscal, investments, imports, migration runner, mortgage, portfolio,
+  spending, tax, transactions, and UI theme.
 
-======================= 260 passed in 80.79s =======================
+======================= 273 passed in 114.57s =======================
 ```
 
 ### Verified Coverage Areas
-- **Database & Migrations**: Idempotent schema migrations (`0001` through `0006`), occurrence indices, and minor-unit currency conversions.
+- **Database & Migrations**: Hardened forward-only migrations (`0001` through `0006`) with SHA256 checksums, one transaction per migration, pre migrate backups, and Python data migrations; occurrence indices and minor-unit currency conversions.
 - **Financial Math**: Dutch annuity and linear mortgage amortization, portfolio 5/25 drift, 3-month trailing burn rate, and dividend yield projections.
 - **Connector Ingestion**: ABN AMRO, Revolut, eToro, MT940, CAMT.053, and Türkiye İş Bankası bilingual PDF pipelines.
 - **Security & Sandboxing**: Symmetric Fernet secrets vault encryption roundtrip and SQLite C-level read-only query denial.
@@ -295,5 +295,5 @@ tests\ ...                                                                [100%]
 
 - **[System Architecture](docs/ARCHITECTURE.md)**: Comprehensive guide to the threading model, security sandbox, quant calculation engines, and database schema.
 - **[Feature Scope](docs/scope/scope.md)**: Product roadmap, delivery slices, and implementation status.
-- **[Technical Specifications](docs/specs/)**: Detailed architectural specs and acceptance criteria for all 16 vertical feature slices.
+- **[Technical Specifications](docs/specs/)**: Detailed architectural specs and acceptance criteria for every feature slice.
 - **[UI/UX & Functioning Audit](docs/reviews/2026-10-12-ui-ux-audit.md)**: Hands-on polish pass — privacy-shield scope, functional bugs, deprecated APIs, and a prioritised fix list ahead of release.
