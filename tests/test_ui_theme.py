@@ -219,7 +219,8 @@ class TestPlotlyTheme(unittest.TestCase):
                 called_fig = mock_chart.call_args[0][0]
                 self.assertFalse(called_fig.layout.yaxis.showticklabels)
                 self.assertEqual(called_fig.data[0].hovertemplate, "Censored<extra></extra>")
-                self.assertEqual(list(called_fig.data[0].text), ["****%", "****%"])
+                # Percentages stay readable (AC-8).
+                self.assertEqual(list(called_fig.data[0].text), ["15.0%", "25.0%"])
 
 
 class TestUIComponentsHelpers(unittest.TestCase):

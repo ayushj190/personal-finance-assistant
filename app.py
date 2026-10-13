@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from ui.pages import (
     dashboard,
     investments,
@@ -99,7 +99,7 @@ settings_page = st.Page(
 )
 pages = [
     st.Page(dashboard.render, title="Dashboard",
-            icon=":material/dashboard:", url_path="dashboard", default=True),
+            icon=":material/dashboard:", default=True),
     st.Page(spending.render, title="Spending",
             icon=":material/payments:", url_path="spending"),
     st.Page(investments.render, title="Investments",
@@ -114,10 +114,49 @@ pages = [
 ]
 active_page = st.navigation(pages, position="top")
 
+# Map canonical page ids to the st.Page objects for the Copilot action layer.
+_page_map = {
+    "dashboard": pages[0],
+    "spending": pages[1],
+    "investments": pages[2],
+    "mortgage": pages[3],
+    "transactions": pages[4],
+    "tax": pages[5],
+    "settings": settings_page,
+}
+
 # Global sidebar
 with st.sidebar:
     from ui.copilot_sidebar import render_copilot_sidebar
     render_copilot_sidebar()
+
+# Consume a Copilot navigation intent exactly once, after navigation and before render (AC-19).
+from services.date_scope import CUSTOM_PRESET
+from services.navigation import FILTERED_PAGES as _FILTERED_PAGES
+from ui.state import K as _K
+
+_intent = st.session_state.pop(_K.COPILOT_UI_INTENT, None)
+if _intent and _intent.get("page") in _page_map:
+    _page_id = _intent["page"]
+    _tab = _intent.get("tab")
+    _ds = _intent.get("date_scope") or {}
+    if _ds.get("requested") and _page_id in _FILTERED_PAGES:
+        if _ds.get("preset"):
+            st.session_state[_K.FILTER_STATE] = {"preset": _ds["preset"]}
+        elif _ds.get("start_iso"):
+            st.session_state[_K.FILTER_STATE] = {
+                "preset": CUSTOM_PRESET,
+                "custom_start": date.fromisoformat(_ds["start_iso"]),
+                "custom_end": date.fromisoformat(_ds["end_iso"]),
+            }
+    if _tab:
+        st.session_state[_K.INVESTMENTS_ACTIVE_TAB] = _tab
+        st.session_state[_K.INVESTMENTS_TABS_GENERATION] = (
+            st.session_state.get(_K.INVESTMENTS_TABS_GENERATION, 0) + 1
+        )
+    _target = _page_map[_page_id]
+    if _target is not active_page:
+        st.switch_page(_target)
 
 # Top navbar 3-dots menu (Options / Settings / Privacy toggle)
 with st.container(key="top_navbar_actions"):

@@ -30,6 +30,7 @@ from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.theme import mask_chart_if_hidden, render_chart
 from ui.dialogs import assign_mortgage_dialog, set_category_budget_dialog
 from ui.filters import build_where_clause, render_filters
+from services.date_scope import spending_view_for_scope
 
 
 def _fetch_spending_df(conn, filters) -> pd.DataFrame:
@@ -189,7 +190,7 @@ def _render_analytics_fragment(
                 fig = build_spending_donut(display_df, drilldown_category=st.session_state[drill_key])
                 selection = st.plotly_chart(
                     fig,
-                    use_container_width=True,
+                    width="stretch",
                     theme=None,
                     on_select="rerun",
                     selection_mode="points",
@@ -250,7 +251,7 @@ def _render_analytics_fragment(
 
                     st.dataframe(
                         rec_df,
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                         column_config={
                             "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
@@ -318,7 +319,7 @@ def _render_top_merchants(merchant_data: dict[str, Any] | None, selected_scope: 
         }
         st.dataframe(
             disp,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config=column_config,
         )
@@ -341,7 +342,7 @@ def _render_top_merchants(merchant_data: dict[str, Any] | None, selected_scope: 
             if hidden:
                 loc_fig.update_traces(hovertemplate="Censored<extra></extra>")
             with st.container(border=True):
-                render_chart(loc_fig, use_container_width=True)
+                render_chart(loc_fig, width="stretch")
 
 
 @st.fragment
@@ -414,7 +415,7 @@ def _render_budget_tracker_fragment(
                 disp_b["% Used"] = disp_b["% Used"].map(
                     lambda x: f"{x:.0f}%" if x > 0 else "0%"
                 )
-            st.dataframe(disp_b, use_container_width=True, hide_index=True)
+            st.dataframe(disp_b, width="stretch", hide_index=True)
 
         # 12-Month Runway Projection Chart (AC-3: Baseline uses 3-month historical burn rate)
         st.markdown("#### 📈 12-Month Financial Trajectory Projection")
@@ -513,7 +514,7 @@ def _render_budget_tracker_fragment(
             )
             with st.container(border=True):
                 st.markdown("##### 📈 12-Month Cash Buffer Trajectory (3-Mo Burn vs Target Budget)")
-                render_chart(f_fig, use_container_width=True)
+                render_chart(f_fig, width="stretch")
 
 
 def _render_uncategorized_triage(
@@ -614,7 +615,7 @@ def _render_uncategorized_triage(
                 "category": st.column_config.SelectboxColumn("Assign Category", options=cat_names, required=False),
             },
             disabled=["id", "booking_date", "account", "merchant", "amount_eur"],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             key="spending_uncat_editor",
         )
@@ -685,7 +686,7 @@ def _render_monthly_trend(monthly_df: pd.DataFrame) -> None:
         with col_chart:
             st.plotly_chart(
                 build_monthly_spending_bar(monthly_df),
-                use_container_width=True,
+                width="stretch",
                 theme=None,
             )
         with col_tbl:
@@ -721,11 +722,11 @@ def _render_monthly_trend(monthly_df: pd.DataFrame) -> None:
                     tbl_df[col] = tbl_df[col].map(lambda x: format_money(x))
                 for col in ["MoM Change (%)", "Fixed (%)", "Disc. (%)"]:
                     tbl_df[col] = tbl_df[col].map(lambda x: "****%")
-                st.dataframe(tbl_df, use_container_width=True, hide_index=True)
+                st.dataframe(tbl_df, width="stretch", hide_index=True)
             else:
                 st.dataframe(
                     tbl_df,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Total (€)": st.column_config.NumberColumn("Total (€)", format="€%.2f"),
@@ -770,21 +771,43 @@ def render():
         else "Fiscal cycle aligns with standard calendar months (Day 1 to month end)."
     )
 
+    mapped = spending_view_for_scope(filters.get("resolved", {}), salary_day)
+    desired_scope = mapped["option"]
+    if desired_scope not in month_options:
+        desired_scope = month_options[0] if month_options else "All Months (Monthly Average)"
+    resolved_scope = filters.get("resolved", {})
+    _scope_key = (
+        resolved_scope.get("start_iso"),
+        resolved_scope.get("end_iso"),
+        resolved_scope.get("preset"),
+    )
+    if (
+        resolved_scope.get("requested")
+        and "spending_view_scope" in st.session_state
+        and st.session_state.get("_spending_scope_applied") != _scope_key
+    ):
+        st.session_state["spending_view_scope"] = desired_scope
+    st.session_state["_spending_scope_applied"] = _scope_key
+    if "spending_view_scope" not in st.session_state:
+        st.session_state["spending_view_scope"] = desired_scope
+
     with col_scope:
         selected_scope = st.selectbox(
             "View Scope",
             options=month_options,
-            index=0,
+            key="spending_view_scope",
             help=fiscal_tooltip,
             format_func=lambda m: format_fiscal_month_label(m, salary_day)
             if m != "All Months (Monthly Average)"
             else m,
         )
+        if mapped.get("caption"):
+            st.caption(f"🗓️ {mapped['caption']}")
     with col_budgets:
-        if st.button("✏️ Set Budgets", use_container_width=True, key="btn_open_budget_dialog"):
+        if st.button("✏️ Set Budgets", width="stretch", key="btn_open_budget_dialog"):
             set_category_budget_dialog()
     with col_mortgage:
-        if st.button("🏠 Link Mortgage", use_container_width=True, key="btn_open_mortgage_dialog"):
+        if st.button("🏠 Link Mortgage", width="stretch", key="btn_open_mortgage_dialog"):
             assign_mortgage_dialog()
 
     # Calculate exact scope KPIs

@@ -94,7 +94,7 @@ def tax_profile_dialog():
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.form_submit_button("Save Tax Profile", use_container_width=True, type="primary"):
+                if st.form_submit_button("Save Tax Profile", width="stretch", type="primary"):
                     from agent.tools import tool_save_tax_profile
                     res = tool_save_tax_profile(
                         gross_annual_income,
@@ -117,7 +117,7 @@ def tax_profile_dialog():
                         del st.session_state["pending_form"]
                     st.rerun()
             with col2:
-                if st.form_submit_button("Cancel", use_container_width=True):
+                if st.form_submit_button("Cancel", width="stretch"):
                     if "pending_form" in st.session_state:
                         del st.session_state["pending_form"]
                     st.rerun()
@@ -154,7 +154,7 @@ def risk_profile_dialog():
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.form_submit_button("Save Risk Profile", use_container_width=True, type="primary"):
+                if st.form_submit_button("Save Risk Profile", width="stretch", type="primary"):
                     from agent.tools import tool_save_risk_profile
                     res = tool_save_risk_profile(
                         risk_score,
@@ -171,7 +171,7 @@ def risk_profile_dialog():
                         del st.session_state["pending_form"]
                     st.rerun()
             with col2:
-                if st.form_submit_button("Cancel", use_container_width=True):
+                if st.form_submit_button("Cancel", width="stretch"):
                     if "pending_form" in st.session_state:
                         del st.session_state["pending_form"]
                     st.rerun()
@@ -241,7 +241,7 @@ def mortgage_config_dialog(existing_lib_id=None):
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.form_submit_button("Save Mortgage", use_container_width=True, type="primary"):
+                if st.form_submit_button("Save Mortgage", width="stretch", type="primary"):
                     principal_minor = int(round(orig_principal * 100))
                     home_val_minor = int(round(home_value * 100)) if home_value > 0 else None
                     override_minor = int(round(bal_override * 100)) if bal_override > 0 else None
@@ -272,7 +272,7 @@ def mortgage_config_dialog(existing_lib_id=None):
                         del st.session_state["pending_form"]
                     st.rerun()
             with col2:
-                if st.form_submit_button("Cancel", use_container_width=True):
+                if st.form_submit_button("Cancel", width="stretch"):
                     if "pending_form" in st.session_state:
                         del st.session_state["pending_form"]
                     st.rerun()
@@ -354,10 +354,10 @@ def set_category_budget_dialog():
                     c_save, c_cancel = st.columns(2)
                     with c_save:
                         save_clicked = st.form_submit_button(
-                            "Save Budget", type="primary", use_container_width=True
+                            "Save Budget", type="primary", width="stretch"
                         )
                     with c_cancel:
-                        cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
+                        cancel_clicked = st.form_submit_button("Cancel", width="stretch")
 
                     if save_clicked:
                         set_category_budget(conn, selected_id, new_val)
@@ -376,7 +376,7 @@ def set_category_budget_dialog():
 
                 if active_rows:
                     st.markdown("**Active Budgets:**")
-                    st.dataframe(pd.DataFrame(active_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(active_rows), width="stretch", hide_index=True)
     finally:
         conn.close()
 
@@ -476,11 +476,11 @@ def assign_mortgage_dialog(tx_id=None):
                 submitted = st.form_submit_button(
                     "Confirm Mortgage Assignment",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=chosen_lib_id is None,
                 )
             with col2:
-                cancelled = st.form_submit_button("Cancel", use_container_width=True)
+                cancelled = st.form_submit_button("Cancel", width="stretch")
 
             if submitted and chosen_lib_id is not None:
                 mortgage_cat = conn.execute("SELECT id FROM categories WHERE name = 'Mortgage'").fetchone()
@@ -538,7 +538,7 @@ def confirm_delete_transactions_dialog(tx_ids: list[int]):
     st.warning(f"Are you sure you want to permanently delete {len(tx_ids)} selected transaction(s)? This action cannot be undone.")
     col_confirm, col_cancel = st.columns(2)
     with col_confirm:
-        if st.button("Yes, Delete", type="primary", use_container_width=True, key="dlg_confirm_delete_btn"):
+        if st.button("Yes, Delete", type="primary", width="stretch", key="dlg_confirm_delete_btn"):
             conn = database.connect(DB_PATH)
             try:
                 deleted_count = database.delete_transactions(conn, tx_ids)
@@ -549,7 +549,7 @@ def confirm_delete_transactions_dialog(tx_ids: list[int]):
                 conn.close()
             st.rerun()
     with col_cancel:
-        if st.button("Cancel", use_container_width=True, key="dlg_cancel_delete_btn"):
+        if st.button("Cancel", width="stretch", key="dlg_cancel_delete_btn"):
             st.rerun()
 
 
@@ -611,9 +611,9 @@ def manual_account_dialog(account_id: int | None = None):
 
             col_sub, col_can = st.columns(2)
             with col_sub:
-                submitted = st.form_submit_button("Save Account", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("Save Account", type="primary", width="stretch")
             with col_can:
-                cancelled = st.form_submit_button("Cancel", use_container_width=True)
+                cancelled = st.form_submit_button("Cancel", width="stretch")
 
             if submitted:
                 if not name or not institution:

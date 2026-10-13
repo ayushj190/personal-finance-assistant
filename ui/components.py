@@ -51,13 +51,9 @@ def mask_if_hidden(text: str | None) -> str:
         return ""
     if not is_hidden():
         return str(text)
-    # Mask any currency amount (e.g. €123.45, +€1,000, -$50.00) with symbol + ****
+    # Mask only currency amounts (e.g. €123.45, +€1,000, -$50.00) with symbol + ****.
+    # Percentages, counts, tickers, and names stay readable (AC-8).
     s = re.sub(r'([+\-]?)(\$|€|£|TRY\s*)[0-9,]+(\.[0-9]+)?', r'\1\2****', str(text))
-    # Mask percentage values (e.g. 12.5%, +12.5%, -5.0%, **%) with symbol + ****%
-    s = re.sub(r'([+\-]?)(\d+(?:,\d+)*(?:\.\d+)?|\*+)\s*%', r'\1****%', s)
-    # Mask asset counts and quote delayed counts in metrics/tooltips
-    s = re.sub(r'(\b\d+\b)\s+assets', r'**** assets', s)
-    s = re.sub(r'(\b\d+\b)\s+quote delayed', r'**** quote delayed', s)
     return s
 
 

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import tempfile
 import time
 import unittest
@@ -265,11 +265,11 @@ class TestRepositoriesAndDecoupling(unittest.TestCase):
         mock_fig.layout.template = None
 
         with patch("streamlit.plotly_chart") as mock_st_chart:
-            charts.render_chart(mock_fig, use_container_width=True)
+            charts.render_chart(mock_fig, width="stretch")
             mock_st_chart.assert_called_once()
             _, kwargs = mock_st_chart.call_args
             self.assertEqual(kwargs.get("theme"), None)
-            self.assertEqual(kwargs.get("use_container_width"), True)
+            self.assertEqual(kwargs.get("width"), "stretch")
 
 
 if __name__ == "__main__":

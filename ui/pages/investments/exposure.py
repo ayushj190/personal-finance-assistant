@@ -17,7 +17,7 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
         with st.container(border=True, key="investments_exposure_heatmap_panel"):
             st.markdown("##### 🗺️ Portfolio Exposure Heatmap")
             carpet_fig = build_investments_market_carpet(consolidated_df, height=380)
-            render_chart(carpet_fig, use_container_width=True, key="investments_market_carpet")
+            render_chart(carpet_fig, width="stretch", key="investments_market_carpet")
 
         dim_options = ["Sector", "Region", "Currency", "Nature"]
         selected_dim = st.pills(
@@ -58,7 +58,7 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
                     margin=dict(t=40, l=10, r=10, b=10),
                     height=320,
                 )
-                render_chart(donut_fig, use_container_width=True)
+                render_chart(donut_fig, width="stretch")
 
         with col_bar:
             with st.container(border=True):
@@ -88,7 +88,7 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
                     xaxis=dict(ticksuffix="%", automargin=True),
                     yaxis=dict(automargin=True),
                 )
-                render_chart(bar_fig, use_container_width=True)
+                render_chart(bar_fig, width="stretch")
 
         with st.expander("💼 Asset Class Breakdown (Stocks, ETFs, Crypto, Commodities)", expanded=False):
             ac_dim_df = get_dimension_exposure_df(consolidated_df, "Asset Class")
@@ -105,7 +105,7 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
                         title="Asset Class Distribution",
                     )
                     ac_fig.update_layout(height=280, margin=dict(t=30, l=10, r=10, b=10))
-                    render_chart(ac_fig, use_container_width=True)
+                    render_chart(ac_fig, width="stretch")
             with ac_c2:
                 table_ac = ac_dim_df.copy()
                 if ui.pages.investments.is_hidden():
@@ -117,7 +117,7 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
                 table_ac.rename(columns={"bucket": "Asset Class"}, inplace=True)
                 st.dataframe(
                     table_ac[["Asset Class", "Value (€)", "Weight (%)"]],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -132,6 +132,6 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
             table_df.rename(columns={"bucket": selected_dim}, inplace=True)
             st.dataframe(
                 table_df[[selected_dim, "Value (€)", "Weight (%)"]],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )

@@ -14,12 +14,21 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_spending_by_category",
-            "description": "Get total spending broken down by category for a specific month and year (e.g. year=2026, month=10), or overall.",
+            "description": "Get total spending broken down by category for a specific month and year (e.g. year=2026, month=10), or overall. Prefer the date_scope argument for relative ranges like 'last month'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "year": {"type": "integer", "description": "4-digit year like 2026", "minimum": 1900, "maximum": 2100},
                     "month": {"type": "integer", "description": "Month number (1-12)", "minimum": 1, "maximum": 12},
+                    "date_scope": {
+                        "type": "object",
+                        "description": "Optional requested range. Use {\"preset\": one of Last 3 Months, MTD, Last Month, YTD, Last 12 Months, All Time}, or {\"start\": \"YYYY-MM-DD\", \"end\": \"YYYY-MM-DD\"}. Wins over year and month.",
+                        "properties": {
+                            "preset": {"type": "string", "enum": ["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"]},
+                            "start": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "End date YYYY-MM-DD"},
+                        },
+                    },
                 },
             },
         },
@@ -28,12 +37,21 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_recent_transactions",
-            "description": "Retrieve recent transactions optionally filtered by category.",
+            "description": "Retrieve recent transactions optionally filtered by category and by a requested date range.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "description": "Number of transactions to return (default 15, max 100)", "minimum": 1, "maximum": 100},
                     "category": {"type": "string", "description": "Category name filter (e.g. Groceries, Dining)"},
+                    "date_scope": {
+                        "type": "object",
+                        "description": "Optional requested range. Use {\"preset\": one of Last 3 Months, MTD, Last Month, YTD, Last 12 Months, All Time}, or {\"start\": \"YYYY-MM-DD\", \"end\": \"YYYY-MM-DD\"}.",
+                        "properties": {
+                            "preset": {"type": "string", "enum": ["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"]},
+                            "start": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "End date YYYY-MM-DD"},
+                        },
+                    },
                 },
             },
         },
@@ -42,11 +60,20 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_monthly_cashflow",
-            "description": "Get monthly income, expenses, and savings summary.",
+            "description": "Get monthly income, expenses, and savings summary. A requested date scope that is not aligned to whole months is snapped to whole months and noted.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "year": {"type": "integer", "description": "Filter by 4-digit year", "minimum": 1900, "maximum": 2100},
+                    "date_scope": {
+                        "type": "object",
+                        "description": "Optional requested range. Use {\"preset\": one of Last 3 Months, MTD, Last Month, YTD, Last 12 Months, All Time}, or {\"start\": \"YYYY-MM-DD\", \"end\": \"YYYY-MM-DD\"}.",
+                        "properties": {
+                            "preset": {"type": "string", "enum": ["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"]},
+                            "start": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "End date YYYY-MM-DD"},
+                        },
+                    },
                 },
             },
         },
@@ -362,6 +389,38 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
                     "article_ref": {"type": "string", "description": "Exact statutory article number, e.g. 'Art. 3.16', 'Art. 5.2', 'Art. 3.120'"},
                 },
                 "required": ["article_ref"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_view",
+            "description": "Open a page for the user, optionally an Investments tab and a date scope. Use when the user asks to see, open, go to, or show a screen. The result moves the app; the answer in chat should still quote the numbers the data tools returned.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "enum": ["dashboard", "spending", "investments", "mortgage", "transactions", "tax", "settings"],
+                        "description": "Destination page id",
+                    },
+                    "tab": {
+                        "type": "string",
+                        "enum": ["portfolio", "allocation", "income_tax", "goals"],
+                        "description": "Optional Investments tab id; ignored with a note on a page with no tabs",
+                    },
+                    "date_scope": {
+                        "type": "object",
+                        "description": "Optional requested range. Use {\"preset\": one of Last 3 Months, MTD, Last Month, YTD, Last 12 Months, All Time}, or {\"start\": \"YYYY-MM-DD\", \"end\": \"YYYY-MM-DD\"}.",
+                        "properties": {
+                            "preset": {"type": "string", "enum": ["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"]},
+                            "start": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "End date YYYY-MM-DD"},
+                        },
+                    },
+                },
+                "required": ["page"],
             },
         },
     },

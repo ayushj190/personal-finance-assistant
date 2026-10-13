@@ -20,7 +20,7 @@ def render():
         col_msg, col_btn = st.columns([0.7, 0.3], vertical_alignment="bottom")
         with col_btn:
             from ui.dialogs import mortgage_config_dialog
-            if st.button("⚙️ Configure Mortgage / Loan", type="primary", use_container_width=True):
+            if st.button("⚙️ Configure Mortgage / Loan", type="primary", width="stretch"):
                 mortgage_config_dialog()
         st.info("No mortgage or liability configured yet. Enter your mortgage details below to generate the schedule.")
         conn.close()
@@ -29,7 +29,7 @@ def render():
     from ui.dialogs import mortgage_config_dialog
     col_space, col_btn = st.columns([0.7, 0.3], vertical_alignment="bottom")
     with col_btn:
-        if st.button("⚙️ Add / Edit Mortgage Configuration", use_container_width=True):
+        if st.button("⚙️ Add / Edit Mortgage Configuration", width="stretch"):
             mortgage_config_dialog(liabilities[0]["id"])
 
     lib = dict(liabilities[0])
@@ -188,13 +188,13 @@ def render():
                 for c in ["Paid (€)", "Scheduled (€)", "Principal (€)", "Interest (€)"]:
                     matched_df[c] = matched_df[c].map(lambda x: format_money(x) if isinstance(
                         x, (int, float)) and x > 0 else ("-" if x == 0.0 else x))
-                st.dataframe(matched_df, use_container_width=True, hide_index=True)
+                st.dataframe(matched_df, width="stretch", hide_index=True)
             else:
                 num_cfg = st.column_config.NumberColumn(
                     "Amount (€)", format="€%.2f", disabled=True)
                 st.dataframe(
                     matched_df,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Merchant": st.column_config.TextColumn("Merchant", width="medium"),

@@ -47,7 +47,7 @@ def render():
                         last_time_str = last_sync_row["started_at"].replace("T", " ")[:16]
                         last_sync_text = f"Last synced: {last_time_str}"
                 
-                    if st.button("🔄 Sync All Banks & Brokers", type="primary", use_container_width=True, help="Trigger manual sync across all active connectors and market data"):
+                    if st.button("🔄 Sync All Banks & Brokers", type="primary", width="stretch", help="Trigger manual sync across all active connectors and market data"):
                         with st.spinner("Syncing bank & broker data..."):
                             from services.sync_service import sync_all
                             sync_all(conn)
@@ -101,7 +101,7 @@ def render():
 
                         c_connect, c_status = st.columns([1, 2])
                         with c_connect:
-                            if st.button("Connect Selected Bank", type="primary", use_container_width=True):
+                            if st.button("Connect Selected Bank", type="primary", width="stretch"):
                                 bank_data = active_opts[selected_bank_key]
                                 bank_name = bank_data.get("name", "Unknown")
                                 bank_country = bank_data.get("country", "NL")
@@ -195,7 +195,7 @@ def render():
                     with st.expander("📋 View Recent Integration Sync Logs"):
                         log_df = pd.DataFrame([dict(r) for r in recent_syncs])
                         log_df.columns = ["Connector", "Time", "Status", "Details"]
-                        st.dataframe(log_df, use_container_width=True, hide_index=True)
+                        st.dataframe(log_df, width="stretch", hide_index=True)
 
                 st.divider()
 
@@ -427,7 +427,7 @@ def render():
                     with col_btn:
                         st.write("")
                         st.write("")
-                        save_clicked = st.form_submit_button("Save Payday", type="primary", use_container_width=True)
+                        save_clicked = st.form_submit_button("Save Payday", type="primary", width="stretch")
 
                     if save_clicked:
                         set_fiscal_salary_day(conn, new_day)
@@ -488,7 +488,7 @@ def render():
                         "Type": p["kind"].title(),
                         "Subcategories (for deepdive)": sub_str,
                     })
-                st.dataframe(pd.DataFrame(cat_display), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(cat_display), width="stretch", hide_index=True)
 
             # 3. Mortgage Tab
         elif selected_tab == "Mortgage & Liabilities":

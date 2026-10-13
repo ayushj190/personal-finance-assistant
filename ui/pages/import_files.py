@@ -24,7 +24,7 @@ def render():
             "Drop your bank, card, or broker export files (Trade Republic, ABN AMRO, Revolut, eToro, Türkiye İş Bankası, MT940, CAMT.053, PDF). The system automatically detects formats and matches target accounts."
         )
     with col_btn:
-        if st.button("➕ Add Manual Account", key="import_add_manual_acc_btn", use_container_width=True):
+        if st.button("➕ Add Manual Account", key="import_add_manual_acc_btn", width="stretch"):
             manual_account_dialog()
 
     conn = database.connect(DB_PATH)
@@ -166,7 +166,7 @@ def render():
                     for tx in raw_txs[:5]
                 ]
                 st.dataframe(pd.DataFrame(preview_data),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
             if raw_holdings:
                 st.caption(f"Found {len(raw_holdings)} investment positions:")
@@ -180,7 +180,7 @@ def render():
                     for h in raw_holdings[:5]
                 ]
                 st.dataframe(pd.DataFrame(h_preview),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
             if not raw_txs and not raw_holdings and final_balance_to_save is not None:
                 save_maj = Money.from_cents(final_balance_to_save).to_major()

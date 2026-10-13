@@ -430,7 +430,7 @@ def render_cash_flow_sankey(
     fig = build_cash_flow_sankey(sankey_data, drilldown_flow=current_drill, height=height)
     ui.charts.render_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         key=f"{key_prefix}_chart_widget",
     )
 

@@ -69,7 +69,7 @@ def render_realized_pnl_panel(conn: Optional[sqlite3.Connection] = None) -> None
                 ]
                 st.dataframe(
                     disp_closed[[c for c in cols_to_show if c in disp_closed.columns]],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             else:

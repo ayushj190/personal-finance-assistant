@@ -224,7 +224,7 @@ class TestCopilotCalmingAndToolHardening(unittest.TestCase):
         at.run()
 
         # Locate and click Assess Risk button
-        assess_button = at.button[0]
+        assess_button = next(b for b in at.button if "Assess Risk" in b.label)
         self.assertIn("Assess Risk", assess_button.label)
         assess_button.click().run()
 

@@ -27,6 +27,7 @@ The UI layer houses the Streamlit presentation tier for the personal finance ass
 - Check `st.session_state["hide_amounts"]` before displaying sensitive euro values or account balances.
 - Use explicit keys for all input widgets to maintain persistent state across page navigation.
 - Keep business logic and calculation algorithms inside `services/`, keeping UI files focused on layout and user interactions.
+- Copilot navigation: sidebar chips and the action layer write the intent and `flt_state` (`ui/filters.py`); the date scope is resolved once by `services/date_scope.py` so the page and the chat answer agree. Hide values masks money only, keeping asset names, merchants, counts, and percentages readable.
 
 ## Gotchas
 

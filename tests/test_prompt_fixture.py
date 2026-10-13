@@ -10,7 +10,7 @@ from agent.tool_schemas import COPILOT_TOOLS_SCHEMA
 PROMPT_TOOL_FIXTURE: list[tuple[str, str, dict]] = [
     ("What is my net worth right now?", "get_current_net_worth", {}),
     ("How much did I spend on groceries last month?", "get_spending_by_category", {"year": 2026, "month": 9}),
-    ("Show me my most recent transactions.", "get_recent_transactions", {"limit": 10}),
+    ("What were my latest transactions?", "get_recent_transactions", {"limit": 10}),
     ("What is my monthly cashflow?", "get_monthly_cashflow", {}),
     ("How is my portfolio allocated against my target?", "analyze_investments", {}),
     ("List my allocation strategies.", "get_allocation_profiles", {}),

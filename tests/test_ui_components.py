@@ -25,10 +25,10 @@ class TestUIComponents(unittest.TestCase):
             self.assertEqual(mask_if_hidden("$100.50"), "$****")
             self.assertEqual(mask_if_hidden(
                 "Est. +€2.50 accrued"), "Est. +€**** accrued")
-            self.assertEqual(mask_if_hidden("12.5% return"), "****% return")
-            self.assertEqual(mask_if_hidden("+5.0%"), "+****%")
-            self.assertEqual(mask_if_hidden("-3.2%"), "-****%")
-            self.assertEqual(mask_if_hidden("10 assets"), "**** assets")
+            self.assertEqual(mask_if_hidden("12.5% return"), "12.5% return")
+            self.assertEqual(mask_if_hidden("+5.0%"), "+5.0%")
+            self.assertEqual(mask_if_hidden("-3.2%"), "-3.2%")
+            self.assertEqual(mask_if_hidden("10 assets"), "10 assets")
 
     def test_mask_if_not_hidden(self):
         with patch("streamlit.session_state", {"hide_amounts": False}):

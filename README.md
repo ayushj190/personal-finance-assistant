@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![Database: SQLite WAL](https://img.shields.io/badge/Database-SQLite%20(WAL)-green.svg)](https://www.sqlite.org/)
 [![AI Engine: Ollama Local](https://img.shields.io/badge/AI%20Engine-Ollama%20(Qwen%202.5)-purple.svg)](https://ollama.com/)
-[![Tests: 215 Passed](https://img.shields.io/badge/Tests-215%20Passed-brightgreen.svg)](tests/)
+[![Tests: 260 Passed](https://img.shields.io/badge/Tests-260%20Passed-brightgreen.svg)](tests/)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
 
 > **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
@@ -21,13 +21,13 @@
 
 | Feature Module | Key Capabilities | Engineering & Architecture Showcase | Stack / Tooling |
 | :--- | :--- | :--- | :--- |
-| **🤖 Sandboxed AI Copilot** | Offline financial assistant with natural language querying, 25 deterministic tool handlers, and dynamic chart generation. | **Zero-Trust Guardrails**: C-level SQLite Authorizer enforces read-only SQL (`SQLITE_SELECT` only). Decoupled non-blocking execution via `@st.fragment` background worker thread. | Ollama (Qwen 2.5), Python `threading`, Streamlit Fragments |
+| **🤖 Sandboxed AI Copilot** | Offline financial assistant with natural language querying, 28 deterministic tool handlers, and an action layer that opens pages and date scopes. | **Zero-Trust Guardrails**: C-level SQLite Authorizer enforces read only SQL (`SQLITE_SELECT` only). Decoupled non-blocking execution via `@st.fragment` background worker thread. | Ollama (Qwen 2.5), Python `threading`, Streamlit Fragments |
 | **⚖️ Dutch Legal Vector Vault** | Semantic search across Dutch tax codes, mortgage deduction laws (*HRA*), and *Groenfondsen* statutory articles with source citations. | **Local Vector RAG & IR**: Persistent SQLite vector store combining dense semantic cosine similarity with FTS5 BM25 keyword search via **Reciprocal Rank Fusion (RRF)**. | `sqlite-vec`, FastEmbed (384-dim CPU), SQLite FTS5 |
 | **📈 Quant Portfolio Rebalancer** | Swensen 5/25 threshold drift monitor across multi-asset portfolios with 3 rebalance models (Full, Buy-Only, Target Cash Injection). | **Single Source of Truth Math**: Multi-dimension exposure aggregation (Asset Class, Sector, Region, Currency, Theme), realized P&L tracking for closed positions, and FIRE timeline modeling. | NumPy, Pandas, Plotly, TradingView Widgets |
 | **🇳🇱 Belastingdienst Tax Engine** | Dutch Box 1 income tax (with 30% expat ruling & HRA), Box 3 wealth tax deemed yield (*fictief rendement*), and Pillar 3 pension room (*Jaarruimte*). | **Financial Regulatory Modeling**: 4-way capital allocation simulator (Mortgage Prepayment vs. Pension vs. Groenfondsen Arbitrage vs. Taxable ETF) with multi-year trajectories. | Pure Python domain services, Plotly |
 | **🏠 Dutch Mortgage Simulator** | 30-year amortization modeling for Annuity (*annuïteit*), Linear (*lineair*), and Interest-Only (*aflossingsvrij*) mortgage structures. | **Loan Analytics & Optimization**: Penalty-free prepayment simulator (*boetevrij aflossen*, up to 10–20%/yr), compound interest savings, and real-time Loan-to-Value (LTV) net equity tracking. | Mathematical amortization algorithms |
 | **🔌 Universal Ingestion Rails** | PSD2 Open Banking sync, direct eToro broker sync, bilingual PDF statement parsers (Turkish/English İş Bankası), CAMT.053 XML, and MT940. | **Hybrid Data Pipeline**: Deterministic format extraction with SHA-256 deduplication and graceful fallback to local LLM zero-shot schema extraction for irregular bank exports. | Enable Banking AISP (RSA/RS256 JWT), PyPDF, Regex, Ollama |
-| **🔒 Zero-Trust Privacy Shield** | One-click global masking (`****`) across all financial tables, metric cards, and charts for public screen sharing or live streaming. | **Local Security Posture**: Symmetric Fernet secrets encryption; master key stored in **Windows Credential Manager** (`keyring`). Zero cloud telemetry. | Python Cryptography, Windows Credential Manager |
+| **🔒 Zero-Trust Privacy Shield** | One-click Privacy Shield masks money amounts only (`€****`), keeping tickers, merchant names, categories, counts, and percentages readable for public screen sharing or live streaming. | **Local Security Posture**: Symmetric Fernet secrets encryption; master key stored in **Windows Credential Manager** (`keyring`). Zero cloud telemetry. | Python Cryptography, Windows Credential Manager |
 
 ---
 
@@ -52,7 +52,7 @@ flowchart TD
     subgraph Agent["Autonomous Copilot Engine"]
         Copilot["Ollama Local LLM"]
         Task["CopilotTask Thread"]
-        Tools["25 Native Tools"]
+        Tools["28 Native Tools"]
         VaultRAG["Dutch Law Vector Vault"]
     end
 
@@ -197,13 +197,14 @@ Local SQLite database backups, API secrets vault, bank connections, and classifi
 - **Certified Groenfondsen Arbitrage**: Double tax benefit calculator (Box 3 exemption up to €71,251 / €142,502 + 0.1% Box 1 credit, ~2.27% risk-free tax alpha).
 
 ### 6. 🤖 Sandboxed Offline AI Copilot (`agent/copilot.py`)
-- **25 Native Deterministic Tools**: Copilot routes user intent to native Python optimization engines for net worth, spending analytics, mortgage recalculation, capital simulation, pension room, green fund arbitrage, and tax leak detection.
+- **28 Native Deterministic Tools**: Copilot routes user intent to native Python optimization engines for net worth, spending analytics, mortgage recalculation, capital simulation, pension room, green fund arbitrage, and tax leak detection.
+- **Copilot Action Layer**: One `open_view` tool plus a deterministic fast path open a page, an Investments tab, and the asked for date scope from one shared resolver, so the chat answer and the page agree.
 - **Persistent Local SQLite Vector RAG**: Multi-document knowledge vault referencing Dutch tax codes, mortgage deduction laws, and Groenfondsen, stored persistently in SQLite WAL with hybrid semantic vector + BM25 search via Reciprocal Rank Fusion.
 - **Dynamic Interactive Plotly Charts**: Automatically generates interactive bar, line, area, and trajectory charts directly inside chat turns (`agent/chart_renderer.py`).
 - **Autonomous Zero-Shot Statement Parsing**: Extracts structured transactions from unsupported statement documents using the local LLM.
 
 ### 7. 🔒 Global Screen-Shield Privacy Mode
-- Single-click global toggle masks all currency numbers across every table, metric card, and visualization with `****`, enabling safe screen sharing, demos, and public streaming.
+- Single-click global toggle masks money amounts only (for example `€****`) across tables, metric cards, chart axes, and chat, while tickers, merchant names, categories, dates, counts, and percentages stay readable, enabling safe screen sharing, demos, and public streaming.
 
 ---
 
@@ -269,43 +270,14 @@ python run_tests.py
 ============================= test session starts =============================
 platform win32 -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
 rootdir: C:\Users\ayush\Documents\Repos\personal-finance-assistant
-collected 200 items
+collected 260 items
 
-tests\test_analytics.py ...                                              [  1%]
-tests\test_category_dedup.py ..                                          [  2%]
-tests\test_copilot_calming.py ......................                     [ 13%]
-tests\test_copilot_sidebar.py .....                                      [ 16%]
-tests\test_copilot_task.py ..                                            [ 17%]
-tests\test_copilot_tools.py .........                                    [ 21%]
-tests\test_dashboard_hardening.py ........                               [ 25%]
-tests\test_dashboard_page.py ...............                             [ 33%]
-tests\test_database.py ......                                            [ 36%]
-tests\test_enable_banking_service.py ..                                  [ 37%]
-tests\test_etoro_service.py ....                                         [ 39%]
-tests\test_file_import.py .......                                        [ 42%]
-tests\test_fiscal_service.py .......                                     [ 46%]
-tests\test_goals.py ..                                                   [ 47%]
-tests\test_investments_exposure_pnl.py ...                               [ 48%]
-tests\test_investments_holdings.py .......                               [ 52%]
-tests\test_legal_vault_service.py ........                               [ 56%]
-tests\test_manual_accounts_hybrid_import.py .....                        [ 58%]
-tests\test_mortgage.py .....                                             [ 61%]
-tests\test_navigation_smoke.py ...                                       [ 62%]
-tests\test_new_features.py ....                                          [ 64%]
-tests\test_normalization.py ..                                           [ 65%]
-tests\test_portfolio.py .....                                            [ 68%]
-tests\test_rag_service.py ....                                           [ 70%]
-tests\test_repositories_and_decoupling.py ......                         [ 73%]
-tests\test_sankey_drilldown.py .........                                 [ 77%]
-tests\test_secrets_vault.py .                                            [ 78%]
-tests\test_spending_budgeting.py ........                                [ 82%]
-tests\test_sync_service.py .                                             [ 82%]
-tests\test_tax_optimizer.py ....                                         [ 84%]
-tests\test_transactions_workflow.py .....                                [ 87%]
-tests\test_ui_components.py ........                                     [ 91%]
-tests\test_ui_theme.py ..................                                [100%]
+tests\ ...                                                                [100%]
+  covers analytics, copilot calming and the action layer, dashboard,
+  fiscal, investments, imports, mortgage, portfolio, spending, tax,
+  transactions, and UI theme.
 
-======================= 200 passed in 88.96s =======================
+======================= 260 passed in 80.79s =======================
 ```
 
 ### Verified Coverage Areas
@@ -319,7 +291,9 @@ tests\test_ui_theme.py ..................                                [100%]
 
 ## 📄 Architecture & Documentation
 
+**Local first architecture**: every record lives in a local SQLite database in WAL mode (`data/finance.db`) and every credential is encrypted into `data/vault.bin` with the master key held by Windows Credential Manager. Nothing leaves the machine; the Copilot runs through a local Ollama model. Copilot data tools open the database through `connect_readonly()`, and a SQLite C-level authorizer permits `SELECT` only, so model generated SQL can never write. The Copilot action layer adds a single validated `open_view` tool plus a deterministic fast path that may set a page, an Investments tab, and a date scope, never SQL.
+
 - **[System Architecture](docs/ARCHITECTURE.md)**: Comprehensive guide to the threading model, security sandbox, quant calculation engines, and database schema.
 - **[Feature Scope](docs/scope/scope.md)**: Product roadmap, delivery slices, and implementation status.
-- **[Technical Specifications](docs/specs/)**: Detailed architectural specs and acceptance criteria for all 13 vertical feature slices.
+- **[Technical Specifications](docs/specs/)**: Detailed architectural specs and acceptance criteria for all 16 vertical feature slices.
 - **[UI/UX & Functioning Audit](docs/reviews/2026-10-12-ui-ux-audit.md)**: Hands-on polish pass — privacy-shield scope, functional bugs, deprecated APIs, and a prioritised fix list ahead of release.

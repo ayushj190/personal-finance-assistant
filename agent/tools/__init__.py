@@ -47,6 +47,9 @@ from agent.tools.market import (
     tool_analyze_mortgage,
     tool_request_profile_form,
 )
+from agent.tools.navigation import (
+    tool_open_view,
+)
 
 # Re-exports for test compatibility and patch mocking
 from db.repositories import AccountRepository, HoldingRepository
@@ -86,6 +89,7 @@ __all__ = [
     "tool_analyze_tax_situation",
     "tool_analyze_mortgage",
     "tool_request_profile_form",
+    "tool_open_view",
     "AccountRepository",
     "HoldingRepository",
     "get_consolidated_holdings_df",

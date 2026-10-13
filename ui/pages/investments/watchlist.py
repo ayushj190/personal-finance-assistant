@@ -69,6 +69,6 @@ def render_live_quotes_and_watchlist(
                 </div>
             </div>
             """
-            st.components.v1.html(tv_html, height=390)
+            st.iframe(tv_html, height=390)
     else:
         st.caption("No active holdings found for live market feed.")

@@ -107,7 +107,11 @@ def register_plotly_theme() -> None:
 
 
 def mask_chart_if_hidden(fig: Any) -> None:
-    """Mask tooltips, percentages, and money axes in Plotly charts when hide_amounts is active."""
+    """Mask money on charts when Hide values is on.
+
+    Only monetary axes and monetary hover values are masked; labels, percentages,
+    counts, and names stay readable (AC-8).
+    """
     if not hasattr(fig, "layout"):
         return
 
@@ -117,7 +121,9 @@ def mask_chart_if_hidden(fig: Any) -> None:
 
     layout = fig.layout
 
-    # 1. Mask axes displaying money values (hide ticks / numbers on the axis)
+    # 1. Hide tick labels on money axes only (the axis is tagged by its tick
+    # prefix, title, or a known money term).
+    has_money_axis = False
     for axis_attr in ["xaxis", "yaxis", "xaxis2", "yaxis2", "yaxis3"]:
         axis = getattr(layout, axis_attr, None)
         if axis is None:
@@ -142,33 +148,17 @@ def mask_chart_if_hidden(fig: Any) -> None:
         )
         if is_money_axis:
             axis.showticklabels = False
+            has_money_axis = True
 
-    # 2. Mask tooltips (hovertemplate) and data text templates
-    if hasattr(fig, "data"):
+    # 2. Mask hover values on money charts, but leave pie and sankey labels
+    # (allocation percentages) readable.
+    if has_money_axis and hasattr(fig, "data"):
         for trace in fig.data:
-            trace_type = getattr(trace, "type", "")
-            if trace_type in ("pie",):
-                trace.texttemplate = "%{label}<br>****%"
-                trace.hovertemplate = "Censored<extra></extra>"
-            elif trace_type == "sankey":
-                if hasattr(trace, "node") and trace.node:
-                    trace.node.hovertemplate = "Censored<extra></extra>"
-                if hasattr(trace, "link") and trace.link:
-                    trace.link.hovertemplate = "Censored<extra></extra>"
-            else:
-                trace.hovertemplate = "Censored<extra></extra>"
+            if getattr(trace, "type", "") in ("pie", "sankey"):
+                continue
+            trace.hovertemplate = "Censored<extra></extra>"
 
-            # Mask text on traces (e.g. data labels on bars)
-            if hasattr(trace, "text") and trace.text is not None:
-                if isinstance(trace.text, (list, tuple)):
-                    trace.text = [
-                        "****%" if "%" in str(x) else ("****" if str(x).strip() else "")
-                        for x in trace.text
-                    ]
-                elif isinstance(trace.text, str) and trace.text:
-                    trace.text = "****%" if "%" in trace.text else "****"
-
-    # 3. If unified hovermode was enabled, Censored tooltip works cleanly with closest
+    # 3. Unified hover would still show a money legend value; fall back to closest.
     if getattr(layout, "hovermode", None) == "x unified":
         layout.hovermode = "closest"
 
@@ -177,8 +167,8 @@ def render_chart(figure_or_data: Any, *args: Any, **kwargs: Any) -> Any:
     """Standardized Plotly chart renderer replacing runtime monkey patching."""
     if "theme" not in kwargs:
         kwargs["theme"] = None
-    if "use_container_width" not in kwargs:
-        kwargs["use_container_width"] = True
+    if "width" not in kwargs:
+        kwargs["width"] = "stretch"
     if "config" not in kwargs or kwargs["config"] is None:
         kwargs["config"] = {}
     kwargs["config"]["displayModeBar"] = False
@@ -197,5 +187,7 @@ def render_chart(figure_or_data: Any, *args: Any, **kwargs: Any) -> Any:
 
         mask_chart_if_hidden(figure_or_data)
 
+    # A loading placeholder that the CSS hides as soon as the chart mounts (AC-14).
+    st.markdown('<div class="chart-skeleton"></div>', unsafe_allow_html=True)
     return st.plotly_chart(figure_or_data, *args, **kwargs)
 

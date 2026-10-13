@@ -18,6 +18,12 @@ class K:
     PENDING_COPILOT_PROMPT = "pending_copilot_prompt"
     PENDING_FORM = "pending_form"
     COPILOT_FILE_UPLOADER = "copilot_file_uploader"
+    COPILOT_UI_INTENT = "copilot_ui_intent"
+
+    # Filters & navigation
+    FILTER_STATE = "flt_state"
+    INVESTMENTS_ACTIVE_TAB = "investments_active_tab"
+    INVESTMENTS_TABS_GENERATION = "investments_tabs_generation"
 
     # Dashboard
     DASHBOARD_SANKEY_DRILLDOWN = "dashboard_sankey_drilldown_state"

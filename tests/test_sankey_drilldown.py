@@ -139,7 +139,7 @@ class TestSankeyDrilldown(unittest.TestCase):
         fig = mock_render_chart.call_args[0][0]
         self.assertIsInstance(fig, go.Figure)
         self.assertEqual(fig.data[0].type, "sankey")
-        self.assertEqual(mock_render_chart.call_args[1].get("use_container_width"), True)
+        self.assertEqual(mock_render_chart.call_args[1].get("width"), "stretch")
 
     def test_open_sankey_fullscreen_dialog_attributes(self):
         """AC-4: Verify open_sankey_fullscreen_dialog is decorated as a modal dialog."""

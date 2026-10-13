@@ -19,6 +19,8 @@ The services layer contains the core financial computation engines and business 
 | `services/secrets_vault.py` | Fernet encryption for API keys backed by Windows Credential Manager via keyring |
 | `services/sync_service.py` | Coordination of background sync tasks across active banking and broker connectors |
 | `services/task_coordinator.py` | Thread safe coordinator isolating background workers from direct Streamlit session state |
+| `services/date_scope.py` | Single shared date scope resolver for preset, explicit, and day window ranges, used by both the Copilot answer and the pages |
+| `services/navigation.py` | Page and tab whitelists, the filtered page set, and the deterministic Copilot fast path router |
 
 ## Conventions
 

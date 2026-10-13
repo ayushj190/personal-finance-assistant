@@ -47,7 +47,7 @@ def _render_portfolio_fragment(
         ui.pages.investments.kpi_card("Unrealized P&L", pnl_str, delta_str=f"{pnl_pct:+.1f}%")
     with c4:
         sub = (
-            ("⏱️ **** quote delayed" if ui.pages.investments.is_hidden() else f"⏱️ {unquoted_count} quote delayed")
+            f"⏱️ {unquoted_count} quote delayed"
             if unquoted_count > 0
             else "All quotes live"
         )
@@ -56,7 +56,7 @@ def _render_portfolio_fragment(
                 active_positions_count = consolidated_df["ticker"].nunique()
             else:
                 active_positions_count = len(holdings_df)
-        pos_str = "**** assets" if ui.pages.investments.is_hidden() else f"{active_positions_count} assets"
+        pos_str = f"{active_positions_count} assets"
         ui.pages.investments.kpi_card("Active Positions", pos_str, subtext=sub)
 
     # 2. Multi-dimension Exposure Visualizer
@@ -141,7 +141,7 @@ def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
                 st.markdown("##### ⚖️ Target vs Actual Drift")
                 render_chart(
                     build_drift_bar_chart(drift_data, drift_band_pct=profile["drift_band_pct"]),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         with col_targets:
@@ -156,7 +156,7 @@ def _render_allocation_fragment(conn, consolidated_df: pd.DataFrame) -> None:
                 drift_df["Target %"] = drift_df["Target %"].map(lambda x: f"{x:.1f}%")
                 drift_df["Drift (pp)"] = drift_df["Drift (pp)"].map(lambda x: f"{x:+.1f} pp")
             drift_df["Action Needed"] = drift_df["Action Needed"].map(lambda x: "⚠️ Rebalance" if x else "✅ On Target")
-            st.dataframe(drift_df, use_container_width=True, hide_index=True)
+            st.dataframe(drift_df, width="stretch", hide_index=True)
 
         st.divider()
         render_allocation_management(alloc_conn)
@@ -215,7 +215,7 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                 if ui.pages.investments.is_hidden():
                     dist_fig.update_traces(hovertemplate="Censored<extra></extra>")
                 with st.container(border=True):
-                    render_chart(dist_fig, use_container_width=True)
+                    render_chart(dist_fig, width="stretch")
 
             with col_m_table:
                 h_df = div_data["holdings_df"]
@@ -232,7 +232,7 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                         disp_h["Value (€)"] = disp_h["Value (€)"].map(lambda x: f"€{x:,.2f}")
                         disp_h["Est. Yield"] = disp_h["Est. Yield"].map(lambda x: f"{x:.1f}%")
                         disp_h["Annual Div (€)"] = disp_h["Annual Div (€)"].map(lambda x: f"€{x:,.2f}")
-                    st.dataframe(disp_h, use_container_width=True, hide_index=True)
+                    st.dataframe(disp_h, width="stretch", hide_index=True)
                 else:
                     st.caption("No dividend-generating assets tracked.")
 
@@ -249,7 +249,7 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
                     else:
                         disp_loss["Value (€)"] = disp_loss["Value (€)"].map(lambda x: f"€{x:,.2f}")
                         disp_loss["Unrealized P&L (€)"] = disp_loss["Unrealized P&L (€)"].map(lambda x: f"€{x:,.2f}")
-                    st.dataframe(disp_loss, hide_index=True, use_container_width=True)
+                    st.dataframe(disp_loss, hide_index=True, width="stretch")
                 else:
                     st.caption("No significant unrealized losses available for harvesting.")
     finally:
@@ -312,7 +312,7 @@ def _render_goals_fragment(conn) -> None:
             if ui.pages.investments.is_hidden():
                 fig_fire.update_traces(hovertemplate="Censored<extra></extra>")
             with st.container(border=True):
-                render_chart(fig_fire, use_container_width=True)
+                render_chart(fig_fire, width="stretch")
 
         with c_goals:
             st.subheader("🎯 Savings Goals")

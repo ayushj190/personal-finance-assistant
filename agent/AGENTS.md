@@ -10,7 +10,7 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 |---|---|
 | `agent/copilot.py` | Copilot turn coordination, upfront Ollama connectivity check, system prompts, and tool dispatch mapping |
 | `agent/tool_schemas.py` | JSON schema definitions for LLM tool function calling (`COPILOT_TOOLS_SCHEMA`) |
-| `agent/tools.py` | Implementation of native deterministic functions invoked by the Copilot |
+| `agent/tools/` | Package of native deterministic functions invoked by the Copilot, including `navigation.py` (`open_view` action tool) |
 | `agent/copilot_task.py` | Background thread wrapper handling asynchronous tool calls and token streams |
 | `agent/chart_renderer.py` | Construction of Plotly figures dynamically requested during conversational turns |
 
@@ -20,6 +20,7 @@ The agent layer coordinates the local AI Copilot for the application. It manages
 - Prefer deterministic service routines in `services/` over LLM token predictions for math and tax calculations.
 - Maintain strict typing and parameter documentation in `COPILOT_TOOLS_SCHEMA` for any newly added tool.
 - Execute all Copilot query tools through `db.database.connect_readonly()` for read only SQL; writes happen only inside named, validated tool functions (for example the allocation create and delete tools), never through model generated SQL.
+- Copilot action layer: `open_view` (`agent/tools/navigation.py`) and the deterministic fast path (`services/navigation.py` `match_fast_path`) set a session intent (page, tab, date scope) on the task only. Validate page and tab against the `services/navigation.py` whitelist, resolve date scopes through `services/date_scope.py` (the single resolver the answer and the page both read), and never set an intent when a tool fails or Ollama is offline.
 
 ## Gotchas
 

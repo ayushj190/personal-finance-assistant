@@ -28,6 +28,7 @@ class CopilotTask:
         self.form_request: Any = None
         self.citations: Any = None
         self.diagnostics: list[dict[str, Any]] = []
+        self.ui_intent: Any = None
         self.error: str | None = None
         self.elapsed_seconds: float | None = None
         self.model_name: str | None = None
@@ -60,6 +61,7 @@ class CopilotTask:
                 self.form_request = res.get("form_request")
                 self.citations = res.get("citations")
                 self.diagnostics = res.get("diagnostics") or []
+                self.ui_intent = res.get("ui_intent")
                 self.status = "typing"
 
             stream = res.get("stream", [])

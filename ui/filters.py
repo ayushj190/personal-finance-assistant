@@ -4,6 +4,22 @@ import streamlit as st
 
 from config import DB_PATH
 from db import database
+from services.date_scope import CUSTOM_PRESET, PRESETS, resolve_date_scope
+from ui import state
+
+
+def _on_filter_change() -> None:
+    """Persist the filter widget state so a run without the widget keeps the scope."""
+    preset = st.session_state.get("flt_preset", PRESETS[0])
+    updated = {"preset": preset}
+    if preset == CUSTOM_PRESET:
+        updated["custom_start"] = st.session_state.get("flt_custom_start")
+        updated["custom_end"] = st.session_state.get("flt_custom_end")
+    else:
+        # A preset clears any prior custom override.
+        st.session_state.pop("flt_custom_start", None)
+        st.session_state.pop("flt_custom_end", None)
+    st.session_state[state.K.FILTER_STATE] = updated
 
 
 def render_filters(title: str = "Filters") -> dict[str, Any]:
@@ -17,43 +33,48 @@ def render_filters(title: str = "Filters") -> dict[str, Any]:
     for a in accounts:
         acc_options[a["id"]] = f"{a['institution']} - {a['name']}"
 
-    with st.popover(f"🔍 {title}", use_container_width=True):
+    # Persistent filter state; the Copilot intent can write it (AC-3, AC-19).
+    flt = state.setdefault(state.K.FILTER_STATE, {"preset": PRESETS[0]})
+    # Copy the persistent value into the widget keys so a run without the widget
+    # does not wipe it, and an intent write takes effect.
+    st.session_state["flt_preset"] = flt.get("preset", PRESETS[0])
+    if flt.get("custom_start") is not None:
+        st.session_state["flt_custom_start"] = flt["custom_start"]
+    if flt.get("custom_end") is not None:
+        st.session_state["flt_custom_end"] = flt["custom_end"]
+
+    with st.popover(f"🔍 {title}", width="stretch"):
         # Date range preset
         date_preset = st.selectbox(
             "Date Range",
-            options=["Last 3 Months", "MTD", "Last Month",
-                     "YTD", "Last 12 Months", "All Time"],
-            index=0,
+            options=PRESETS + [CUSTOM_PRESET],
+            key="flt_preset",
+            on_change=_on_filter_change,
         )
+        if date_preset == CUSTOM_PRESET:
+            st.date_input("Start date", key="flt_custom_start", on_change=_on_filter_change)
+            st.date_input("End date", key="flt_custom_end", on_change=_on_filter_change)
         selected_account_id = st.selectbox(
             "Account",
             options=list(acc_options.keys()),
             format_func=lambda x: acc_options[x],
-            index=0,
+            key="flt_account",
         )
         include_transfers = st.toggle(
-            "Include internal transfers", value=False
+            "Include internal transfers", key="flt_transfers"
         )
 
-    today = date.today()
-    start_date = None
-    end_date = today
+    if date_preset == CUSTOM_PRESET:
+        scope_input: Any = {
+            "start": st.session_state.get("flt_custom_start"),
+            "end": st.session_state.get("flt_custom_end"),
+        }
+    else:
+        scope_input = {"preset": date_preset}
 
-    if date_preset == "MTD":
-        start_date = today.replace(day=1)
-    elif date_preset == "Last Month":
-        first_this_month = today.replace(day=1)
-        prev_month_end = first_this_month - timedelta(days=1)
-        start_date = prev_month_end.replace(day=1)
-        end_date = prev_month_end
-    elif date_preset == "Last 3 Months":
-        start_date = today - timedelta(days=90)
-    elif date_preset == "YTD":
-        start_date = today.replace(month=1, day=1)
-    elif date_preset == "Last 12 Months":
-        start_date = today - timedelta(days=365)
-    elif date_preset == "All Time":
-        start_date = None
+    resolved = resolve_date_scope(scope_input)
+    start_date = resolved.get("start")
+    end_date = resolved.get("end") or date.today()
 
     selected_account_ids = None if selected_account_id == 0 else [
         selected_account_id]
@@ -64,6 +85,8 @@ def render_filters(title: str = "Filters") -> dict[str, Any]:
         "end_date": end_date,
         "account_ids": selected_account_ids,
         "include_transfers": include_transfers,
+        "preset": date_preset,
+        "resolved": resolved,
     }
 
 

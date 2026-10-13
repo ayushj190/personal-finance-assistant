@@ -4,7 +4,6 @@ import logging
 import sqlite3
 from typing import Any
 import streamlit as st
-import streamlit.components.v1 as components
 
 from config import DATA_DIR, DB_PATH
 from db import database
@@ -231,7 +230,7 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
     </div>
     <!-- TradingView Widget END -->
     """
-    components.html(tape_html, height=44)
+    st.iframe(tape_html, height=44)
 
 
 def _render_kpi_ribbon(
@@ -396,7 +395,7 @@ def _render_accounts_grid(
                                 if st.form_submit_button(
                                     "Update Balance",
                                     type="primary",
-                                    use_container_width=True,
+                                    width="stretch",
                                     key=f"dashboard_acc_{acc.id}_submit_btn",
                                 ):
                                     val_min = Money.from_major(new_adj_bal).cents
@@ -475,7 +474,7 @@ def _investments_fullscreen_dialog() -> None:
         df = get_consolidated_holdings_df(dlg_conn)
         if not df.empty:
             fig = build_investments_market_carpet(df, height=560)
-            render_chart(fig, use_container_width=True, key="modal_market_carpet")
+            render_chart(fig, width="stretch", key="modal_market_carpet")
         else:
             st.info("No investment holdings tracked.")
     finally:
@@ -557,7 +556,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
                 consolidated_df = get_consolidated_holdings_df(db_conn)
                 if not consolidated_df.empty:
                     carpet_fig = build_investments_market_carpet(consolidated_df, height=360)
-                    render_chart(carpet_fig, use_container_width=True, key="dashboard_market_carpet")
+                    render_chart(carpet_fig, width="stretch", key="dashboard_market_carpet")
                 else:
                     empty_state(
                         "No Investment Holdings",

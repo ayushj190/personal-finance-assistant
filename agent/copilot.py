@@ -6,6 +6,7 @@ from typing import Any, Iterator
 from agent import tools
 from agent.tools import COPILOT_TOOLS_SCHEMA
 from services.llm_client import chat_with_tools, generate_stream
+from services.navigation import match_fast_path
 
 SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app, running locally and privately on the user's machine.
 
@@ -19,10 +20,17 @@ Call the relevant tool whenever the user asks about their financial data:
 - analyze_investments: portfolio value, allocation, drift, and risk.
 - get_allocation_profiles, create_allocation_profile, delete_allocation_profile: manage target allocation strategies. A create needs targets that sum to 100 percent; a delete needs the confirmation token returned by the first call.
 - get_current_net_worth: overall balance sheet.
-- get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow.
+- get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow. Pass the requested range as the date_scope argument (a preset name or a start and end date) so the answer and the page agree.
+- open_view: actually open a page for the user, optionally an Investments tab and a date scope. Call it whenever the user asks to see, open, or go to a screen, even while you also call a data tool to answer.
 - analyze_mortgage: mortgage schedules and rates.
 - analyze_tax_situation, simulate_tax_optimization, calculate_pension_room, analyze_green_fund_strategy, diagnose_tax_leaks: Dutch tax questions.
 - search_dutch_law_vault and lookup_tax_law_article: cite exact Dutch statutory articles.
+
+NAVIGATION RULES:
+- When the user asks to see, open, go to, or show a screen, call open_view with the matching page and tab. Never claim you opened a page unless you called open_view.
+- If the destination screen is ambiguous, ask one short question naming the candidate screens and do not call open_view until the user answers.
+- If the request names a page that has no date filter but asks for a period, still open the page and say plainly that the page has no date scope.
+- Pass the requested period to the data tools as date_scope so the answer and the page agree.
 
 Today's date is: {today}.
 """
@@ -58,6 +66,7 @@ TOOL_MAP = {
     "analyze_green_fund_strategy": tools.tool_analyze_green_fund_strategy,
     "diagnose_tax_leaks": tools.tool_diagnose_tax_leaks,
     "ingest_financial_document": tools.tool_ingest_financial_document,
+    "open_view": tools.tool_open_view,
 }
 
 
@@ -202,6 +211,30 @@ def run_copilot(
             "figure": None,
             "df": None,
             "form_request": None,
+            "ui_intent": None,
+        }
+
+    # 1.5 Deterministic fast path for explicit navigation phrasing (AC-21). No model call.
+    fast_intent = match_fast_path(user_message)
+    if fast_intent:
+        label = (fast_intent.get("tab") or fast_intent.get("page") or "").replace("_", " ").title()
+        confirmation = f"Opening {label}."
+
+        def _fast_stream(text: str) -> Iterator[str]:
+            import re as _re
+            import time as _time
+            for tok in _re.split(r'(\s+)', text):
+                if tok:
+                    yield tok
+                    _time.sleep(0.012)
+
+        return {
+            "role": "assistant",
+            "stream": _fast_stream(confirmation),
+            "figure": None,
+            "df": None,
+            "form_request": None,
+            "ui_intent": fast_intent,
         }
 
     # 2. Build conversation history
@@ -233,6 +266,7 @@ def run_copilot(
             "figure": None,
             "df": None,
             "form_request": None,
+            "ui_intent": None,
         }
 
     tool_calls = assistant_msg.get("tool_calls") or []
@@ -256,6 +290,7 @@ def run_copilot(
             "figure": None,
             "df": None,
             "form_request": None,
+            "ui_intent": None,
         }
 
     # 5. Execute tool calls deterministically
@@ -264,6 +299,14 @@ def run_copilot(
     captured_form = None
     captured_citations = []
     captured_diagnostics = []
+    captured_intent = None
+    had_failure = False
+    turn_scope = None
+    scoped_tools = {
+        "get_spending_by_category",
+        "get_recent_transactions",
+        "get_monthly_cashflow",
+    }
 
     for tc in tool_calls:
         fn_info = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", {})
@@ -274,8 +317,16 @@ def run_copilot(
                 fn_args = json.loads(fn_args)
             except Exception:
                 fn_args = {}
+        fn_args = fn_args or {}
+
+        # A scope resolved earlier in this turn is inherited by later data calls (AC-3).
+        if turn_scope and fn_name in scoped_tools and "date_scope" not in fn_args:
+            fn_args = {**fn_args, "date_scope": turn_scope}
 
         result = execute_tool(fn_name, fn_args)
+
+        if result.get("success") is False:
+            had_failure = True
 
         if result.get("figure") is not None:
             captured_figure = result["figure"]
@@ -289,13 +340,20 @@ def run_copilot(
             captured_citations.append(result["article"])
         if result.get("diagnostics"):
             captured_diagnostics.append(result["diagnostics"])
+        if result.get("ui_intent"):
+            captured_intent = result["ui_intent"]
+            ds = captured_intent.get("date_scope") or {}
+            if ds.get("preset"):
+                turn_scope = {"preset": ds["preset"]}
+            elif ds.get("start_iso"):
+                turn_scope = {"start": ds["start_iso"], "end": ds["end_iso"]}
 
         # Append assistant tool call & tool result to message history for final summarization
         messages.append({
             "role": "assistant",
             "content": f"Calling tool `{fn_name}` with arguments: {json.dumps(fn_args)}",
         })
-        clean_result = {k: v for k, v in result.items() if k not in ("figure", "df")}
+        clean_result = {k: v for k, v in result.items() if k not in ("figure", "df", "ui_intent")}
         messages.append({
             "role": "user",
             "content": f"Tool `{fn_name}` result:\n{json.dumps(clean_result, default=str)}\nPlease summarize these findings concisely for me.",
@@ -312,4 +370,5 @@ def run_copilot(
         "form_request": captured_form,
         "citations": captured_citations,
         "diagnostics": captured_diagnostics,
+        "ui_intent": captured_intent if not had_failure else None,
     }

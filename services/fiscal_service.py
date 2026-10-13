@@ -97,14 +97,15 @@ def get_fiscal_month_for_date(d: date | str, salary_day: int) -> str:
 
 
 def format_fiscal_month_label(month_str: str, salary_day: int) -> str:
-    """Format fiscal month for UI selectors, showing date span."""
+    """Format fiscal month for UI selectors with a month name and the aligned span."""
     if not month_str or month_str == "All Months (Monthly Average)":
         return str(month_str)
     try:
         y, m = map(int, month_str.split("-"))
         s_d, e_d = get_fiscal_month_range(y, m, salary_day)
+        month_name = f"{calendar.month_name[m]} {y}"
         if salary_day <= 1:
-            return f"{month_str} ({s_d.strftime('%b %Y')})"
-        return f"{month_str} ({s_d.strftime('%d %b')} – {e_d.strftime('%d %b')})"
+            return month_name
+        return f"{month_name} ({s_d.strftime('%d %b')} – {e_d.strftime('%d %b')})"
     except Exception:
         return str(month_str)

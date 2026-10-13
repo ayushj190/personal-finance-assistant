@@ -5,7 +5,9 @@ from config import DB_PATH
 from connectors.market_data_service import update_quotes
 from db import database
 from db.repositories import HoldingRepository
+from services.navigation import TAB_MAP
 from services.portfolio import get_consolidated_holdings_df
+from ui import state
 
 # Submodule re-exports
 from ui.pages.investments.tabs import (
@@ -58,12 +60,13 @@ def render() -> None:
             else len(holdings_df)
         )
 
-        t_port, t_alloc, t_inc, t_goals = st.tabs([
-            "📊 Portfolio & Holdings",
-            "⚖️ Allocation & Drift",
-            "💰 Income & Tax Strategy",
-            "🎯 Goals & Planning",
-        ])
+        t_port, t_alloc, t_inc, t_goals = st.tabs(
+            list(TAB_MAP.values()),
+            default=TAB_MAP.get(
+                st.session_state.pop(state.K.INVESTMENTS_ACTIVE_TAB, None)
+            ),
+            key=f"investments_tabs_{st.session_state.get(state.K.INVESTMENTS_TABS_GENERATION, 0)}",
+        )
 
         with t_port:
             _render_portfolio_fragment(

@@ -338,7 +338,9 @@ class TestInvestmentsHoldings(unittest.TestCase):
                 mock_kpi.assert_any_call("Active Positions", "4 assets", subtext="⏱️ 2 quote delayed")
 
     def test_investments_privacy_masking_active_positions_and_percentages(self):
-        """Active positions and percentages are masked when is_hidden is True."""
+        """Counts and percentages stay readable under Hide values; only money masks (AC-8)."""
+        from unittest.mock import ANY
+
         from ui.pages.investments import _render_portfolio_fragment
 
         h1 = {
@@ -361,7 +363,7 @@ class TestInvestmentsHoldings(unittest.TestCase):
                 fn(
                     holdings_df, copy_df, direct_df, pd.DataFrame(), 0.89, active_positions_count=5
                 )
-                mock_kpi.assert_any_call("Active Positions", "**** assets", subtext="⏱️ **** quote delayed")
+                mock_kpi.assert_any_call("Active Positions", "5 assets", subtext=ANY)
 
 
 if __name__ == "__main__":

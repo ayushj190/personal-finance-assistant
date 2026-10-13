@@ -63,12 +63,12 @@ def render():
             f"**Showing {len(df)} transactions** (editing category updates rules for merchant)"
         )
     with col_sel_all:
-        if st.button("Select All", key="tx_select_all_btn", use_container_width=True):
+        if st.button("Select All", key="tx_select_all_btn", width="stretch"):
             st.session_state["tx_select_all_flag"] = True
             st.session_state["tx_editor_version"] = st.session_state.get("tx_editor_version", 0) + 1
             st.rerun()
     with col_clear_all:
-        if st.button("Clear All", key="tx_clear_all_btn", use_container_width=True):
+        if st.button("Clear All", key="tx_clear_all_btn", width="stretch"):
             st.session_state["tx_select_all_flag"] = False
             st.session_state["tx_editor_version"] = st.session_state.get("tx_editor_version", 0) + 1
             st.rerun()
@@ -81,7 +81,6 @@ def render():
     if is_hidden():
         df_display["amount_eur"] = df_display["amount_eur"].map(
             lambda x: format_money(x))
-        df_display["merchant"] = "****"
         amount_col_cfg = st.column_config.TextColumn(
             "Amount (€)", disabled=True)
     else:
@@ -102,7 +101,7 @@ def render():
             "is_internal_transfer": None,
         },
         disabled=["id", "booking_date", "account", "amount_eur", "merchant"],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key=editor_key,
     )
@@ -122,12 +121,12 @@ def render():
             [1.3, 1.3, 2.2, 1.8, 1.0, 1.4], vertical_alignment="bottom"
         )
         with col_tf1:
-            if st.button("🔄 Mark Transfer", use_container_width=True, help="Mark selected rows as internal transfers and assign Transfer category"):
+            if st.button("🔄 Mark Transfer", width="stretch", help="Mark selected rows as internal transfers and assign Transfer category"):
                 count = database.set_transactions_internal_transfer(conn, selected_ids, is_transfer=True)
                 st.success(f"Marked {count} transaction(s) as internal transfers.")
                 st.rerun()
         with col_tf2:
-            if st.button("↩️ Unmark Transfer", use_container_width=True, help="Revert selected rows internal transfer flag to 0"):
+            if st.button("↩️ Unmark Transfer", width="stretch", help="Revert selected rows internal transfer flag to 0"):
                 count = database.set_transactions_internal_transfer(conn, selected_ids, is_transfer=False)
                 st.success(f"Unmarked {count} transaction(s) from internal transfers.")
                 st.rerun()
@@ -142,7 +141,7 @@ def render():
         with col_cat_rule:
             upsert_rules = st.checkbox("Update rules", value=True, help="Upsert merchant category rules for future imports", key="bulk_cat_rules")
         with col_cat_btn:
-            if st.button("Apply", type="primary", use_container_width=True, key="bulk_cat_apply"):
+            if st.button("Apply", type="primary", width="stretch", key="bulk_cat_apply"):
                 if selected_category and selected_category in cat_name_to_id:
                     target_cat_id = cat_name_to_id[selected_category]
                     count = database.bulk_categorize_transactions(
@@ -155,7 +154,7 @@ def render():
                     st.success(f"Updated category for {count} transaction(s).")
                     st.rerun()
         with col_del:
-            if st.button(f"🗑️ Delete ({len(selected_ids)})", type="secondary", use_container_width=True, key="bulk_del_btn"):
+            if st.button(f"🗑️ Delete ({len(selected_ids)})", type="secondary", width="stretch", key="bulk_del_btn"):
                 confirm_delete_transactions_dialog(selected_ids)
     else:
         st.caption("💡 Select rows using checkboxes to mark internal transfers, bulk categorize, or delete.")

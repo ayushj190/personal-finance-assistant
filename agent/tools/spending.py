@@ -1,10 +1,12 @@
 from typing import Any
+import calendar
 import pandas as pd
 
 from agent.chart_renderer import render_chart
 from config import DB_PATH
 from db import database
 from money import Money
+from services.date_scope import resolve_date_scope
 from services.llm_client import classify_merchants
 
 
@@ -55,8 +57,22 @@ def tool_auto_categorize_uncategorized_transactions(limit: int = 50) -> dict[str
 def tool_get_spending_by_category(
     year: int | None = None,
     month: int | None = None,
+    date_scope: Any = None,
 ) -> dict[str, Any]:
     """Get aggregated spending by category for a specific month and year, or all-time."""
+    scope = resolve_date_scope(date_scope)
+    if scope.get("error"):
+        return {"success": False, "message": scope["error"]}
+    if scope["requested"] and (year is not None or month is not None):
+        return {
+            "success": False,
+            "message": "Provide either date_scope or year and month, not both.",
+        }
+
+    if scope["requested"]:
+        year = None
+        month = None
+
     clean_year = None
     if year is not None:
         try:
@@ -92,7 +108,14 @@ def tool_get_spending_by_category(
         where_clauses = ["is_internal_transfer = 0", "amount_eur < 0"]
         params: list[Any] = []
 
-        if clean_year is not None and clean_month is not None:
+        if scope["requested"]:
+            if scope["start_iso"]:
+                where_clauses.append("booking_date >= ?")
+                params.append(scope["start_iso"])
+            if scope["end_iso"]:
+                where_clauses.append("booking_date <= ?")
+                params.append(scope["end_iso"])
+        elif clean_year is not None and clean_month is not None:
             prefix = f"{clean_year:04d}-{clean_month:02d}%"
             where_clauses.append("booking_date LIKE ?")
             params.append(prefix)
@@ -112,7 +135,10 @@ def tool_get_spending_by_category(
         df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
         total = float(df["total_spent"].sum()) if not df.empty else 0.0
-        time_label = f"for {clean_year}-{clean_month:02d}" if (clean_year and clean_month) else (f"for {clean_year}" if clean_year else "overall")
+        if scope["requested"]:
+            time_label = f"from {scope['start_iso']} to {scope['end_iso']}"
+        else:
+            time_label = f"for {clean_year}-{clean_month:02d}" if (clean_year and clean_month) else (f"for {clean_year}" if clean_year else "overall")
 
         if df.empty:
             total_txs = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
@@ -156,8 +182,12 @@ def tool_get_spending_by_category(
 def tool_get_recent_transactions(
     limit: int = 15,
     category: str | None = None,
+    date_scope: Any = None,
 ) -> dict[str, Any]:
     """Retrieve recent transactions filtered optionally by category name."""
+    scope = resolve_date_scope(date_scope)
+    if scope.get("error"):
+        return {"success": False, "message": scope["error"]}
     try:
         clean_limit = int(limit)
     except (ValueError, TypeError):
@@ -177,6 +207,13 @@ def tool_get_recent_transactions(
     try:
         where_clauses = ["is_internal_transfer = 0"]
         params: list[Any] = []
+
+        if scope["requested"] and scope["start_iso"]:
+            where_clauses.append("booking_date >= ?")
+            params.append(scope["start_iso"])
+        if scope["requested"] and scope["end_iso"]:
+            where_clauses.append("booking_date <= ?")
+            params.append(scope["end_iso"])
 
         if clean_category:
             where_clauses.append("LOWER(category) LIKE LOWER(?)")
@@ -223,8 +260,36 @@ def tool_get_recent_transactions(
         conn.close()
 
 
-def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
+def tool_get_monthly_cashflow(year: int | None = None, date_scope: Any = None) -> dict[str, Any]:
     """Get monthly cashflow summary (income, fixed, discretionary, savings)."""
+    scope = resolve_date_scope(date_scope)
+    if scope.get("error"):
+        return {"success": False, "message": scope["error"]}
+    if scope["requested"] and year is not None:
+        return {
+            "success": False,
+            "message": "Provide either date_scope or year, not both.",
+        }
+
+    note = ""
+    start_month: date | None = None
+    end_month: date | None = None
+    if scope["requested"]:
+        year = None
+        if scope["start"] is not None and scope["end"] is not None:
+            s = scope["start"]
+            e = scope["end"]
+            start_month = s.replace(day=1)
+            end_month = e.replace(day=1)
+            aligned = s.day == 1 and e.day == calendar.monthrange(e.year, e.month)[1]
+            if aligned:
+                note = f"Range: {s.isoformat()} to {e.isoformat()}."
+            else:
+                note = (
+                    "Cashflow is month grained, so I snapped the range to whole months: "
+                    f"{start_month.isoformat()} to {end_month.isoformat()}."
+                )
+
     clean_year = None
     if year is not None:
         try:
@@ -244,7 +309,10 @@ def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
     try:
         params: list[Any] = []
         where_clause = ""
-        if clean_year is not None:
+        if start_month is not None and end_month is not None:
+            where_clause = "WHERE month >= ? AND month <= ?"
+            params.extend([start_month.strftime("%Y-%m"), end_month.strftime("%Y-%m")])
+        elif clean_year is not None:
             where_clause = "WHERE month LIKE ?"
             params.append(f"{clean_year:04d}-%")
 
@@ -280,7 +348,7 @@ def tool_get_monthly_cashflow(year: int | None = None) -> dict[str, Any]:
             "cashflow": df.to_dict(orient="records"),
             "df": df,
             "figure": None,
-            "message": f"Retrieved cashflow data for {len(df)} months.",
+            "message": f"Retrieved cashflow data for {len(df)} months. {note}".strip(),
         }
     finally:
         conn.close()

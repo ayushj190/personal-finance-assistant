@@ -115,7 +115,7 @@ def render():
     from ui.dialogs import tax_profile_dialog
     col_space, col_btn = st.columns([0.75, 0.25], vertical_alignment="bottom")
     with col_btn:
-        if st.button("⚙️ Edit Tax Profile", type="primary" if profile["gross_annual_income"] == 0 else "secondary", use_container_width=True):
+        if st.button("⚙️ Edit Tax Profile", type="primary" if profile["gross_annual_income"] == 0 else "secondary", width="stretch"):
             tax_profile_dialog()
 
     current_income = float(profile["gross_annual_income"])
@@ -199,7 +199,7 @@ def render():
             fig1.update_layout(margin=dict(t=40, b=0, l=0, r=0))
             with st.container(border=True):
                 st.markdown("##### 💶 Income Breakdown (Net vs Box 1 Tax)")
-                render_chart(fig1, use_container_width=True)
+                render_chart(fig1, width="stretch")
 
         with col2:
             # Box 3 Breakdown Pie
@@ -212,7 +212,7 @@ def render():
                 fig2.update_layout(margin=dict(t=40, b=0, l=0, r=0))
                 with st.container(border=True):
                     st.markdown("##### 🏦 Asset Taxability (Box 3 Wealth)")
-                    render_chart(fig2, use_container_width=True)
+                    render_chart(fig2, width="stretch")
 
         # 5. Official Belastingdienst Tax Filing Statement & Export
     with section_header("📋 Tax Filing Statement (Aangifte Inkomstenbelasting)", "Itemized summary for your annual tax declaration"):
@@ -224,14 +224,14 @@ def render():
     
         col_t_table, col_t_dl = st.columns([3, 1])
         with col_t_table:
-            st.dataframe(report_df, use_container_width=True, hide_index=True)
+            st.dataframe(report_df, width="stretch", hide_index=True)
         with col_t_dl:
             st.download_button(
                 label="📥 Export Statement (CSV)",
                 data=tax_statement["csv_content"],
                 file_name=f"tax_filing_statement_{tax_statement['tax_year']}.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
             )
 
     # 6. AI Capital Allocation & Tax Optimizer
@@ -283,7 +283,7 @@ def render():
         )
         with st.container(border=True):
             st.markdown(f"##### 🚀 Net Wealth Trajectory: €{sim_capital:,.0f} Lump Sum Allocation over {sim_years} Years")
-            render_chart(fig_sim, use_container_width=True)
+            render_chart(fig_sim, width="stretch")
 
     # 7. Green Funds & Pillar 3 Pension Analysis
     with section_header("🌱 Green Funds & Pillar 3 Pension (Jaarruimte)", "Optimize tax deductions under Dutch regulations"):
@@ -306,7 +306,7 @@ def render():
             kpi_card("Annual Green Tax Alpha", alpha_str, subtext=f"~{green_res['guaranteed_tax_alpha_pct']:.2f}% guaranteed")
 
         with st.expander("🌿 View Certified Dutch Green Funds List & Specifications"):
-            st.dataframe(pd.DataFrame(CERTIFIED_DUTCH_GREEN_FUNDS), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(CERTIFIED_DUTCH_GREEN_FUNDS), width="stretch", hide_index=True)
 
     # 8. Dutch Financial Law Vault (Hybrid Vector Explorer)
     with section_header("📚 Dutch Financial Law Vector Vault", "Local SQLite vector database with hybrid search & statutory citations"):
@@ -365,7 +365,7 @@ def render():
         st.divider()
         col_btn, _ = st.columns([2, 4])
         with col_btn:
-            if st.button("🔄 Reindex Legal Knowledge Corpus", use_container_width=True):
+            if st.button("🔄 Reindex Legal Knowledge Corpus", width="stretch"):
                 ingest_res = ingest_legal_corpus(force_reindex=True)
                 st.success(f"Successfully reindexed {ingest_res.get('documents_indexed')} statutes and {ingest_res.get('chunks_indexed')} statutory chunks!")
                 st.rerun()

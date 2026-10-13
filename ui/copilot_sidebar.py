@@ -1,7 +1,36 @@
 import streamlit as st
 from agent.copilot_task import CopilotTask
 from services.llm_client import check_ollama_status
+from ui import state
+from ui.components import mask_if_hidden
 from ui.theme import render_chart
+
+# One click navigation chips (AC-9): page, tab, preset. Different from the demo chips (AC-17).
+NAV_CHIPS = [
+    ("🗓️ Spending this month", "spending", None, "MTD"),
+    ("📉 Spending last 3 months", "spending", None, "Last 3 Months"),
+    ("📊 Investments holdings", "investments", "portfolio", None),
+    ("⚖️ Allocation and Drift", "investments", "allocation", None),
+    ("🧾 Transactions recent", "transactions", None, "Last 3 Months"),
+    ("🏛️ Tax situation", "tax", None, None),
+]
+
+DEMO_PROMPTS = [
+    "What is my net worth and how has it changed this year?",
+    "Show my spending for the past 3 months.",
+    "Review my portfolio allocation against my target.",
+    "What can I do to lower my Dutch tax bill?",
+]
+
+
+def _set_intent(page: str, tab: str | None = None, preset: str | None = None) -> None:
+    """Write a navigation intent directly from a chip or button (no model, no thread)."""
+    st.session_state[state.K.COPILOT_UI_INTENT] = {
+        "page": page,
+        "tab": tab,
+        "date_scope": {"requested": bool(preset), "preset": preset},
+        "source": "chip",
+    }
 
 
 def render_copilot_sidebar() -> None:
@@ -22,41 +51,55 @@ def render_copilot_sidebar() -> None:
                 "<span style='background:#f59e0b;color:#111827;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;'>DEMO</span>",
                 unsafe_allow_html=True,
             )
+            with st.expander("✨ Demo prompts", expanded=False):
+                for i, demo_prompt in enumerate(DEMO_PROMPTS):
+                    if st.button(demo_prompt, width="stretch", key=f"demo_prompt_{i}", disabled=is_busy):
+                        st.session_state.copilot_history.append({"role": "user", "content": demo_prompt})
+                        st.session_state["pending_copilot_prompt"] = demo_prompt
+                        st.rerun(scope="app")
         else:
             st.markdown("**:material/savings: Finance Assistant**")
 
         col_acts, col_files = st.columns(2)
         with col_acts:
-            with st.popover("⚡ Actions", use_container_width=True):
-                if st.button("🎯 Assess Risk", use_container_width=True, disabled=is_busy):
+            with st.popover("⚡ Actions", width="stretch"):
+                st.caption("Navigate")
+                for label, page, tab, preset in NAV_CHIPS:
+                    if st.button(label, width="stretch", disabled=is_busy, key=f"navchip_{page}_{tab}_{preset}"):
+                        _set_intent(page, tab, preset)
+                        st.rerun(scope="app")
+                st.divider()
+                st.caption("Ask")
+                if st.button("🎯 Assess Risk", width="stretch", disabled=is_busy):
                     prompt = "Help me determine my investment risk tolerance and build a risk profile."
                     st.session_state.copilot_history.append({"role": "user", "content": prompt})
                     st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
-                if st.button("🏷️ Categorize", use_container_width=True, disabled=is_busy):
+                if st.button("🏷️ Categorize", width="stretch", disabled=is_busy):
                     prompt = "Categorize any uncategorized transactions using AI."
                     st.session_state.copilot_history.append({"role": "user", "content": prompt})
                     st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
-                if st.button("⚖️ Check Drift", use_container_width=True, disabled=is_busy):
+                if st.button("⚖️ Check Drift", width="stretch", disabled=is_busy):
                     prompt = "Review my current portfolio balance against my target allocation and risk profile."
                     st.session_state.copilot_history.append({"role": "user", "content": prompt})
                     st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
-                if st.button("💡 App Guide", use_container_width=True, disabled=is_busy):
+                if st.button("💡 App Guide", width="stretch", disabled=is_busy):
                     prompt = "How do I configure bank connections and use this app?"
                     st.session_state.copilot_history.append({"role": "user", "content": prompt})
                     st.session_state["pending_copilot_prompt"] = prompt
                     st.rerun(scope="app")
                 st.divider()
-                if st.button("🗑️ Clear Chat", use_container_width=True):
+                if st.button("🗑️ Clear Chat", width="stretch"):
                     st.session_state.pop("copilot_active_task", None)
+                    st.session_state.pop(state.K.COPILOT_UI_INTENT, None)
                     st.session_state.copilot_history = []
                     st.rerun(scope="app")
 
         uploaded_file_to_process = None
         with col_files:
-            with st.popover("📎 Import", use_container_width=True):
+            with st.popover("📎 Import", width="stretch"):
                 st.caption("Upload bank or broker statements")
                 uploaded_file = st.file_uploader(
                     "Upload file",
@@ -65,7 +108,7 @@ def render_copilot_sidebar() -> None:
                     label_visibility="collapsed",
                 )
                 if uploaded_file is not None:
-                    if st.button("Process File", type="primary", use_container_width=True, disabled=is_busy):
+                    if st.button("Process File", type="primary", width="stretch", disabled=is_busy):
                         uploaded_file_to_process = uploaded_file
 
     # Dedicated scrollable chat history panel wrapped in a non-blocking fragment.
@@ -85,14 +128,17 @@ def render_copilot_sidebar() -> None:
                 avatar_map = {"user": "👤", "assistant": "🤖"}
                 with st.chat_message(role, avatar=avatar_map.get(role)):
                     marker_cls = "chat-user-marker" if role == "user" else "chat-assistant-marker"
+                    content = msg.get("content", "")
+                    if role != "user":
+                        content = mask_if_hidden(content)
                     st.markdown(
-                        f'<span class="{marker_cls}" style="display:none;"></span>' + msg.get("content", ""),
+                        f'<span class="{marker_cls}" style="display:none;"></span>' + content,
                         unsafe_allow_html=True,
                     )
                     if msg.get("figure"):
-                        render_chart(msg["figure"], use_container_width=True)
+                        render_chart(msg["figure"], width="stretch")
                     if msg.get("df") is not None and not msg["df"].empty:
-                        st.dataframe(msg["df"], use_container_width=True, hide_index=True)
+                        st.dataframe(msg["df"], width="stretch", hide_index=True)
                     if msg.get("citations"):
                         with st.expander(f"📜 Verified Statutory Citations ({len(msg['citations'])})", expanded=False):
                             for cit in msg["citations"]:
@@ -185,14 +231,14 @@ def render_copilot_sidebar() -> None:
                                 unsafe_allow_html=True,
                             )
                             if text_so_far:
-                                st.markdown(text_so_far)
+                                st.markdown(mask_if_hidden(text_so_far))
                         else:
                             if text_so_far:
-                                st.markdown(text_so_far)
+                                st.markdown(mask_if_hidden(text_so_far))
                             if fig:
-                                render_chart(fig, use_container_width=True)
+                                render_chart(fig, width="stretch")
                             if df is not None and not df.empty:
-                                st.dataframe(df, use_container_width=True, hide_index=True)
+                                st.dataframe(df, width="stretch", hide_index=True)
                             if cits:
                                 with st.expander(f"📜 Verified Statutory Citations ({len(cits)})", expanded=False):
                                     for cit in cits:
@@ -235,6 +281,8 @@ def render_copilot_sidebar() -> None:
                                 "elapsed_seconds": elapsed,
                                 "model": model_name,
                             })
+                            if getattr(active_task, "ui_intent", None):
+                                st.session_state[state.K.COPILOT_UI_INTENT] = active_task.ui_intent
                             st.session_state.pop("copilot_active_task", None)
 
                             if form_req:

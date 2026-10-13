@@ -84,7 +84,7 @@ def render_copy_portfolios(copy_df: pd.DataFrame, usd_to_eur: float) -> None:
                         "Value (€)": f"€{p_val_usd * usd_to_eur:,.2f}" if not ui.pages.investments.is_hidden() else "€****",
                     })
                 u_df = pd.DataFrame(u_items)
-                st.dataframe(u_df, use_container_width=True, hide_index=True)
+                st.dataframe(u_df, width="stretch", hide_index=True)
 
 
 def render_holdings_table(holdings_df: pd.DataFrame) -> None:
@@ -149,4 +149,4 @@ def render_holdings_table(holdings_df: pd.DataFrame) -> None:
         )
         out_df["P&L (%)"] = out_df["P&L (%)"].map(lambda x: f"{x:+.1f}%")
 
-    st.dataframe(out_df, use_container_width=True, hide_index=True)
+    st.dataframe(out_df, width="stretch", hide_index=True)
