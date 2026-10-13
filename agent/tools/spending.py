@@ -63,11 +63,6 @@ def tool_get_spending_by_category(
     scope = resolve_date_scope(date_scope)
     if scope.get("error"):
         return {"success": False, "message": scope["error"]}
-    if scope["requested"] and (year is not None or month is not None):
-        return {
-            "success": False,
-            "message": "Provide either date_scope or year and month, not both.",
-        }
 
     if scope["requested"]:
         year = None
@@ -265,11 +260,6 @@ def tool_get_monthly_cashflow(year: int | None = None, date_scope: Any = None) -
     scope = resolve_date_scope(date_scope)
     if scope.get("error"):
         return {"success": False, "message": scope["error"]}
-    if scope["requested"] and year is not None:
-        return {
-            "success": False,
-            "message": "Provide either date_scope or year, not both.",
-        }
 
     note = ""
     start_month: date | None = None

@@ -117,6 +117,20 @@ class TestCopilotTools(unittest.TestCase):
         self.assertTrue(res_cashflow["success"])
         self.assertIn("cashflow", res_cashflow)
 
+    def test_date_scope_wins_over_year_and_month(self):
+        # The schema promises date_scope "wins over year and month"; a model may
+        # send both. It must not fail (regression: "past 3 months" convo).
+        res_spending = tools.tool_get_spending_by_category(
+            year=2026, month=10, date_scope={"preset": "Last 3 Months"}
+        )
+        self.assertTrue(res_spending["success"], res_spending.get("message"))
+        self.assertIn("from", res_spending["period"])
+
+        res_cashflow = tools.tool_get_monthly_cashflow(
+            year=2026, date_scope={"preset": "Last 3 Months"}
+        )
+        self.assertTrue(res_cashflow["success"], res_cashflow.get("message"))
+
     def test_knowledge_base_search(self):
         # Test Dutch tax search
         tax_res = tools.tool_search_financial_knowledge_base("Box 3 wealth tax deemed return")
