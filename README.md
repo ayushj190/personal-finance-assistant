@@ -11,8 +11,8 @@
 
 <p align="center">
   <img src="docs/assets/screenshots/dashboard.png" width="32%" alt="Executive wealth dashboard" />
+  <img src="docs/assets/screenshots/copilot-chart.png" width="32%" alt="Offline AI Copilot building a chart" />
   <img src="docs/assets/screenshots/investments.png" width="32%" alt="Multi-asset portfolio allocation" />
-  <img src="docs/assets/screenshots/spending.png" width="32%" alt="Spending topology and cash flow" />
 </p>
 
 ---
@@ -115,35 +115,54 @@ $env:PFA_DEMO = "1"
 
 ## 📸 Application Visual Showcase
 
-All visuals are captured in **demo mode** (`PFA_DEMO=1`) with `Hide values` **OFF**, so tickers, balances, charts, and tables all read clearly. Demo mode also starts with `Hide values` OFF, and the one-click Privacy Shield still masks money only when you need it:
+Every visual below is captured live in **demo mode** (`PFA_DEMO=1`) with `Hide values` **off**, so tickers, balances, charts, and tables all read clearly. Toggle `Hide values` under the top-right **Options** menu at any time; the one-click Privacy Shield always masks money only, leaving tickers, merchants, counts, and percentages readable. Long pages are shown with an extra **scrolled-down** shot so no part of the workflow is cut off.
 
 ### 1. Executive Wealth Dashboard & Portfolio Exposure
-Comprehensive multi-asset overview tracking net worth trajectory, cash flow trends, account liquidity, and dynamic exposure treemaps:
+Net worth trajectory, cash-flow Sankey, glassmorphic exposure treemap, and the consolidated account grid — all on one screen:
 ![Dashboard Overview](docs/assets/screenshots/dashboard.png)
 
 ### 2. Spending Topology & Expense Breakdown
-Interactive donut charts, category-level cash flow drilldowns, and automated recurring subscription leak detection:
+Category donut, subscription leak detector, top-merchant ranking, and the 3-month burn-rate ribbon:
 ![Spending Breakdown](docs/assets/screenshots/spending.png)
 
+**Scrolled down** — category budget tracker with variance, plus the 12-month burn-rate trajectory projection:
+![Spending budget tracker and trajectory](docs/assets/screenshots/spending-detail.png)
+
 ### 3. Multi-Asset Portfolio Allocation & Drift Engine
-Swensen 5/25 threshold rebalancing monitor, dimension switchers (Asset Class, Currency, Geography, Sector), and live TradingView integration:
+Live holdings with per-position P&L, cost basis, weight, and 1-month trend sparklines, alongside the Swensen 5/25 rebalancing monitor:
 ![Investments & Rebalancing](docs/assets/screenshots/investments.png)
+
+**Scrolled down** — P&L contribution, sector day-move, and the realized profit & loss panel for closed positions:
+![Portfolio P&L and realized gains](docs/assets/screenshots/investments-detail.png)
 
 ### 4. Dutch Mortgage & Real Estate Modeler
 30-year amortization curve modeling (Annuity, Linear, Interest-Only), penalty-free prepayment simulator, and net home equity tracking:
 ![Mortgage Amortization](docs/assets/screenshots/mortgage.png)
+
+**Scrolled down** — monthly payment composition (interest vs. principal) and reconciliation of actual bank payments against the schedule:
+![Mortgage payment composition and actual payments](docs/assets/screenshots/mortgage-detail.png)
 
 ### 5. Transaction Ledger & Inline Categorization
 Searchable transaction records with multi-criteria filtering (date, account, category), sorting, and inline editing workflows:
 ![Transactions Ledger](docs/assets/screenshots/transactions.png)
 
 ### 6. Belastingdienst Tax Intelligence (Box 1 & Box 3)
-Dutch Box 1 income tax optimization, Box 3 wealth tax deemed yield calculation, and pension room (*Jaarruimte*) arbitrage modeling:
+Box 1 income tax with the 30% expat ruling and HRA, plus the Box 3 wealth-tax deemed-yield breakdown:
 ![Tax Analysis](docs/assets/screenshots/tax.png)
 
+**Scrolled down** — the 4-way AI capital allocation optimizer (Mortgage Prepayment vs. Jaarruimte vs. Groenfondsen vs. Taxable ETF) with 10-year net-wealth trajectories:
+![Tax Optimizer](docs/assets/screenshots/tax-optimizer.png)
+
 ### 7. Settings, Credentials Vault & Database Management
-Local SQLite database backups, API secrets vault, bank connections, and classification rules management:
+Bank/broker integrations, the encrypted API secrets vault, manual account management, and local SQLite backups:
 ![Settings & Backups](docs/assets/screenshots/settings.png)
+
+### 8. Copilot in Action
+The offline Ollama Copilot answers entirely inside the app with deterministic tool-calling — no cloud, no telemetry. Ask for your balances and it reports each ledger exactly as the dashboard shows it:
+![Copilot answering a question](docs/assets/screenshots/copilot-response.png)
+
+Ask for a metric and the Copilot renders an interactive Plotly chart directly in the chat from the tool result — here the 3-month burn-rate trajectory. The sidebar is dragged to its maximum width so the chart reads clearly:
+![Copilot creating a chart](docs/assets/screenshots/copilot-chart.png)
 
 ---
 
