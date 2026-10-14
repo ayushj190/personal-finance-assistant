@@ -209,6 +209,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
                     "exchange": exc,
                     "source": source_name,
                     "display_label": p_name if p_name and not p_name.startswith("ID_") else sym,
+                    "is_copy": True,
                 })
         else:
             m_info = meta_map.get(t, {})
@@ -232,6 +233,7 @@ def get_consolidated_holdings_df(conn: sqlite3.Connection) -> pd.DataFrame:
                 "exchange": exc,
                 "source": "Direct Holdings",
                 "display_label": d_name if d_name else t,
+                "is_copy": False,
             })
 
     all_syms = [
@@ -456,3 +458,278 @@ def get_smart_allocation_profiles(conn: sqlite3.Connection, consolidated_df: pd.
         pass
 
     return profiles
+
+
+def record_daily_portfolio_snapshot(
+    conn: sqlite3.Connection,
+    today_iso: str | None = None,
+) -> bool:
+    """Record one daily portfolio snapshot row into portfolio_snapshots from stored closes.
+
+    Calculates market value, cost basis, and day P&L in euro minor units (cents).
+    The upsert on snapshot_date is the once-per-day guard.
+    Returns True if a snapshot was recorded, False if no holdings exist.
+    """
+    from datetime import date
+    snapshot_date = str(today_iso or date.today().isoformat())
+    holdings_df = HoldingRepository.get_v_holdings_df(conn)
+    if holdings_df.empty:
+        return False
+
+    total_val = float(holdings_df["value_eur"].sum() or 0.0)
+    total_cost = float(holdings_df["cost_basis"].sum() or 0.0)
+
+    fx_close = HoldingRepository.get_latest_fx_quote(conn, "EURUSD=X")
+    usd_to_eur = (1.0 / fx_close) if fx_close else 0.892
+
+    total_day_pnl = 0.0
+    has_day_pnl = False
+
+    for _, row in holdings_df.iterrows():
+        ticker = str(row.get("ticker") or "")
+        if ticker.startswith("COPY:") or ticker.startswith("ID_"):
+            continue
+        qty = float(row.get("quantity") or 0.0)
+        close = float(row.get("latest_close") or 0.0)
+        prev_close = float(row.get("prev_close") or close)
+        curr = str(row.get("currency") or "EUR")
+        rate = usd_to_eur if curr == "USD" else 1.0
+
+        if close > 0 and prev_close > 0 and qty > 0:
+            diff = (close - prev_close) * qty * rate
+            total_day_pnl += diff
+            has_day_pnl = True
+
+    val_minor = int(round(total_val * 100))
+    cost_minor = int(round(total_cost * 100))
+    pnl_minor = int(round(total_day_pnl * 100)) if has_day_pnl else None
+
+    HoldingRepository.upsert_portfolio_snapshot(
+        conn,
+        snapshot_date=snapshot_date,
+        market_value_eur_minor=val_minor,
+        cost_basis_eur_minor=cost_minor,
+        day_pnl_eur_minor=pnl_minor,
+    )
+    return True
+
+
+def build_live_rows(
+    consolidated_df: pd.DataFrame,
+    aggregated_holdings_df: pd.DataFrame,
+    mirror_cache: list[dict[str, Any]] | None = None,
+    quote_cache: dict[str, Any] | None = None,
+    fx_rate: float = 0.892,
+    close_series: dict[str, list[float]] | None = None,
+) -> pd.DataFrame:
+    """Build one live row per distinct instrument symbol joining direct and mirror positions.
+
+    Satisfies AC-1, AC-3, AC-5:
+    - Distinct symbol rows merging direct and copied portions.
+    - Day change percent and day P&L in EUR against previous close.
+    - Preserves numeric types for sortability.
+    """
+    columns = [
+        "symbol", "ticker", "name", "name_with_ticker", "quantity", "avg_open_price",
+        "price", "day_change_pct", "day_pnl_eur", "cost_basis", "value_eur",
+        "unrealized_pnl_eur", "total_pnl_pct", "weight_pct", "sparkline",
+        "is_copy", "is_priced", "is_mirror_valued", "quote_age_str",
+        "sector", "nature", "region", "currency",
+    ]
+    if consolidated_df.empty or "ticker" not in consolidated_df.columns:
+        return pd.DataFrame(columns=columns)
+
+    # Pre-index aggregated direct holdings
+    direct_map: dict[str, dict[str, Any]] = {}
+    if not aggregated_holdings_df.empty and "ticker" in aggregated_holdings_df.columns:
+        for _, r in aggregated_holdings_df.iterrows():
+            direct_map[str(r["ticker"])] = r.to_dict()
+
+    # Pre-index copy mirrors by symbol and key
+    copy_map: dict[str, list[dict[str, Any]]] = {}
+    mirrors_by_key: dict[str, dict[str, Any]] = {}
+    if mirror_cache:
+        for m in mirror_cache:
+            t_k = m.get("ticker")
+            if t_k:
+                mirrors_by_key[t_k] = m
+            u_k = m.get("username") or m.get("name") or m.get("trader_name")
+            if u_k:
+                mirrors_by_key[f"COPY:{u_k}"] = m
+                mirrors_by_key[u_k] = m
+            for p in m.get("positions", []):
+                sym = p.get("symbol") or f"ID_{p.get('instrument_id')}"
+                copy_map.setdefault(sym, []).append(p)
+
+    quotes = (quote_cache or {}).get("quotes", {})
+    series_map = close_series or {}
+
+    rows: list[dict[str, Any]] = []
+    # Distinct tickers from consolidated_df / holdings_df
+    for ticker, group in consolidated_df.groupby("ticker", sort=False):
+        ticker_str = str(ticker).strip()
+        first = group.iloc[0]
+        raw_name = str(first.get("name") or first.get("display_label") or ticker_str)
+        name_with_ticker = f"{raw_name} ({ticker_str})" if raw_name != ticker_str else ticker_str
+
+        is_copy_pos = bool(group["is_copy"].any()) if "is_copy" in group.columns else False
+        sector = str(first.get("sector") or "Other")
+        nature = str(first.get("nature") or "Other")
+        region = str(first.get("region") or "Unknown")
+        currency = str(first.get("currency") or "EUR")
+
+        if ticker_str.startswith("COPY:"):
+            m_info = mirrors_by_key.get(ticker_str, {})
+            u_name = ticker_str.split(":", 1)[1]
+            raw_name = str(first.get("name") or f"Copy: {u_name}")
+            name_with_ticker = f"{raw_name} ({ticker_str})"
+
+            c_cost = float(m_info.get("invested_usd", 0.0)) * fx_rate if (m_info and m_info.get("invested_usd")) else float(first.get("cost_basis") or 0.0)
+            c_val = float(m_info.get("value_usd", 0.0)) * fx_rate if (m_info and m_info.get("value_usd")) else float(first.get("value_eur") or c_cost)
+
+            total_qty = float(first.get("quantity") or 1.0)
+            total_cost = c_cost
+            avg_open = total_cost / total_qty if total_qty > 0 else total_cost
+            price = c_val / total_qty if total_qty > 0 else c_val
+            prev_close = price
+            day_change_pct = 0.0
+            day_pnl_eur = 0.0
+            market_val = c_val
+            unrealized_pnl_eur = market_val - total_cost
+            total_pnl_pct = (unrealized_pnl_eur / total_cost * 100.0) if total_cost > 0 else 0.0
+            is_copy_pos = True
+            is_priced = True
+            is_mirror_val = True
+            quote_age_str = "Mirror NAV"
+            sector = "Copy Portfolio"
+            nature = "Other / Multi-Asset"
+            region = "Global"
+            currency = "USD"
+        else:
+            # 1. Quantity & Cost basis across direct and copy legs
+            direct_info = direct_map.get(ticker_str, {})
+            d_qty = float(direct_info.get("quantity") if direct_info else (first.get("quantity") or 0.0))
+            d_cost = float(direct_info.get("cost_basis") if direct_info else (first.get("cost_basis") or 0.0))
+
+            c_positions = copy_map.get(ticker_str, [])
+            c_qty = sum(
+                float(p.get("units") or (float(p.get("amount_usd") or 0.0) / float(p.get("open_rate") or 1.0) if p.get("open_rate") else 0.0))
+                for p in c_positions
+            )
+            c_cost = sum(float(p.get("amount_usd") or 0.0) * fx_rate for p in c_positions)
+            c_val = sum((float(p.get("amount_usd") or 0.0) + float(p.get("pnl_usd") or 0.0)) * fx_rate for p in c_positions)
+
+            total_qty = d_qty + c_qty
+            total_cost = d_cost + c_cost
+            avg_open = (total_cost / total_qty) if total_qty > 0 else 0.0
+
+            # 2. Quotes & Price determination
+            is_mirror_val = ticker_str.startswith("ID_")
+            q_info = quotes.get(ticker_str)
+
+            is_priced = False
+            quote_age_str = "Delayed"
+            price = 0.0
+            prev_close = 0.0
+
+            if is_mirror_val:
+                is_mirror_val = True
+                is_priced = True  # Valued from mirror NAV, not waiting on poll (AC-5)
+                # Use consolidated value_eur for mirror items
+                group_val = float(group["value_eur"].sum() or 0.0)
+                price = (group_val / total_qty) if total_qty > 0 else 0.0
+                prev_close = price
+                quote_age_str = "Mirror NAV"
+            elif q_info and float(q_info.get("price") or 0.0) > 0:
+                price = float(q_info["price"])
+                prev_close = float(q_info.get("prev_close") or price)
+                is_priced = True
+                source = q_info.get("source", "")
+                fetched_at = q_info.get("fetched_at", "")
+                if source == "yfinance_1m":
+                    quote_age_str = "Live"
+                elif fetched_at:
+                    quote_age_str = str(fetched_at)[:10]
+                else:
+                    quote_age_str = "Stored close"
+            else:
+                # Fallback to consolidated group value if available
+                group_val = float(group["value_eur"].sum() or 0.0) if "value_eur" in group.columns else 0.0
+                if total_qty > 0 and group_val > 0:
+                    price = group_val / total_qty
+                    prev_close = price
+                    quote_age_str = "Stored close"
+                else:
+                    is_priced = False
+                    quote_age_str = "Unpriced"
+
+            # 3. Currency conversion for price & P&L
+            quote_curr = ((q_info.get("currency") if q_info else None) or currency).upper()
+            if (quote_curr in ("GBP", "GBX") or ticker_str.endswith(".L")) and price > 50:
+                price /= 100.0
+                prev_close /= 100.0
+                quote_curr = "GBP"
+
+            if quote_curr == "USD":
+                curr_mult = fx_rate
+            elif quote_curr in ("GBP", "GBX"):
+                curr_mult = 1.16
+            else:
+                curr_mult = 1.0
+
+            # 4. Day change & Day P&L
+            if is_priced and prev_close > 0 and not is_mirror_val:
+                day_change_pct = ((price - prev_close) / prev_close) * 100.0
+                day_pnl_eur = (price - prev_close) * total_qty * curr_mult
+            else:
+                day_change_pct = 0.0
+                day_pnl_eur = 0.0
+
+            # 5. Market value & Total P&L
+            if is_priced and price > 0 and not is_mirror_val:
+                direct_part = d_qty * price * curr_mult
+                copy_part = (c_qty * price * curr_mult) if c_qty > 0 else c_val
+                market_val = (direct_part + copy_part) if (direct_part > 0 or copy_part > 0) else (price * total_qty * curr_mult)
+            else:
+                market_val = float(group["value_eur"].sum() or 0.0) if "value_eur" in group.columns else (price * total_qty * curr_mult if price > 0 else total_cost)
+
+            unrealized_pnl_eur = market_val - total_cost
+            total_pnl_pct = (unrealized_pnl_eur / total_cost * 100.0) if total_cost > 0 else 0.0
+
+        sparkline_pts = series_map.get(ticker_str, [])
+
+        rows.append({
+            "symbol": ticker_str,
+            "ticker": ticker_str,
+            "name": raw_name,
+            "name_with_ticker": name_with_ticker,
+            "quantity": total_qty,
+            "avg_open_price": avg_open,
+            "price": price,
+            "day_change_pct": day_change_pct,
+            "day_pnl_eur": day_pnl_eur,
+            "cost_basis": total_cost,
+            "value_eur": market_val,
+            "unrealized_pnl_eur": unrealized_pnl_eur,
+            "total_pnl_pct": total_pnl_pct,
+            "weight_pct": 0.0,  # filled below
+            "sparkline": sparkline_pts,
+            "is_copy": is_copy_pos,
+            "is_priced": is_priced,
+            "is_mirror_valued": is_mirror_val,
+            "quote_age_str": quote_age_str,
+            "sector": sector,
+            "nature": nature,
+            "region": region,
+            "currency": currency,
+        })
+
+    total_portfolio_val = sum(r["value_eur"] for r in rows)
+    for r in rows:
+        r["weight_pct"] = (
+            (r["value_eur"] / total_portfolio_val * 100.0) if total_portfolio_val > 0 else 0.0
+        )
+
+    res_df = pd.DataFrame(rows, columns=columns)
+    return res_df
+

@@ -67,7 +67,8 @@ class TestViewWhitelist(unittest.TestCase):
         self.assertEqual(VIEW_WHITELIST["spending"], ("category",))
         self.assertEqual(set(VIEW_WHITELIST["transactions"]), {"category", "search"})
         self.assertEqual(
-            set(VIEW_WHITELIST["investments"]), {"exposure_dimension", "focus"}
+            set(VIEW_WHITELIST["investments"]),
+            {"exposure_dimension", "focus", "sort", "movers", "search"},
         )
 
     def test_unknown_view_key_is_ignored_with_note(self):

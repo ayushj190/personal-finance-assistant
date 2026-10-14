@@ -12,7 +12,7 @@ def is_hidden() -> bool:
 def _on_privacy_toggle() -> None:
     state.set(
         state.K.PRIVACY_HIDDEN,
-        bool(state.get(state.K.GLOBAL_PRIVACY_TOGGLE, False)),
+        bool(state.get(state.K.GLOBAL_PRIVACY_TOGGLE, True)),
     )
 
 

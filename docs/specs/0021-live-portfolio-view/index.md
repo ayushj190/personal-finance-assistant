@@ -1,7 +1,7 @@
 # 0021. Live portfolio view for the Investments page
 
 **Date**: 2026-10-14
-**Status**: In Progress
+**Status**: Completed
 
 ## Summary
 

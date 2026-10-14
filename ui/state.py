@@ -34,6 +34,13 @@ class K:
     TV_WATCHLIST_MINIMIZED = "tv_watchlist_minimized"
     INVESTMENTS_EXP_DIM = "investments_exp_dim"
     INVESTMENTS_EXP_FOCUS = "investments_exp_focus"
+    INVESTMENTS_SORT_COL = "investments_sort_col"
+    INVESTMENTS_MOVERS = "investments_movers"
+    INVESTMENTS_SEARCH = "investments_search"
+    LAST_PORTFOLIO_SNAPSHOT_DATE = "last_portfolio_snapshot_date"
+    LIVE_QUOTE_CACHE = "live_quote_cache"
+    LIVE_QUOTE_LAST_REFRESH = "live_quote_last_refresh"
+    LIVE_QUOTE_LAST_FAILED = "live_quote_last_failed"
 
     # Spending
     SPENDING_DRILLDOWN = "spending_donut_drilldown"
@@ -54,6 +61,8 @@ def set(key: str, value: Any) -> None:
     """Assign value into st.session_state."""
     if hasattr(st, "session_state"):
         st.session_state[key] = value
+        if key == K.PRIVACY_HIDDEN:
+            st.session_state[K.GLOBAL_PRIVACY_TOGGLE] = bool(value)
 
 
 def has(key: str) -> bool:
@@ -92,15 +101,12 @@ def init_defaults() -> None:
         st.session_state[K.THEME] = "dark"
 
     if K.PRIVACY_HIDDEN not in st.session_state:
-        # Demo mode starts with Hide values OFF so a fresh demo session reads (AC-13).
-        from config import DEMO
+        st.session_state[K.PRIVACY_HIDDEN] = True
 
-        st.session_state[K.PRIVACY_HIDDEN] = not DEMO
-
-    if K.GLOBAL_PRIVACY_TOGGLE in st.session_state:
-        st.session_state[K.PRIVACY_HIDDEN] = bool(st.session_state[K.GLOBAL_PRIVACY_TOGGLE])
-    else:
+    if K.GLOBAL_PRIVACY_TOGGLE not in st.session_state:
         st.session_state[K.GLOBAL_PRIVACY_TOGGLE] = bool(st.session_state[K.PRIVACY_HIDDEN])
+    else:
+        st.session_state[K.PRIVACY_HIDDEN] = bool(st.session_state[K.GLOBAL_PRIVACY_TOGGLE])
 
     if K.COPILOT_HISTORY not in st.session_state:
         st.session_state[K.COPILOT_HISTORY] = []

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from typing import Optional
 import pandas as pd
@@ -5,22 +6,28 @@ import plotly.express as px
 import streamlit as st
 
 import ui.pages.investments
-from config import DB_PATH
+from config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
 from services.dividend_service import calculate_dividend_projections
-from services.portfolio import calculate_drift, get_smart_allocation_profiles
+from services.live_quotes import cached_quotes, market_clock, refresh_live_quotes
+from services.portfolio import (
+    aggregate_distinct_holdings,
+    build_live_rows,
+    calculate_drift,
+    get_smart_allocation_profiles,
+)
+from ui import state
 from ui.charts import build_drift_bar_chart
 from ui.components import format_money, kpi_card, section_header
 from ui.theme import render_chart
 from ui.allocation_ui import render_allocation_management
-from ui.pages.investments.holdings import render_copy_portfolios, render_holdings_table
-from ui.pages.investments.exposure import render_exposure_visualizer
-from ui.pages.investments.watchlist import render_live_quotes_and_watchlist
+from ui.pages.investments.holdings import render_copy_portfolios
+from ui.pages.investments.live import render_live_portfolio_view
 from ui.pages.investments.realized_pnl import render_realized_pnl_panel
 
 
-@st.fragment
+@st.fragment(run_every=60)
 def _render_portfolio_fragment(
     holdings_df: pd.DataFrame,
     copy_df: pd.DataFrame,
@@ -30,51 +37,66 @@ def _render_portfolio_fragment(
     active_positions_count: int | None = None,
     conn: Optional[sqlite3.Connection] = None,
 ) -> None:
-    # 1. 4-KPI ribbon
-    total_value = float(holdings_df["value_eur"].sum())
-    total_cost = float(holdings_df["cost_basis"].sum())
-    total_pnl = float(holdings_df["unrealized_pnl_eur"].sum())
-    pnl_pct = (total_pnl / total_cost * 100.0) if total_cost > 0 else 0.0
-    unquoted_count = int((holdings_df["latest_close"] <= 0).sum()) if "latest_close" in holdings_df.columns else 0
+    # 1. Market clock & quote polling (AC-2, AC-4, AC-5)
+    clock_info = market_clock(conn=conn)
+    tickers = (
+        [
+            str(t).strip()
+            for t in holdings_df["ticker"].unique()
+            if str(t).strip() and not str(t).startswith("COPY:") and not str(t).startswith("ID_")
+        ]
+        if not holdings_df.empty and "ticker" in holdings_df.columns
+        else []
+    )
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        ui.pages.investments.kpi_card("Portfolio Value", format_money(total_value))
-    with c2:
-        ui.pages.investments.kpi_card("Total Cost Basis", format_money(total_cost))
-    with c3:
-        pnl_str = f"{'+' if total_pnl >= 0 else ''}{format_money(total_pnl)}"
-        ui.pages.investments.kpi_card("Unrealized P&L", pnl_str, delta_str=f"{pnl_pct:+.1f}%")
-    with c4:
-        sub = (
-            f"⏱️ {unquoted_count} quote delayed"
-            if unquoted_count > 0
-            else "All quotes live"
-        )
-        if active_positions_count is None:
-            if not consolidated_df.empty and "ticker" in consolidated_df.columns:
-                active_positions_count = consolidated_df["ticker"].nunique()
-            else:
-                active_positions_count = len(holdings_df)
-        pos_str = f"{active_positions_count} assets"
-        ui.pages.investments.kpi_card("Active Positions", pos_str, subtext=sub)
+    if clock_info["is_open"]:
+        s_cache = state.get(state.K.LIVE_QUOTE_CACHE, {})
+        updated_cache = refresh_live_quotes(tickers, session_cache=s_cache)
+        state.set(state.K.LIVE_QUOTE_CACHE, updated_cache)
+        quote_cache = updated_cache
+    else:
+        quote_cache = cached_quotes(conn=conn)
 
-    # 2. Multi-dimension Exposure Visualizer
-    render_exposure_visualizer(consolidated_df)
+    # 2. Historical close series for sparklines (AC-1)
+    series_map = {}
+    if conn and tickers:
+        try:
+            series_map = HoldingRepository.get_ticker_close_series(conn, tickers, days=30)
+        except Exception:
+            series_map = {}
 
-    # 3. Active Holdings Table
-    with section_header("Portfolio Holdings"):
-        render_holdings_table(holdings_df)
+    # 3. Mirror cache
+    mirror_cache = []
+    cache_path = DATA_DIR / "etoro_mirrors_cache.json"
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                mirror_cache = json.load(f)
+        except Exception:
+            mirror_cache = []
 
-    # 4. Copy Portfolios Section
+    # 4. Aggregated direct holdings
+    agg_holdings, _ = aggregate_distinct_holdings(holdings_df)
+
+    # 5. Build unified live rows (AC-1, AC-3, AC-5)
+    live_rows = build_live_rows(
+        holdings_df,
+        agg_holdings,
+        mirror_cache=mirror_cache,
+        quote_cache=quote_cache,
+        fx_rate=usd_to_eur,
+        close_series=series_map,
+    )
+
+    # 6. Render live portfolio view (AC-1, AC-6, AC-7, AC-8, AC-9, AC-11, AC-12, AC-13)
+    render_live_portfolio_view(live_rows, clock_info, consolidated_df, conn=conn)
+
+    # 6b. Copy Trader constituent breakdowns
     if not copy_df.empty:
-        with section_header("eToro Copied Traders"):
+        with st.expander("👥 Copy Trader Breakdowns", expanded=False):
             render_copy_portfolios(copy_df, usd_to_eur)
 
-    # 5. Live Quotes & Watchlist
-    render_live_quotes_and_watchlist(direct_df, consolidated_df)
-
-    # 6. Realized P&L Panel
+    # 7. Realized P&L Panel
     render_realized_pnl_panel(conn)
 
 
@@ -220,38 +242,22 @@ def _render_income_fragment(conn, holdings_df: pd.DataFrame) -> None:
             with col_m_table:
                 h_df = div_data["holdings_df"]
                 if not h_df.empty:
-                    disp_h = h_df[["ticker", "name", "value_eur", "yield_pct", "annual_dividend_eur"]].copy()
-                    disp_h.columns = ["Ticker", "Asset", "Value (€)", "Est. Yield", "Annual Div (€)"]
-                    if ui.pages.investments.is_hidden():
-                        disp_h["Value (€)"] = "€****"
-                        disp_h["Est. Yield"] = "****%"
-                        disp_h["Annual Div (€)"] = "€****"
-                        disp_h["Asset"] = "****"
-                        disp_h["Ticker"] = "****"
-                    else:
-                        disp_h["Value (€)"] = disp_h["Value (€)"].map(lambda x: f"€{x:,.2f}")
-                        disp_h["Est. Yield"] = disp_h["Est. Yield"].map(lambda x: f"{x:.1f}%")
-                        disp_h["Annual Div (€)"] = disp_h["Annual Div (€)"].map(lambda x: f"€{x:,.2f}")
-                    st.dataframe(disp_h, width="stretch", hide_index=True)
+                    with st.expander("Dividend-generating holdings", expanded=False):
+                        disp_h = h_df[["ticker", "name", "value_eur", "yield_pct", "annual_dividend_eur"]].copy()
+                        disp_h.columns = ["Ticker", "Asset", "Value (€)", "Est. Yield", "Annual Div (€)"]
+                        if ui.pages.investments.is_hidden():
+                            disp_h["Value (€)"] = "€****"
+                            disp_h["Est. Yield"] = "****%"
+                            disp_h["Annual Div (€)"] = "€****"
+                            disp_h["Asset"] = "****"
+                            disp_h["Ticker"] = "****"
+                        else:
+                            disp_h["Value (€)"] = disp_h["Value (€)"].map(lambda x: f"€{x:,.2f}")
+                            disp_h["Est. Yield"] = disp_h["Est. Yield"].map(lambda x: f"{x:.1f}%")
+                            disp_h["Annual Div (€)"] = disp_h["Annual Div (€)"].map(lambda x: f"€{x:,.2f}")
+                        st.dataframe(disp_h, width="stretch", hide_index=True)
                 else:
                     st.caption("No dividend-generating assets tracked.")
-
-            with section_header("Tax-Loss Harvesting Assistant"):
-                loss_df = holdings_df[holdings_df["unrealized_pnl_eur"] < -50].sort_values(by="unrealized_pnl_eur")
-                if not loss_df.empty:
-                    disp_loss = loss_df[["ticker", "name", "value_eur", "unrealized_pnl_eur"]].copy()
-                    disp_loss.columns = ["Ticker", "Asset", "Value (€)", "Unrealized P&L (€)"]
-                    if ui.pages.investments.is_hidden():
-                        disp_loss["Value (€)"] = "€****"
-                        disp_loss["Unrealized P&L (€)"] = "€****"
-                        disp_loss["Asset"] = "****"
-                        disp_loss["Ticker"] = "****"
-                    else:
-                        disp_loss["Value (€)"] = disp_loss["Value (€)"].map(lambda x: f"€{x:,.2f}")
-                        disp_loss["Unrealized P&L (€)"] = disp_loss["Unrealized P&L (€)"].map(lambda x: f"€{x:,.2f}")
-                    st.dataframe(disp_loss, hide_index=True, width="stretch")
-                else:
-                    st.caption("No significant unrealized losses available for harvesting.")
     finally:
         if should_close_inc:
             inc_conn.close()

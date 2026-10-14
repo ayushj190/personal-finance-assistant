@@ -17,6 +17,9 @@ _VIEW_SESSION_KEYS: dict[tuple[str, str], str] = {
     ("transactions", "search"): "tx_search",
     ("investments", "exposure_dimension"): state.K.INVESTMENTS_EXP_DIM,
     ("investments", "focus"): state.K.INVESTMENTS_EXP_FOCUS,
+    ("investments", "sort"): state.K.INVESTMENTS_SORT_COL,
+    ("investments", "movers"): state.K.INVESTMENTS_MOVERS,
+    ("investments", "search"): state.K.INVESTMENTS_SEARCH,
 }
 
 

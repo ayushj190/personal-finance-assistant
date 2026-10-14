@@ -82,10 +82,15 @@ if not DEMO:
 
     _auto_sync_scheduler()
 
-# Check for manual accounts reminder
+# Check for manual accounts reminder & write daily portfolio snapshot (AC-10)
 conn = database.connect(DB_PATH)
 try:
     stale_accounts = AccountRepository.get_manual_stale_accounts(conn, days_threshold=30)
+    _today_iso = date.today().isoformat()
+    if st.session_state.get(state.K.LAST_PORTFOLIO_SNAPSHOT_DATE) != _today_iso:
+        from services.portfolio import record_daily_portfolio_snapshot
+        if record_daily_portfolio_snapshot(conn, _today_iso):
+            st.session_state[state.K.LAST_PORTFOLIO_SNAPSHOT_DATE] = _today_iso
 finally:
     conn.close()
 

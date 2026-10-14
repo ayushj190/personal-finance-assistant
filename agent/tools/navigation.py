@@ -15,8 +15,10 @@ from services.date_scope import resolve_date_scope
 from services.navigation import (
     EXPOSURE_DIMENSIONS,
     FILTERED_PAGES,
+    MOVERS,
     PAGE_IDS,
     PAGE_LABELS,
+    SORT_COLUMNS,
     TAB_HOST_PAGE,
     TAB_MAP,
     VIEW_WHITELIST,
@@ -58,7 +60,7 @@ def _clean_view(page: str, view: Any) -> tuple[dict[str, Any], list[str]]:
 
     # The exposure dimension is resolved first so a focus value can be checked
     # against its live buckets.
-    for key in ("exposure_dimension", "focus", "category", "search"):
+    for key in ("exposure_dimension", "focus", "sort", "movers", "category", "search"):
         if key not in view:
             continue
         if key not in allowed:
@@ -87,6 +89,22 @@ def _clean_view(page: str, view: Any) -> tuple[dict[str, Any], list[str]]:
             match = next((b for b in buckets if b.lower() == value.lower()), None)
             if not match:
                 notes.append(f"Ignored focus '{value}'; it is not a live {dim} bucket.")
+                continue
+            cleaned[key] = match
+        elif key == "sort":
+            match = next((s for s in SORT_COLUMNS if s.lower() == value.lower()), None)
+            if not match:
+                notes.append(
+                    f"Ignored sort column '{value}'; valid are {', '.join(SORT_COLUMNS)}."
+                )
+                continue
+            cleaned[key] = match
+        elif key == "movers":
+            match = next((m for m in MOVERS if m.lower() == value.lower()), None)
+            if not match:
+                notes.append(
+                    f"Ignored movers option '{value}'; valid are {', '.join(MOVERS)}."
+                )
                 continue
             cleaned[key] = match
         else:

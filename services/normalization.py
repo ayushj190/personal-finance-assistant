@@ -36,7 +36,7 @@ NOISE_PATTERNS = [
 ]
 
 USER_NAME_PATTERN = re.compile(
-    r"\b(ayush\s*(kumar\s*)?joshi|a\.?\s*k\.?\s*joshi|ak\s*joshi)\b",
+    r"\b(ayush\s*(kumar\s*)?joshi|a\.?\s*k\.?\s*joshi|ak\s*joshi|j\s*doe|john\s*doe)\b",
     re.IGNORECASE,
 )
 

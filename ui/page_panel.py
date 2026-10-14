@@ -58,8 +58,8 @@ def render_page_panel(page_id: str) -> None:
     _scroll_into_view()
 
 
-def _scroll_into_view() -> None:
-    """Scroll the pinned panel into view; if the script cannot run the top placement stands (AC-4)."""
+def scroll_selector_into_view(selector_key: str = _PANEL_SELECTOR) -> None:
+    """Scroll a pinned container selector into view; no-op when element is absent (AC-4, AC-17)."""
     try:
         from ui.theme import script_iframe
 
@@ -68,7 +68,7 @@ def _scroll_into_view() -> None:
             <script>
               (function() {{
                 var doc = window.parent.document;
-                var el = doc.querySelector('.st-key-{_PANEL_SELECTOR}');
+                var el = doc.querySelector('.st-key-{selector_key}');
                 if (el && el.scrollIntoView) {{
                   el.scrollIntoView({{behavior: 'smooth', block: 'start'}});
                 }}
@@ -78,3 +78,8 @@ def _scroll_into_view() -> None:
         )
     except Exception:
         pass
+
+
+def _scroll_into_view() -> None:
+    """Scroll the default panel selector into view."""
+    scroll_selector_into_view(_PANEL_SELECTOR)

@@ -11,7 +11,13 @@ from services.allocation_service import (
     delete_allocation_profile,
     list_allocation_profiles,
 )
-from services.portfolio import calculate_drift, get_consolidated_holdings_df
+from services.live_quotes import cached_quotes
+from services.portfolio import (
+    aggregate_distinct_holdings,
+    build_live_rows,
+    calculate_drift,
+    get_consolidated_holdings_df,
+)
 
 
 def tool_set_active_allocation_profile(profile_name: str) -> dict[str, Any]:
@@ -211,6 +217,57 @@ def tool_analyze_investments() -> dict[str, Any]:
 
         drift_alerts = [d for d in drift_data if d.get("alert")]
         rebalance_needed = len(drift_alerts) > 0
+        # Day P&L and movers from guarded accessor (AC-18)
+        quote_state = cached_quotes(conn=conn)
+        is_closed = quote_state.get("session_state") == "closed"
+
+        day_pnl_eur: float | None = None
+        day_pnl_note: str | None = None
+        movers: dict[str, list[dict[str, Any]]] = {"gainers": [], "losers": []}
+
+        if is_closed:
+            day_pnl_eur = None
+            day_pnl_note = "Market is closed; live intraday moves are unavailable and values reflect the last close."
+        else:
+            fx_close = HoldingRepository.get_latest_fx_quote(conn, "EURUSD=X")
+            usd_to_eur = (1.0 / fx_close) if fx_close else 0.892
+            agg_holdings, _ = aggregate_distinct_holdings(HoldingRepository.get_v_holdings_df(conn))
+            live_rows = build_live_rows(
+                consolidated_df,
+                agg_holdings,
+                quote_cache=quote_state,
+                fx_rate=usd_to_eur,
+            )
+            if not live_rows.empty and "day_pnl_eur" in live_rows.columns:
+                priced_rows = live_rows[live_rows["is_priced"]]
+                day_pnl_eur = round(float(priced_rows["day_pnl_eur"].sum() or 0.0), 2)
+                g_df = priced_rows[priced_rows["day_change_pct"] > 0].sort_values(
+                    by=["day_change_pct", "value_eur"], ascending=[False, False]
+                ).head(3)
+                l_df = priced_rows[priced_rows["day_change_pct"] < 0].sort_values(
+                    by=["day_change_pct", "value_eur"], ascending=[True, False]
+                ).head(3)
+                movers = {
+                    "gainers": [
+                        {
+                            "ticker": str(r["ticker"]),
+                            "name": str(r["name"]),
+                            "day_change_pct": round(float(r["day_change_pct"]), 2),
+                            "day_pnl_eur": round(float(r["day_pnl_eur"]), 2),
+                        }
+                        for _, r in g_df.iterrows()
+                    ],
+                    "losers": [
+                        {
+                            "ticker": str(r["ticker"]),
+                            "name": str(r["name"]),
+                            "day_change_pct": round(float(r["day_change_pct"]), 2),
+                            "day_pnl_eur": round(float(r["day_pnl_eur"]), 2),
+                        }
+                        for _, r in l_df.iterrows()
+                    ],
+                }
+
         total_positions_count = len(positions)
         positions_sorted = sorted(positions, key=lambda p: float(p.get("value_eur", 0.0)), reverse=True)
         top_positions = positions_sorted[:15]
@@ -219,6 +276,11 @@ def tool_analyze_investments() -> dict[str, Any]:
             f"Total investment portfolio value is €{total_portfolio_value_eur:,.2f} across {total_positions_count} total positions.",
             f"Asset nature breakdown: {json.dumps(holdings_by_nature)}.",
         ]
+        if day_pnl_eur is not None:
+            msg_parts.append(f"Today's portfolio move is {'+' if day_pnl_eur >= 0 else ''}€{day_pnl_eur:,.2f}.")
+        elif day_pnl_note:
+            msg_parts.append(day_pnl_note)
+
         if active_profile:
             if rebalance_needed:
                 buckets = ", ".join(str(d.get("bucket")) for d in drift_alerts)
@@ -237,6 +299,9 @@ def tool_analyze_investments() -> dict[str, Any]:
             "total_portfolio_value_formatted": f"€{total_portfolio_value_eur:,.2f}",
             "cash_balance_eur": cash_balance_eur,
             "cash_balance_formatted": f"€{cash_balance_eur:,.2f}",
+            "day_pnl_eur": day_pnl_eur,
+            "day_pnl_note": day_pnl_note,
+            "movers": movers,
             "total_positions_count": total_positions_count,
             "asset_classes_eur": asset_classes,
             "holdings_by_nature_eur": holdings_by_nature,

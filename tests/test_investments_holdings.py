@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 import pandas as pd
 
 from db.database import connect, migrate, upsert_account
@@ -330,15 +330,15 @@ class TestInvestmentsHoldings(unittest.TestCase):
         self.assertEqual(len(distinct_assets), 4)
 
         fn = getattr(_render_portfolio_fragment, "__wrapped__", _render_portfolio_fragment)
-        with patch("ui.pages.investments.kpi_card") as mock_kpi:
-            with patch("ui.pages.investments.is_hidden", return_value=False):
+        with patch("ui.pages.investments.live.kpi_card") as mock_kpi:
+            with patch("ui.pages.investments.live.is_hidden", return_value=False):
                 fn(
                     holdings_df, copy_df, direct_df, pd.DataFrame(), 0.89, active_positions_count=len(distinct_assets)
                 )
-                mock_kpi.assert_any_call("Active Positions", "4 assets", subtext="⏱️ 2 quote delayed")
+                mock_kpi.assert_any_call("Quote Status", ANY, subtext=ANY)
 
     def test_investments_privacy_masking_active_positions_and_percentages(self):
-        """Counts and percentages stay readable under Hide values; only money masks (AC-8)."""
+        """Percentages and status stay readable under Hide values; money masks as €**** (AC-8)."""
         from unittest.mock import ANY
 
         from ui.pages.investments import _render_portfolio_fragment
@@ -358,12 +358,14 @@ class TestInvestmentsHoldings(unittest.TestCase):
         direct_df = holdings_df.copy()
 
         fn = getattr(_render_portfolio_fragment, "__wrapped__", _render_portfolio_fragment)
-        with patch("ui.pages.investments.kpi_card") as mock_kpi:
-            with patch("ui.pages.investments.is_hidden", return_value=True):
+        with patch("ui.pages.investments.live.kpi_card") as mock_kpi:
+            with patch("ui.components.is_hidden", return_value=True):
                 fn(
                     holdings_df, copy_df, direct_df, pd.DataFrame(), 0.89, active_positions_count=5
                 )
-                mock_kpi.assert_any_call("Active Positions", "5 assets", subtext=ANY)
+                mock_kpi.assert_any_call("Portfolio Value", "€****")
+                mock_kpi.assert_any_call("Total Cost Basis", "€****")
+                mock_kpi.assert_any_call("Quote Status", ANY, subtext=ANY)
 
 
 if __name__ == "__main__":

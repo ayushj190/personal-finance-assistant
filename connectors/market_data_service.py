@@ -11,8 +11,7 @@ from db import database
 
 
 def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None) -> None:
-    valid_tickers = [t for t in tickers if t and not t.startswith(
-        "COPY:") and not t.startswith("ID_")]
+    valid_tickers = [t for t in tickers if t and not t.startswith("COPY:") and not t.startswith("ID_")]
     all_tickers = list(set(valid_tickers + ["EURUSD=X"]))
     if not all_tickers:
         return
@@ -21,8 +20,14 @@ def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None)
     close_conn = db_conn is None
 
     try:
-        data = yf.download(all_tickers, period="5d",
-                           interval="1d", group_by="ticker", progress=False)
+        data = yf.download(
+            all_tickers,
+            period="1mo",
+            interval="1d",
+            group_by="ticker",
+            progress=False,
+            timeout=6.0,
+        )
         quotes: list[dict[str, Any]] = []
 
         for t in all_tickers:
@@ -31,19 +36,20 @@ def update_quotes(tickers: list[str], db_conn: sqlite3.Connection | None = None)
                 sub = sub.dropna(subset=["Close"])
                 if len(sub) == 0:
                     continue
-                latest_close = float(sub["Close"].iloc[-1])
-                prev_close = float(sub["Close"].iloc[-2]
-                                   ) if len(sub) >= 2 else latest_close
-                quote_date = str(sub.index[-1].date())
-                quotes.append(
-                    {
-                        "ticker": t,
-                        "quote_date": quote_date,
-                        "close": latest_close,
-                        "prev_close": prev_close,
-                        "currency": "USD" if t != "EURUSD=X" and not t.endswith(".DE") else "EUR",
-                    }
-                )
+                curr = "USD" if t != "EURUSD=X" and not t.endswith(".DE") else "EUR"
+                for idx in range(len(sub)):
+                    row_dt = str(sub.index[idx].date())
+                    row_close = float(sub["Close"].iloc[idx])
+                    row_prev = float(sub["Close"].iloc[idx - 1]) if idx > 0 else row_close
+                    quotes.append(
+                        {
+                            "ticker": t,
+                            "quote_date": row_dt,
+                            "close": row_close,
+                            "prev_close": row_prev,
+                            "currency": curr,
+                        }
+                    )
             except Exception:
                 continue
 

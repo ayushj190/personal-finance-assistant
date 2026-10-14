@@ -376,3 +376,96 @@ class HoldingRepository:
             axis=1,
         )
         return df
+
+    @staticmethod
+    def upsert_portfolio_snapshot(
+        conn: sqlite3.Connection,
+        snapshot_date: str,
+        market_value_eur_minor: int,
+        cost_basis_eur_minor: int,
+        day_pnl_eur_minor: int | None = None,
+    ) -> None:
+        """Upsert a single portfolio valuation snapshot per day (minor units)."""
+        conn.execute(
+            """
+            INSERT INTO portfolio_snapshots (
+                snapshot_date, market_value_eur_minor, cost_basis_eur_minor, day_pnl_eur_minor, fetched_at
+            ) VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(snapshot_date) DO UPDATE SET
+                market_value_eur_minor = excluded.market_value_eur_minor,
+                cost_basis_eur_minor = excluded.cost_basis_eur_minor,
+                day_pnl_eur_minor = excluded.day_pnl_eur_minor,
+                fetched_at = excluded.fetched_at;
+            """,
+            (
+                str(snapshot_date),
+                int(market_value_eur_minor),
+                int(cost_basis_eur_minor),
+                int(day_pnl_eur_minor) if day_pnl_eur_minor is not None else None,
+            ),
+        )
+
+    @staticmethod
+    def get_portfolio_snapshots(
+        conn: sqlite3.Connection,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Retrieve daily portfolio snapshots ordered by snapshot_date ASC."""
+        clauses = []
+        params: list[Any] = []
+        if start_date:
+            clauses.append("snapshot_date >= ?")
+            params.append(str(start_date))
+        if end_date:
+            clauses.append("snapshot_date <= ?")
+            params.append(str(end_date))
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        query = f"""
+        SELECT snapshot_date, market_value_eur_minor, cost_basis_eur_minor, day_pnl_eur_minor, fetched_at
+        FROM portfolio_snapshots
+        {where}
+        ORDER BY snapshot_date ASC
+        """
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return [
+            {
+                "snapshot_date": r["snapshot_date"],
+                "market_value_eur_minor": r["market_value_eur_minor"],
+                "cost_basis_eur_minor": r["cost_basis_eur_minor"],
+                "day_pnl_eur_minor": r["day_pnl_eur_minor"],
+                "market_value_eur": (r["market_value_eur_minor"] or 0) / 100.0,
+                "cost_basis_eur": (r["cost_basis_eur_minor"] or 0) / 100.0,
+                "day_pnl_eur": (r["day_pnl_eur_minor"] / 100.0) if r["day_pnl_eur_minor"] is not None else None,
+                "fetched_at": r["fetched_at"],
+            }
+            for r in rows
+        ]
+
+    @staticmethod
+    def get_ticker_close_series(
+        conn: sqlite3.Connection,
+        tickers: list[str],
+        days: int = 30,
+    ) -> dict[str, list[float]]:
+        """Retrieve historical ordered close series per ticker for sparkline rendering."""
+        clean_tickers = [str(t).strip() for t in tickers if str(t).strip()]
+        if not clean_tickers:
+            return {}
+        placeholders = ",".join("?" for _ in clean_tickers)
+        query = f"""
+        SELECT ticker, close, quote_date
+        FROM market_quotes
+        WHERE ticker IN ({placeholders})
+          AND close IS NOT NULL AND close > 0
+        ORDER BY quote_date ASC
+        """
+        rows = conn.execute(query, tuple(clean_tickers)).fetchall()
+        series: dict[str, list[float]] = {t: [] for t in clean_tickers}
+        for r in rows:
+            t = r[0] if isinstance(r, (tuple, list)) else r["ticker"]
+            val = float(r[1] if isinstance(r, (tuple, list)) else r["close"])
+            if t in series:
+                series[t].append(val)
+        return {t: pts[-days:] if len(pts) > days else pts for t, pts in series.items()}
+

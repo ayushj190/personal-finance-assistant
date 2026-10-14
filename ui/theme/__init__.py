@@ -59,19 +59,26 @@ DARK_CSS_FILE = THEME_DIR / "dark.css"
 # window. `SIDEBAR_RESIZE_BRIDGE_KEY` names the zero size component that carries
 # the script, hidden by `common.css`.
 SIDEBAR_MIN_WIDTH_PX = 260
+SIDEBAR_DEFAULT_WIDTH_PX = 336
 SIDEBAR_MAX_WIDTH_RATIO = 0.5
-SIDEBAR_WIDTH_STORAGE_KEY = "pfa_sidebar_width"
+SIDEBAR_WIDTH_STORAGE_KEY = "pfa_sidebar_width_v2"
 SIDEBAR_RESIZE_BRIDGE_KEY = "sidebar_resize_bridge"
 
 _SIDEBAR_RESIZE_JS = """
 <script>
   (function () {
     var MIN_PX = __MIN_PX__;
+    var DEFAULT_PX = __DEFAULT_PX__;
     var MAX_RATIO = __MAX_RATIO__;
     var STORAGE_KEY = "__STORAGE_KEY__";
     var doc = window.parent;
     var d = doc.document;
     var dragging = false;
+
+    // Clear legacy storage key that may have persisted half-screen width
+    try {
+      doc.localStorage.removeItem("pfa_sidebar_width");
+    } catch (err) {}
 
     function sidebar() {
       return d.querySelector('[data-testid="stSidebar"]');
@@ -145,7 +152,7 @@ _SIDEBAR_RESIZE_JS = """
       try {
         saved = doc.localStorage.getItem(STORAGE_KEY);
       } catch (err) {}
-      if (saved) apply(parseInt(saved, 10));
+      apply(saved ? parseInt(saved, 10) : DEFAULT_PX);
     });
 
     var attempts = 0;
@@ -154,7 +161,7 @@ _SIDEBAR_RESIZE_JS = """
       try {
         saved = doc.localStorage.getItem(STORAGE_KEY);
       } catch (err) {}
-      if (saved) apply(parseInt(saved, 10));
+      apply(saved ? parseInt(saved, 10) : DEFAULT_PX);
       if (!sidebar() && ++attempts < 40) doc.setTimeout(restore, 250);
     })();
   })();
@@ -163,6 +170,7 @@ _SIDEBAR_RESIZE_JS = """
 _SIDEBAR_RESIZE_JS = (
     _SIDEBAR_RESIZE_JS
     .replace("__MIN_PX__", str(SIDEBAR_MIN_WIDTH_PX))
+    .replace("__DEFAULT_PX__", str(SIDEBAR_DEFAULT_WIDTH_PX))
     .replace("__MAX_RATIO__", str(SIDEBAR_MAX_WIDTH_RATIO))
     .replace("__STORAGE_KEY__", SIDEBAR_WIDTH_STORAGE_KEY)
 )

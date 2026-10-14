@@ -1,5 +1,6 @@
 """Investments page package re-exporting render entrypoint, fragments, and components."""
 
+from datetime import date
 import streamlit as st
 from config import DB_PATH
 from connectors.market_data_service import update_quotes
@@ -21,6 +22,7 @@ from ui.pages.investments.holdings import render_copy_portfolios, render_holding
 from ui.pages.investments.exposure import render_exposure_visualizer
 from ui.pages.investments.watchlist import render_live_quotes_and_watchlist
 from ui.pages.investments.realized_pnl import render_realized_pnl_panel
+from ui.pages.investments.live import render_live_portfolio_view
 from ui.page_panel import render_page_panel
 
 # Re-exports for test compatibility and patch mocking
@@ -44,8 +46,20 @@ def render() -> None:
             if not t.startswith("COPY:") and not t.startswith("ID_")
         ]
         if direct_tickers:
-            update_quotes(direct_tickers, conn)
-            holdings_df = HoldingRepository.get_v_holdings_df(conn)
+            today_str = date.today().isoformat()
+            placeholders = ",".join("?" for _ in direct_tickers)
+            try:
+                row = conn.execute(
+                    f"SELECT COUNT(DISTINCT ticker) FROM market_quotes WHERE quote_date = ? AND ticker IN ({placeholders})",
+                    (today_str, *direct_tickers),
+                ).fetchone()
+                quotes_today = row[0] if row else 0
+            except Exception:
+                quotes_today = 0
+
+            if quotes_today < len(direct_tickers):
+                update_quotes(direct_tickers, conn)
+                holdings_df = HoldingRepository.get_v_holdings_df(conn)
 
         copy_mask = holdings_df["ticker"].str.startswith("COPY:", na=False)
         copy_df = holdings_df[copy_mask].copy()
@@ -106,6 +120,7 @@ __all__ = [
     "_render_market_news_fragment",
     "render_copy_portfolios",
     "render_holdings_table",
+    "render_live_portfolio_view",
     "render_exposure_visualizer",
     "render_live_quotes_and_watchlist",
     "render_realized_pnl_panel",

@@ -67,13 +67,29 @@ PAGE_ALIASES = {
     "preferences": "settings",
 }
 
-# Per page view parameter whitelist (AC-2). A key absent here cannot be set, so a
+# Per page view parameter whitelist (AC-2, AC-17). A key absent here cannot be set, so a
 # wrong key can never reach a page. Values are validated per key by `open_view`.
 VIEW_WHITELIST: dict[str, tuple[str, ...]] = {
     "spending": ("category",),
     "transactions": ("category", "search"),
-    "investments": ("exposure_dimension", "focus"),
+    "investments": ("exposure_dimension", "focus", "sort", "movers", "search"),
 }
+
+# Investments live view constants (AC-17).
+SORT_COLUMNS = (
+    "value_eur",
+    "day_change_pct",
+    "day_pnl_eur",
+    "unrealized_pnl_eur",
+    "total_pnl_pct",
+    "quantity",
+    "price",
+    "cost_basis",
+    "name",
+    "ticker",
+)
+
+MOVERS = ("gainers", "losers")
 
 # Investments exposure dimensions the Copilot may set (AC-2). A `focus` value is
 # validated against the live buckets `get_dimension_exposure_df` returns.

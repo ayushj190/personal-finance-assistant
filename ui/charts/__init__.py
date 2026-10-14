@@ -25,6 +25,9 @@ from ui.charts.portfolio import (
     wrap_treemap_label,
     clean_treemap_tile_label,
     build_investments_market_carpet,
+    build_equity_curve,
+    build_sector_performance_heat,
+    build_pnl_contribution_chart,
 )
 
 from ui.theme import render_chart
@@ -47,6 +50,9 @@ __all__ = [
     "wrap_treemap_label",
     "clean_treemap_tile_label",
     "build_investments_market_carpet",
+    "build_equity_curve",
+    "build_sector_performance_heat",
+    "build_pnl_contribution_chart",
     "render_chart",
     "is_hidden",
 ]

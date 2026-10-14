@@ -10,6 +10,7 @@ from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
 from money import Money
 from services.analytics import calculate_burn_and_runway, calculate_current_net_worth
+from services.live_quotes import cached_quotes, market_session_state, refresh_live_quotes
 from services.portfolio import get_consolidated_holdings_df
 from ui import state
 from ui.charts import (
@@ -151,9 +152,9 @@ def _is_conn_open(conn: sqlite3.Connection | None) -> bool:
         return False
 
 
-@st.fragment
+@st.fragment(run_every=60)
 def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
-    """Render the native scrolling market tape for quoted active holdings."""
+    """Render the native scrolling market tape for quoted active holdings (AC-2, AC-16)."""
     should_close = False
     db_conn = conn
     if not _is_conn_open(db_conn):
@@ -165,28 +166,59 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
             return
 
     try:
-        rows = HoldingRepository.get_latest_quotes(db_conn)
-    except Exception as e:
-        logger.error("Error loading ticker tape quotes: %s", e, exc_info=True)
-        rows = []
+        holdings_df = HoldingRepository.get_v_holdings_df(db_conn)
+        if holdings_df.empty or "ticker" not in holdings_df.columns:
+            return
+
+        tickers = [
+            str(t).strip()
+            for t in holdings_df["ticker"].unique()
+            if str(t).strip() and not str(t).startswith("COPY:") and not str(t).startswith("ID_")
+        ]
+
+        if market_session_state() == "open":
+            s_cache = state.get(state.K.LIVE_QUOTE_CACHE, {})
+            updated_cache = refresh_live_quotes(tickers, session_cache=s_cache)
+            state.set(state.K.LIVE_QUOTE_CACHE, updated_cache)
+            quotes = updated_cache.get("quotes", {})
+        else:
+            quotes = cached_quotes(conn=db_conn).get("quotes", {})
+
+        db_quotes_map = {}
+        try:
+            for r in HoldingRepository.get_latest_quotes(db_conn):
+                t_k = (r["ticker"] or "").strip()
+                if t_k:
+                    db_quotes_map[t_k] = r
+        except Exception:
+            pass
     finally:
         if should_close and db_conn is not None:
             db_conn.close()
 
     items: list[str] = []
     seen: set[str] = set()
-    for row in rows:
-        ticker = (row["ticker"] or "").strip()
-        price = float(row["close"] or 0.0)
-        # eToro COPY: rows quote a mirror's NAV, not a traded price, and a name with
-        # a space came from a statement import rather than a listed symbol.
-        if not ticker or ticker in seen or price <= 0 or ":" in ticker or " " in ticker:
+    for ticker in tickers:
+        if not ticker or ticker in seen or ":" in ticker or " " in ticker:
             continue
         seen.add(ticker)
 
-        prior_close = float(row["prior_close"] or 0.0) or price
+        q_info = quotes.get(ticker)
+        if q_info and float(q_info.get("price") or 0.0) > 0:
+            price = float(q_info["price"])
+            prior_close = float(q_info.get("prev_close") or price)
+        elif ticker in db_quotes_map:
+            r = db_quotes_map[ticker]
+            price = float(r["close"] or 0.0)
+            prior_close = float(r["prior_close"] or price)
+        else:
+            continue
+
+        if price <= 0:
+            continue
+
         change = price - prior_close
-        change_pct = (change / prior_close) * 100.0
+        change_pct = (change / prior_close) * 100.0 if prior_close > 0 else 0.0
         direction = "up" if change >= 0 else "down"
         sign = "+" if change >= 0 else ""
         items.append(
@@ -194,7 +226,7 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
             f"<span class='ticker-tape__symbol'>{html.escape(ticker)}</span>"
             f"<span class='ticker-tape__price'>{price:,.2f}</span>"
             f"<span class='ticker-tape__change ticker-tape__change--{direction}'>"
-            f"{sign}{change:,.2f} ({sign}{change_pct:.2f}%)</span>"
+            f"{sign}{change:,.2f} ({sign}{change_pct:+.2f}%)</span>"
             "</span>"
         )
 
@@ -464,7 +496,7 @@ def _investments_fullscreen_dialog() -> None:
     try:
         df = get_consolidated_holdings_df(dlg_conn)
         if not df.empty:
-            fig = build_investments_market_carpet(df, height=560)
+            fig = build_investments_market_carpet(df, group_col="nature", height=560)
             render_chart(fig, width="stretch", key="modal_market_carpet")
         else:
             st.info("No investment holdings tracked.")
@@ -539,14 +571,14 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
             with st.container(border=True, key="portfolio_exposure_panel"):
                 c_inv_head, c_inv_act = st.columns([0.88, 0.12], vertical_alignment="center")
                 with c_inv_head:
-                    render_section_header("Portfolio exposure", "Sector & themes breakdown • Market carpet heatmap")
+                    render_section_header("Portfolio exposure", "Asset nature breakdown • Market carpet heatmap")
                 with c_inv_act:
                     if st.button("⛶", key="expand_invest_carpet_btn", help="Expand Portfolio Exposure to Fullscreen"):
                         _investments_fullscreen_dialog()
 
                 consolidated_df = get_consolidated_holdings_df(db_conn)
                 if not consolidated_df.empty:
-                    carpet_fig = build_investments_market_carpet(consolidated_df, height=360)
+                    carpet_fig = build_investments_market_carpet(consolidated_df, group_col="nature", height=360)
                     render_chart(carpet_fig, width="stretch", key="dashboard_market_carpet")
                 else:
                     empty_state(

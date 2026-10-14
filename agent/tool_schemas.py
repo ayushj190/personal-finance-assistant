@@ -434,10 +434,12 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
                     },
                     "view": {
                         "type": "object",
-                        "description": "Optional view parameters that shape the page to the question. spending: {category}. transactions: {category, search}. investments: {exposure_dimension: Sector|Region|Currency|Nature, focus: a live bucket of that dimension such as Technology}. A key or value not allowed for the page is ignored with a note.",
+                        "description": "Optional view parameters that shape the page to the question. spending: {category}. transactions: {category, search}. investments: {sort: value_eur|day_change_pct|day_pnl_eur|unrealized_pnl_eur|total_pnl_pct|quantity|price|cost_basis|name|ticker, movers: gainers|losers, search: ticker text, exposure_dimension: Sector|Region|Currency|Nature, focus: live bucket}. A key or value not allowed for the page is ignored with a note.",
                         "properties": {
                             "category": {"type": "string", "description": "Category name filter (Spending or Transactions)"},
-                            "search": {"type": "string", "description": "Merchant or description text filter (Transactions)"},
+                            "search": {"type": "string", "description": "Search text filter (Transactions merchant or Investments ticker/name)"},
+                            "sort": {"type": "string", "enum": ["value_eur", "day_change_pct", "day_pnl_eur", "unrealized_pnl_eur", "total_pnl_pct", "quantity", "price", "cost_basis", "name", "ticker"], "description": "Investments live table sort column"},
+                            "movers": {"type": "string", "enum": ["gainers", "losers"], "description": "Investments live table movers filter"},
                             "exposure_dimension": {"type": "string", "enum": ["Sector", "Region", "Currency", "Nature"], "description": "Investments exposure dimension"},
                             "focus": {"type": "string", "description": "A live bucket of the exposure dimension to focus the market carpet and dimension charts, e.g. Technology"},
                         },
