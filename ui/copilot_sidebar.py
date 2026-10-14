@@ -3,6 +3,7 @@ from agent.copilot_task import CopilotTask
 from services.llm_client import check_ollama_status
 from ui import state
 from ui.components import mask_if_hidden
+from ui.page_panel import clear_panel, set_panel
 from ui.theme import render_chart
 
 # One click navigation chips (AC-9): page, tab, preset. Different from the demo chips (AC-17).
@@ -94,6 +95,8 @@ def render_copilot_sidebar() -> None:
                 if st.button("🗑️ Clear Chat", width="stretch"):
                     st.session_state.pop("copilot_active_task", None)
                     st.session_state.pop(state.K.COPILOT_UI_INTENT, None)
+                    st.session_state.pop(state.K.COPILOT_WRITE_TOKEN, None)
+                    clear_panel()
                     st.session_state.copilot_history = []
                     st.rerun(scope="app")
 
@@ -212,6 +215,7 @@ def render_copilot_sidebar() -> None:
                             chunks_snapshot = list(active_task.chunks)
                             curr_status = active_task.status
                             fig = active_task.figure
+                            headline = getattr(active_task, "headline", None)
                             df = active_task.df
                             form_req = getattr(active_task, "form_request", None)
                             cits = getattr(active_task, "citations", None)
@@ -282,7 +286,12 @@ def render_copilot_sidebar() -> None:
                                 "model": model_name,
                             })
                             if getattr(active_task, "ui_intent", None):
-                                st.session_state[state.K.COPILOT_UI_INTENT] = active_task.ui_intent
+                                intent = active_task.ui_intent
+                                st.session_state[state.K.COPILOT_UI_INTENT] = intent
+                                # One panel per page, keyed by page id, replaces the last one (AC-3).
+                                panel_page = intent.get("page")
+                                if fig is not None and panel_page:
+                                    set_panel(panel_page, fig, headline)
                             st.session_state.pop("copilot_active_task", None)
 
                             if form_req:
@@ -298,6 +307,7 @@ def render_copilot_sidebar() -> None:
     user_prompt = chat_input_val or pending_prompt
 
     if uploaded_file_to_process and not is_busy:
+        clear_panel()  # a new turn replaces the panel (AC-3)
         user_msg = f"Uploaded statement: `{uploaded_file_to_process.name}`"
         st.session_state.copilot_history.append({"role": "user", "content": user_msg})
 
@@ -334,6 +344,7 @@ def render_copilot_sidebar() -> None:
         st.rerun(scope="app")
 
     elif user_prompt and not is_busy:
+        clear_panel()  # a new turn replaces the panel (AC-3)
         if chat_input_val:
             st.session_state.copilot_history.append({"role": "user", "content": chat_input_val})
         elif pending_prompt:

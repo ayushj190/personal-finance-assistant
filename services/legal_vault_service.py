@@ -787,6 +787,12 @@ def get_all_legal_documents(conn: sqlite3.Connection | None = None) -> list[dict
 
     try:
         init_legal_vault_schema(conn)
+        # First load race: the corpus is ingested on first search, so a fresh vault
+        # would otherwise list 0 statutes here. Self heal the same way (AC-10).
+        row_count = conn.execute("SELECT COUNT(*) FROM legal_documents").fetchone()[0]
+        if row_count == 0:
+            ingest_legal_corpus(force_reindex=False, conn=conn)
+
         sql = """
             SELECT d.id, d.bwb_id, d.title, d.short_title, d.category,
                    d.effective_year, d.source_url, COUNT(c.id) as chunk_count

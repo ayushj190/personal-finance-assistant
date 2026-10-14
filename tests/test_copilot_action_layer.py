@@ -25,6 +25,7 @@ from services.navigation import (
     PAGE_IDS,
     TAB_MAP,
     match_fast_path,
+    topic_map_intent,
 )
 from ui.components import mask_if_hidden
 
@@ -133,11 +134,17 @@ class TestOpenViewTool(unittest.TestCase):
 
 
 class TestFastPath(unittest.TestCase):
-    def test_explicit_phrases_open_pages(self):
+    def test_explicit_navigation_verbs_open_pages(self):
         self.assertEqual(match_fast_path("open spending")["page"], "spending")
-        self.assertEqual(match_fast_path("show my transactions")["page"], "transactions")
         self.assertEqual(match_fast_path("go to tax analysis")["page"], "tax")
         self.assertEqual(match_fast_path("go to rebalancing")["tab"], "allocation")
+
+    def test_content_verbs_no_longer_use_the_fast_path(self):
+        # AC-6: the content verbs are removed so a content question reaches the model.
+        self.assertIsNone(match_fast_path("show my transactions"))
+        self.assertIsNone(match_fast_path("show me my spending for last month"))
+        self.assertIsNone(match_fast_path("view my portfolio"))
+        self.assertIsNone(match_fast_path("display my holdings"))
 
     def test_ambiguous_phrase_falls_through(self):
         self.assertIsNone(match_fast_path("show me the last thing"))
@@ -145,7 +152,8 @@ class TestFastPath(unittest.TestCase):
 
     def test_fast_path_attaches_preset(self):
         intent = match_fast_path("open spending for last month")
-        self.assertEqual(intent["date_scope"], {"preset": "Last Month"})
+        self.assertEqual(intent["date_scope"]["preset"], "Last Month")
+        self.assertTrue(intent["date_scope"]["requested"])
 
 
 class TestFakeModelHarness(unittest.TestCase):
@@ -210,24 +218,33 @@ class TestFakeModelHarness(unittest.TestCase):
 
         self.assertEqual(captured["get_spending_by_category"].get("date_scope"), {"preset": "Last Month"})
 
-    def test_navigation_prompt_set_maps_pages(self):
-        """AC-1 / AC-2 / AC-3 / AC-6 prompt set at a 100 percent threshold."""
+    def test_explicit_navigation_prompt_set_maps_pages(self):
+        """AC-6: explicit navigation phrasing stays instant with no model call."""
         prompts = {
             "open my dashboard": "dashboard",
-            "show me my spending for last month": "spending",
             "go to my holdings": "investments",
             "open my mortgage": "mortgage",
-            "show my transactions": "transactions",
             "open tax analysis": "tax",
             "go to settings": "settings",
         }
-        passed = 0
         for prompt, page in prompts.items():
             intent = match_fast_path(prompt)
-            if intent and intent["page"] == page:
-                passed += 1
-        self.assertEqual(passed, len(prompts))
-        self.assertGreaterEqual(passed / len(prompts), 0.9)
+            self.assertTrue(intent and intent["page"] == page, prompt)
+
+    def test_content_prompt_set_routes_via_topic_map(self):
+        """AC-1 / AC-2 / AC-5 / AC-6: a content question routes without an explicit verb."""
+        prompts = {
+            "what did I spend over the past 3 months": "spending",
+            "which tech stocks and ETFs do I hold": "investments",
+            "how much do I owe on my mortgage": "mortgage",
+            "what is my tax situation": "tax",
+            "show me my recent transactions": "transactions",
+            "how has my net worth changed": "dashboard",
+        }
+        for prompt, page in prompts.items():
+            self.assertIsNone(match_fast_path(prompt), prompt)
+            intent = topic_map_intent(prompt)
+            self.assertTrue(intent and intent["page"] == page, prompt)
 
 
 class TestMasking(unittest.TestCase):

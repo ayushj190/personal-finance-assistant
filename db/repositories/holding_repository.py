@@ -34,11 +34,6 @@ class HoldingRepository:
         return [cls.row_to_holding(r) for r in cur.fetchall()]
 
     @staticmethod
-    def get_distinct_tickers(conn: sqlite3.Connection) -> list[str]:
-        cur = conn.execute("SELECT DISTINCT ticker FROM v_holdings")
-        return [r["ticker"] for r in cur.fetchall() if r["ticker"]]
-
-    @staticmethod
     def get_v_holdings_df(conn: sqlite3.Connection, include_closed: bool = False) -> pd.DataFrame:
         if not include_closed:
             return pd.read_sql_query("SELECT * FROM v_holdings", conn)
@@ -263,6 +258,29 @@ class HoldingRepository:
             if val is not None:
                 return float(val)
         return None
+
+    @staticmethod
+    def get_latest_quotes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+        """Latest stored close per active holding ticker, with the prior close for a delta.
+
+        The freshest row often carries `prev_close` equal to its own `close`, so the
+        previous trading day's stored close wins when one exists.
+        """
+        return conn.execute(
+            """
+            SELECT q.ticker, q.currency, q.close,
+                   COALESCE(
+                       (SELECT p.close FROM market_quotes p
+                        WHERE p.ticker = q.ticker AND p.quote_date < q.quote_date
+                        ORDER BY p.quote_date DESC LIMIT 1),
+                       q.prev_close, q.close
+                   ) AS prior_close
+            FROM market_quotes q
+            WHERE q.quote_date = (SELECT MAX(m.quote_date) FROM market_quotes m WHERE m.ticker = q.ticker)
+              AND q.ticker IN (SELECT ticker FROM v_holdings)
+            ORDER BY q.ticker
+            """
+        ).fetchall()
 
     @staticmethod
     def get_allocation_profiles(conn: sqlite3.Connection) -> list[dict[str, Any]]:

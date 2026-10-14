@@ -1,15 +1,15 @@
-from datetime import date, datetime
-import json
+from datetime import date, datetime, timedelta
+import html
 import logging
 import sqlite3
 from typing import Any
 import streamlit as st
 
-from config import DATA_DIR, DB_PATH
+from config import DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
 from money import Money
-from services.analytics import calculate_current_net_worth
+from services.analytics import calculate_burn_and_runway, calculate_current_net_worth
 from services.portfolio import get_consolidated_holdings_df
 from ui import state
 from ui.charts import (
@@ -28,8 +28,8 @@ from ui.components import (
     status_badge,
 )
 from ui.logos import get_institution_logo_svg
+from ui.page_panel import render_page_panel
 from ui.theme import render_chart
-from ui.tickers import TICKER_EXCHANGE_MAP, tradingview_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +91,23 @@ def clean_account_name(acc: dict[str, Any], all_accounts: list[dict[str, Any]]) 
 
 
 def _calculate_monthly_cash_flow(conn: sqlite3.Connection, days: int = 30) -> float:
-    """Calculate net cash flow (income minus expenses) over specified trailing days."""
+    """Net cash flow (income minus expenses) over the trailing window.
+
+    Savings and transfer activity is excluded, matching the spending page and
+    `v_monthly_cashflow`, so a savings transfer does not drag the figure down. The
+    window uses the local date, not SQLite's UTC `date('now')`.
+    """
+    window_start = (date.today() - timedelta(days=days)).isoformat()
     try:
-        query = f"""
-        SELECT COALESCE(SUM(amount_eur_minor), 0) AS net_flow_minor
-        FROM transactions
-        WHERE is_internal_transfer = 0
-          AND booking_date >= date('now', '-{days} days')
+        query = """
+        SELECT COALESCE(SUM(t.amount_eur_minor), 0) AS net_flow_minor
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.is_internal_transfer = 0
+          AND t.booking_date >= ?
+          AND (c.kind IS NULL OR c.kind NOT IN ('savings', 'transfer'))
         """
-        row = conn.execute(query).fetchone()
+        row = conn.execute(query, (window_start,)).fetchone()
         cents = int(row["net_flow_minor"] if row else 0)
         return Money.from_cents(cents).to_major()
     except Exception as e:
@@ -133,27 +141,6 @@ def _calculate_accrued_subtexts(
     return acc_subtexts
 
 
-def _tradingview_symbols(tickers: list[str]) -> list[dict[str, str]]:
-    """Map and deduplicate holding tickers to TradingView prefixed symbols."""
-    symbols: list[dict[str, str]] = []
-    seen: set[str] = set()
-
-    for ticker in tickers:
-        pro_name = tradingview_symbol(ticker)
-        if not pro_name or pro_name in seen:
-            continue
-        seen.add(pro_name)
-        symbols.append({"proName": pro_name, "description": ticker.strip()})
-
-    if not symbols:
-        return [
-            {"proName": "SPY", "description": "S&P 500"},
-            {"proName": "QQQ", "description": "Nasdaq 100"},
-            {"proName": "FX:EURUSD", "description": "EUR / USD"},
-        ]
-    return symbols
-
-
 def _is_conn_open(conn: sqlite3.Connection | None) -> bool:
     if conn is None:
         return False
@@ -166,7 +153,7 @@ def _is_conn_open(conn: sqlite3.Connection | None) -> bool:
 
 @st.fragment
 def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
-    """Render TradingView scrolling ticker tape inside an isolated fragment."""
+    """Render the native scrolling market tape for quoted active holdings."""
     should_close = False
     db_conn = conn
     if not _is_conn_open(db_conn):
@@ -177,60 +164,51 @@ def _render_ticker_fragment(conn: sqlite3.Connection | None = None) -> None:
             logger.error("Error opening DB for ticker tape: %s", e, exc_info=True)
             return
 
-    all_tickers = []
     try:
-        h_tickers = HoldingRepository.get_distinct_tickers(db_conn)
-        cache_path = DATA_DIR / "etoro_mirrors_cache.json"
-        mirrors_map = {}
-        if cache_path.exists():
-            try:
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    mirrors_data = json.load(f)
-                    if isinstance(mirrors_data, list):
-                        mirrors_map = {m["ticker"]: m for m in mirrors_data if "ticker" in m}
-            except (json.JSONDecodeError, OSError) as e:
-                logger.debug("Mirror cache read fallback: %s", e)
-
-        for t in h_tickers:
-            if not t:
-                continue
-            if str(t).startswith("COPY:"):
-                mirror = mirrors_map.get(t, {})
-                for pos in mirror.get("positions", []):
-                    sym = pos.get("symbol")
-                    if sym and not str(sym).startswith("ID_"):
-                        all_tickers.append(sym)
-            elif not str(t).startswith("ID_"):
-                all_tickers.append(t)
+        rows = HoldingRepository.get_latest_quotes(db_conn)
     except Exception as e:
-        logger.error("Error loading distinct tickers: %s", e, exc_info=True)
+        logger.error("Error loading ticker tape quotes: %s", e, exc_info=True)
+        rows = []
     finally:
         if should_close and db_conn is not None:
             db_conn.close()
 
-    # Extract distinct tickers preserving order
-    distinct_tickers = list(dict.fromkeys(all_tickers))
-    symbols = _tradingview_symbols(distinct_tickers)
+    items: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        ticker = (row["ticker"] or "").strip()
+        price = float(row["close"] or 0.0)
+        # eToro COPY: rows quote a mirror's NAV, not a traded price, and a name with
+        # a space came from a statement import rather than a listed symbol.
+        if not ticker or ticker in seen or price <= 0 or ":" in ticker or " " in ticker:
+            continue
+        seen.add(ticker)
 
-    theme = st.get_option("theme.base")
-    tape_html = f"""
-    <!-- TradingView Widget BEGIN -->
-    <div class="tradingview-widget-container" style="margin: 0; padding: 0;">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-      {{
-      "symbols": {json.dumps(symbols)},
-      "showSymbolLogo": true,
-      "isTransparent": true,
-      "displayMode": "adaptive",
-      "colorTheme": "{'light' if theme == 'light' else 'dark'}",
-      "locale": "en"
-    }}
-      </script>
-    </div>
-    <!-- TradingView Widget END -->
-    """
-    st.iframe(tape_html, height=44)
+        prior_close = float(row["prior_close"] or 0.0) or price
+        change = price - prior_close
+        change_pct = (change / prior_close) * 100.0
+        direction = "up" if change >= 0 else "down"
+        sign = "+" if change >= 0 else ""
+        items.append(
+            "<span class='ticker-tape__item'>"
+            f"<span class='ticker-tape__symbol'>{html.escape(ticker)}</span>"
+            f"<span class='ticker-tape__price'>{price:,.2f}</span>"
+            f"<span class='ticker-tape__change ticker-tape__change--{direction}'>"
+            f"{sign}{change:,.2f} ({sign}{change_pct:.2f}%)</span>"
+            "</span>"
+        )
+
+    if not items:
+        return
+
+    # Even copy count: a half-width shift loops seamlessly and the track
+    # always outruns the viewport, even with only a couple of holdings.
+    copies = 2 * -(-6 // len(items))
+    st.html(
+        "<div class='ticker-tape'>"
+        f"<div class='ticker-tape__track'>{''.join(items * copies)}</div>"
+        "</div>"
+    )
 
 
 def _render_kpi_ribbon(
@@ -238,7 +216,7 @@ def _render_kpi_ribbon(
     nw_data: dict[str, Any],
     liabilities: list[Any] | None = None,
 ) -> None:
-    """Render top 4-KPI ribbon for Net Worth, Liquid Cash, Investments, and Monthly Cash Flow."""
+    """Render the top KPI ribbon: Net Worth, Liquid Cash, Investments, Monthly Cash Flow, and Runway."""
     liquid_cash = Money.from_major(nw_data.get("liquid_cash", 0.0))
     invested = Money.from_major(nw_data.get("invested", 0.0))
     home_equity = Money.from_major(nw_data.get("home_equity", 0.0))
@@ -255,7 +233,18 @@ def _render_kpi_ribbon(
     monthly_cash_flow = Money.from_major(monthly_cash_flow_val)
     flow_sub = "Net cash flow (last 30 days)"
 
-    c1, c2, c3, c4 = st.columns(4)
+    monthly_expenses = TransactionRepository.get_monthly_expenses(conn)
+    _burn, runway_months, runway_days = calculate_burn_and_runway(
+        monthly_expenses, nw_data.get("liquid_cash", 0.0)
+    )
+    if runway_months >= 999:
+        runway_txt, runway_sub = "Sustainable", "Net positive cash flow"
+    elif runway_months >= 60:
+        runway_txt, runway_sub = "5+ yrs", f"{int(runway_days):,} days buffer"
+    else:
+        runway_txt, runway_sub = f"{runway_months:.1f} mo", f"{int(runway_days):,} days buffer"
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         kpi_card("Net Worth", format_money(net_worth), subtext=nw_sub)
     with c2:
@@ -264,6 +253,8 @@ def _render_kpi_ribbon(
         kpi_card("Investments", format_money(invested), subtext="Securities & portfolio holdings")
     with c4:
         kpi_card("Monthly Cash Flow", format_money(monthly_cash_flow), subtext=flow_sub)
+    with c5:
+        kpi_card("Runway", runway_txt, subtext=runway_sub)
 
 
 @st.fragment
@@ -570,6 +561,7 @@ def _render_analytics_section(conn: sqlite3.Connection | None = None) -> None:
 
 def render() -> None:
     """Primary dashboard entrypoint."""
+    render_page_panel("dashboard")
     conn = database.connect(DB_PATH)
     try:
         # 1. Accounts check (AC-6)
@@ -582,7 +574,7 @@ def render() -> None:
             )
             return
 
-        # 0. Scrolling Ticker Tape Widget (AC-3)
+        # 0. Native scrolling market ticker tape (AC-3)
         _render_ticker_fragment()
 
         # 1. Compute current net worth balances

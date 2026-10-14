@@ -30,7 +30,7 @@ python run_tests.py
 
 ## Specs
 
-Stored in `docs/specs/`. Format: `docs/specs/NNNN-title.md`.
+Stored in `docs/specs/`. Format: `docs/specs/NNNN-title.md`, or `docs/specs/NNNN-title/index.md` plus its reasoning for a directory spec.
 
 ## Rules
 
@@ -38,7 +38,7 @@ Stored in `docs/specs/`. Format: `docs/specs/NNNN-title.md`.
 - Currency representation: store money amounts in integer minor units (cents) within SQLite tables. Convert to float only at presentation boundaries.
 - Database access: open connections via `db.database.connect()`. Always enforce WAL mode and foreign keys. Close connections cleanly.
 - Streamlit lifecycle: keep session state updates deterministic. Background threads must use `add_script_run_ctx` and never access detached UI state.
-- Safe execution: AI copilot executes read only SQL through a strict SQLite authorizer. Never permit write operations through the LLM.
+- Safe execution: AI copilot executes read only SQL through a strict SQLite authorizer. Never let model generated SQL write; a write happens only inside a named, validated tool function, behind an explicit user confirmation.
 
 ## Agent skills
 

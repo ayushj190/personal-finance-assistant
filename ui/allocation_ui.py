@@ -15,6 +15,14 @@ from services.allocation_service import (
 )
 
 
+DIMENSION_LABELS = {
+    "sector": "Sector & Theme",
+    "region": "Region",
+    "currency": "Currency",
+    "nature": "Asset Nature (Equities / Bonds / …)",
+}
+
+
 def render_allocation_management(conn) -> None:
     """Render the create form and the confirmed delete controls for every saved profile."""
     _render_create_form(conn)
@@ -26,7 +34,7 @@ def _render_create_form(conn) -> None:
         dimension = st.selectbox(
             "Dimension",
             options=list(ALLOWED_DIMENSIONS),
-            format_func=lambda d: d.replace("_", " ").title(),
+            format_func=lambda d: DIMENSION_LABELS.get(d, d.replace("_", " ").title()),
             key="alloc_new_dimension",
         )
         buckets = get_valid_buckets(conn, dimension)

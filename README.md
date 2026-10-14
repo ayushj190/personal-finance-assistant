@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![Database: SQLite WAL](https://img.shields.io/badge/Database-SQLite%20(WAL)-green.svg)](https://www.sqlite.org/)
 [![AI Engine: Ollama Local](https://img.shields.io/badge/AI%20Engine-Ollama%20(Qwen%202.5)-purple.svg)](https://ollama.com/)
-[![Tests: 273 Passed](https://img.shields.io/badge/Tests-273%20Passed-brightgreen.svg)](tests/)
+[![Tests: 298 Passed](https://img.shields.io/badge/Tests-298%20Passed-brightgreen.svg)](tests/)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
 
 > **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
@@ -21,7 +21,7 @@
 
 | Feature Module | Key Capabilities | Engineering & Architecture Showcase | Stack / Tooling |
 | :--- | :--- | :--- | :--- |
-| **🤖 Sandboxed AI Copilot** | Offline financial assistant with natural language querying, 28 deterministic tool handlers, and an action layer that opens pages and date scopes. | **Zero-Trust Guardrails**: C-level SQLite Authorizer enforces read only SQL (`SQLITE_SELECT` only). Decoupled non-blocking execution via `@st.fragment` background worker thread. | Ollama (Qwen 2.5), Python `threading`, Streamlit Fragments |
+| **🤖 Sandboxed AI Copilot** | Offline financial assistant with natural language querying, 40 deterministic tool handlers, and a view intelligence layer that routes on the topic of a question, shapes the page view (category, search, or an exposure dimension), and stands a chart panel up on that page. | **Zero-Trust Guardrails**: C-level SQLite Authorizer enforces read only SQL (`SQLITE_SELECT` only). Decoupled non-blocking execution via `@st.fragment` background worker thread. | Ollama (Qwen 2.5), Python `threading`, Streamlit Fragments |
 | **⚖️ Dutch Legal Vector Vault** | Semantic search across Dutch tax codes, mortgage deduction laws (*HRA*), and *Groenfondsen* statutory articles with source citations. | **Local Vector RAG & IR**: Persistent SQLite vector store combining dense semantic cosine similarity with FTS5 BM25 keyword search via **Reciprocal Rank Fusion (RRF)**. | `sqlite-vec`, FastEmbed (384-dim CPU), SQLite FTS5 |
 | **📈 Quant Portfolio Rebalancer** | Swensen 5/25 threshold drift monitor across multi-asset portfolios with 3 rebalance models (Full, Buy-Only, Target Cash Injection). | **Single Source of Truth Math**: Multi-dimension exposure aggregation (Asset Class, Sector, Region, Currency, Theme), realized P&L tracking for closed positions, and FIRE timeline modeling. | NumPy, Pandas, Plotly, TradingView Widgets |
 | **🇳🇱 Belastingdienst Tax Engine** | Dutch Box 1 income tax (with 30% expat ruling & HRA), Box 3 wealth tax deemed yield (*fictief rendement*), and Pillar 3 pension room (*Jaarruimte*). | **Financial Regulatory Modeling**: 4-way capital allocation simulator (Mortgage Prepayment vs. Pension vs. Groenfondsen Arbitrage vs. Taxable ETF) with multi-year trajectories. | Pure Python domain services, Plotly |
@@ -52,7 +52,7 @@ flowchart TD
     subgraph Agent["Autonomous Copilot Engine"]
         Copilot["Ollama Local LLM"]
         Task["CopilotTask Thread"]
-        Tools["28 Native Tools"]
+        Tools["40 Native Tools"]
         VaultRAG["Dutch Law Vector Vault"]
     end
 
@@ -115,7 +115,7 @@ $env:PFA_DEMO = "1"
 
 ## 📸 Application Visual Showcase
 
-All visuals captured in **Privacy Shield** mode (`Hide values` ON) ensuring complete confidentiality during demonstrations and presentations:
+All visuals are captured in **demo mode** (`PFA_DEMO=1`) with `Hide values` **OFF**, so tickers, balances, charts, and tables all read clearly. Demo mode also starts with `Hide values` OFF, and the one-click Privacy Shield still masks money only when you need it:
 
 ### 1. Executive Wealth Dashboard & Portfolio Exposure
 Comprehensive multi-asset overview tracking net worth trajectory, cash flow trends, account liquidity, and dynamic exposure treemaps:
@@ -197,8 +197,8 @@ Local SQLite database backups, API secrets vault, bank connections, and classifi
 - **Certified Groenfondsen Arbitrage**: Double tax benefit calculator (Box 3 exemption up to €71,251 / €142,502 + 0.1% Box 1 credit, ~2.27% risk-free tax alpha).
 
 ### 6. 🤖 Sandboxed Offline AI Copilot (`agent/copilot.py`)
-- **28 Native Deterministic Tools**: Copilot routes user intent to native Python optimization engines for net worth, spending analytics, mortgage recalculation, capital simulation, pension room, green fund arbitrage, and tax leak detection.
-- **Copilot Action Layer**: One `open_view` tool plus a deterministic fast path open a page, an Investments tab, and the asked for date scope from one shared resolver, so the chat answer and the page agree.
+- **40 Native Deterministic Tools**: Copilot routes user intent to native Python optimization engines for net worth, spending analytics, mortgage recalculation, capital simulation, pension room, green fund arbitrage, and tax leak detection.
+- **Copilot View Intelligence**: One `open_view` tool plus a deterministic fast path and a topic map route on the topic of a question, open the page and tab that owns it, shape the view (date scope, category, search, or an investments exposure dimension with a focus bucket), and stand a masked chart panel up on that page scrolled into view, so the chat answer and the page agree. Seven read tools and five confirm gated write tools answer and maintain the ledger.
 - **Persistent Local SQLite Vector RAG**: Multi-document knowledge vault referencing Dutch tax codes, mortgage deduction laws, and Groenfondsen, stored persistently in SQLite WAL with hybrid semantic vector + BM25 search via Reciprocal Rank Fusion.
 - **Dynamic Interactive Plotly Charts**: Automatically generates interactive bar, line, area, and trajectory charts directly inside chat turns (`agent/chart_renderer.py`).
 - **Autonomous Zero-Shot Statement Parsing**: Extracts structured transactions from unsupported statement documents using the local LLM.
@@ -270,18 +270,18 @@ python run_tests.py
 ============================= test session starts =============================
 platform win32 -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
 rootdir: C:\Users\ayush\Documents\Repos\personal-finance-assistant
-collected 273 items
+collected 298 items
 
 tests\ ...                                                                [100%]
-  covers analytics, copilot calming and the action layer, dashboard,
-  fiscal, investments, imports, migration runner, mortgage, portfolio,
-  spending, tax, transactions, and UI theme.
+  covers analytics, copilot calming, the action layer and view intelligence,
+  dashboard, fiscal, investments, imports, migration runner, mortgage,
+  portfolio, spending, tax, transactions, and UI theme.
 
-======================= 273 passed in 114.57s =======================
+======================= 298 passed, 1 warning in 33.69s =======================
 ```
 
 ### Verified Coverage Areas
-- **Database & Migrations**: Hardened forward-only migrations (`0001` through `0006`) with SHA256 checksums, one transaction per migration, pre migrate backups, and Python data migrations; occurrence indices and minor-unit currency conversions.
+- **Database & Migrations**: Hardened forward-only migrations (`0001` through `0007`) with SHA256 checksums, one transaction per migration, pre migrate backups, and Python data migrations; occurrence indices and minor-unit currency conversions.
 - **Financial Math**: Dutch annuity and linear mortgage amortization, portfolio 5/25 drift, 3-month trailing burn rate, and dividend yield projections.
 - **Connector Ingestion**: ABN AMRO, Revolut, eToro, MT940, CAMT.053, and Türkiye İş Bankası bilingual PDF pipelines.
 - **Security & Sandboxing**: Symmetric Fernet secrets vault encryption roundtrip and SQLite C-level read-only query denial.
@@ -291,7 +291,7 @@ tests\ ...                                                                [100%]
 
 ## 📄 Architecture & Documentation
 
-**Local first architecture**: every record lives in a local SQLite database in WAL mode (`data/finance.db`) and every credential is encrypted into `data/vault.bin` with the master key held by Windows Credential Manager. Nothing leaves the machine; the Copilot runs through a local Ollama model. Copilot data tools open the database through `connect_readonly()`, and a SQLite C-level authorizer permits `SELECT` only, so model generated SQL can never write. The Copilot action layer adds a single validated `open_view` tool plus a deterministic fast path that may set a page, an Investments tab, and a date scope, never SQL.
+**Local first architecture**: every record lives in a local SQLite database in WAL mode (`data/finance.db`) and every credential is encrypted into `data/vault.bin` with the master key held by Windows Credential Manager. Nothing leaves the machine; the Copilot runs through a local Ollama model. Copilot data tools open the database through `connect_readonly()`, and a SQLite C-level authorizer permits `SELECT` only, so model generated SQL can never write. The Copilot action layer adds a single validated `open_view` tool plus a deterministic fast path and a topic map that may set a page, an Investments tab, a date scope, and a whitelisted per page view (a Spending or Transactions category, a Transactions search, or an Investments exposure dimension with a focus bucket), never SQL; the destination page then renders the turn's own figure as one temporary Copilot panel scrolled into view. Writes stay doubly gated: five ledger tools propose first and change nothing until they are called again with a confirmation token hashed from the exact proposed arguments.
 
 - **[System Architecture](docs/ARCHITECTURE.md)**: Comprehensive guide to the threading model, security sandbox, quant calculation engines, and database schema.
 - **[Feature Scope](docs/scope/scope.md)**: Product roadmap, delivery slices, and implementation status.

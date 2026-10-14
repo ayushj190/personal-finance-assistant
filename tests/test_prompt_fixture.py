@@ -15,9 +15,9 @@ PROMPT_TOOL_FIXTURE: list[tuple[str, str, dict]] = [
     ("How is my portfolio allocated against my target?", "analyze_investments", {}),
     ("List my allocation strategies.", "get_allocation_profiles", {}),
     (
-        "Create a strategy that is 70 percent ETFs and 30 percent crypto.",
+        "Create a strategy that is 70 percent equities and 30 percent bonds.",
         "create_allocation_profile",
-        {"name": "Fixture 70/30", "dimension": "asset_type", "targets": {"etf": 70.0, "crypto": 30.0}},
+        {"name": "Fixture 70/30", "dimension": "nature", "targets": {"Equities": 70.0, "Fixed Income": 30.0}},
     ),
     ("Analyze my mortgage schedule.", "analyze_mortgage", {}),
 ]

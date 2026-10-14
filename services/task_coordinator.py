@@ -54,13 +54,6 @@ class TaskCoordinator:
             state = self._tasks.get(name)
             return state is not None and state.status == TaskStatus.RUNNING
 
-    def update_progress(self, name: str, progress: float, message: str = "") -> None:
-        with self._lock:
-            if name in self._tasks:
-                self._tasks[name].progress = progress
-                if message:
-                    self._tasks[name].message = message
-
     def submit(
         self,
         name: str,

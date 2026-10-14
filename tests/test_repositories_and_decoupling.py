@@ -189,7 +189,18 @@ class TestRepositoriesAndDecoupling(unittest.TestCase):
         fx = HoldingRepository.get_latest_fx_quote(self.conn, "EURUSD=X")
         self.assertEqual(fx, 1.085)
 
-        # Allocation profiles
+        # Allocation profiles (no longer seeded; insert one to exercise the read path)
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO allocation_profiles "
+                "(name, dimension, include_cash, drift_band_pct, is_active) "
+                "VALUES ('Test Nature', 'nature', 0, 5.0, 1)"
+            )
+            self.conn.execute(
+                "INSERT INTO allocation_targets (profile_id, bucket, target_pct) "
+                "VALUES (?, 'Equities', 100.0)",
+                (cur.lastrowid,),
+            )
         profiles = HoldingRepository.get_allocation_profiles(self.conn)
         self.assertGreater(len(profiles), 0)
         targets = HoldingRepository.get_allocation_targets(self.conn, profiles[0]["id"])
@@ -205,6 +216,50 @@ class TestRepositoriesAndDecoupling(unittest.TestCase):
         liabilities = LiabilityRepository.get_all_liabilities(self.conn)
         self.assertEqual(len(liabilities), 1)
         self.assertEqual(liabilities[0].original_principal, 350000.0)
+
+    def test_latest_quotes_prior_close_and_holding_filter(self):
+        """Tape quotes: the freshest row's self-referential prev_close yields to the prior stored day."""
+        acc_id = AccountRepository.upsert(
+            self.conn,
+            {
+                "provider": "manual",
+                "institution": "Broker",
+                "name": "Investments",
+                "currency": "EUR",
+                "asset_class": "investment",
+                "external_id": "broker_inv",
+            },
+        )
+        HoldingRepository.upsert_holdings(
+            self.conn,
+            [
+                Holding(
+                    id=None,
+                    account_id=acc_id,
+                    ticker="AMZN",
+                    name="Amazon.com Inc",
+                    asset_type="stock",
+                    quantity=1.0,
+                    cost_basis_minor=10000,
+                    currency="USD",
+                    updated_at="2026-10-14",
+                )
+            ],
+        )
+        HoldingRepository.upsert_market_quotes(
+            self.conn,
+            [
+                {"ticker": "AMZN", "quote_date": "2026-10-13", "close": 100.0, "prev_close": 90.0, "currency": "USD"},
+                # Newest row mirrors its own close, as the live writer does.
+                {"ticker": "AMZN", "quote_date": "2026-10-14", "close": 110.0, "prev_close": 110.0, "currency": "USD"},
+                {"ticker": "NOT_HELD", "quote_date": "2026-10-14", "close": 50.0, "prev_close": 49.0, "currency": "USD"},
+            ],
+        )
+
+        rows = HoldingRepository.get_latest_quotes(self.conn)
+        self.assertEqual([r["ticker"] for r in rows], ["AMZN"])
+        self.assertEqual(rows[0]["close"], 110.0)
+        self.assertEqual(rows[0]["prior_close"], 100.0)
 
     def test_migration_runner(self):
         # Verify schema version

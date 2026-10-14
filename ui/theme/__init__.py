@@ -54,6 +54,119 @@ COMMON_CSS_FILE = THEME_DIR / "common.css"
 LIGHT_CSS_FILE = THEME_DIR / "light.css"
 DARK_CSS_FILE = THEME_DIR / "dark.css"
 
+# Copilot sidebar drag range. Streamlit clamps its own resize handle at 600px
+# (~41% of a 1446px window), so the handle is re-driven here to reach half the
+# window. `SIDEBAR_RESIZE_BRIDGE_KEY` names the zero size component that carries
+# the script, hidden by `common.css`.
+SIDEBAR_MIN_WIDTH_PX = 260
+SIDEBAR_MAX_WIDTH_RATIO = 0.5
+SIDEBAR_WIDTH_STORAGE_KEY = "pfa_sidebar_width"
+SIDEBAR_RESIZE_BRIDGE_KEY = "sidebar_resize_bridge"
+
+_SIDEBAR_RESIZE_JS = """
+<script>
+  (function () {
+    var MIN_PX = __MIN_PX__;
+    var MAX_RATIO = __MAX_RATIO__;
+    var STORAGE_KEY = "__STORAGE_KEY__";
+    var doc = window.parent;
+    var d = doc.document;
+    var dragging = false;
+
+    function sidebar() {
+      return d.querySelector('[data-testid="stSidebar"]');
+    }
+
+    function clamp(px) {
+      var widest = doc.innerWidth * MAX_RATIO;
+      return Math.max(MIN_PX, Math.min(widest, px));
+    }
+
+    function apply(px) {
+      var el = sidebar();
+      if (!el) return;
+      if (doc.innerWidth < 768) {
+        el.style.removeProperty('width');
+        el.style.removeProperty('max-width');
+        el.style.removeProperty('min-width');
+        return;
+      }
+      var width = clamp(px);
+      el.style.setProperty('width', width + 'px', 'important');
+      el.style.setProperty('max-width', (MAX_RATIO * 100) + 'vw', 'important');
+      el.style.setProperty('min-width', MIN_PX + 'px', 'important');
+    }
+
+    function inHandle(target) {
+      return !!(target && target.closest &&
+        target.closest('[data-testid="stSidebarResizeHandle"]'));
+    }
+
+    function onDown(e) {
+      if (!inHandle(e.target)) return;
+      // Take the drag over from Streamlit so it does not snap back to its own ceiling.
+      dragging = true;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      d.body.style.userSelect = 'none';
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      e.preventDefault();
+      apply(e.clientX);
+    }
+
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      d.body.style.userSelect = '';
+      var el = sidebar();
+      if (!el) return;
+      try {
+        doc.localStorage.setItem(STORAGE_KEY, String(Math.round(el.getBoundingClientRect().width)));
+      } catch (err) {}
+    }
+
+    d.addEventListener('pointerdown', onDown, true);
+    d.addEventListener('mousedown', onDown, true);
+    d.addEventListener('pointermove', onMove, true);
+    d.addEventListener('mousemove', onMove, true);
+    d.addEventListener('pointerup', onUp, true);
+    d.addEventListener('mouseup', onUp, true);
+    d.addEventListener('pointercancel', onUp, true);
+    doc.addEventListener('blur', onUp);
+
+    // Re-assert the remembered width when the window is resized back to a wide
+    // layout (the narrow layout is left to Streamlit's own overlay sidebar).
+    doc.addEventListener('resize', function () {
+      var saved = null;
+      try {
+        saved = doc.localStorage.getItem(STORAGE_KEY);
+      } catch (err) {}
+      if (saved) apply(parseInt(saved, 10));
+    });
+
+    var attempts = 0;
+    (function restore() {
+      var saved = null;
+      try {
+        saved = doc.localStorage.getItem(STORAGE_KEY);
+      } catch (err) {}
+      if (saved) apply(parseInt(saved, 10));
+      if (!sidebar() && ++attempts < 40) doc.setTimeout(restore, 250);
+    })();
+  })();
+</script>
+"""
+_SIDEBAR_RESIZE_JS = (
+    _SIDEBAR_RESIZE_JS
+    .replace("__MIN_PX__", str(SIDEBAR_MIN_WIDTH_PX))
+    .replace("__MAX_RATIO__", str(SIDEBAR_MAX_WIDTH_RATIO))
+    .replace("__STORAGE_KEY__", SIDEBAR_WIDTH_STORAGE_KEY)
+)
+
 
 def inject_custom_css() -> None:
     """Inject custom design system CSS based on current active theme."""
@@ -74,6 +187,34 @@ def inject_custom_css() -> None:
 
     css = f"<style>\n{theme_css}\n{common_css}\n</style>"
     st.markdown(css, unsafe_allow_html=True)
+
+
+def script_iframe(html: str) -> None:
+    """Run a browser script from an effectively zero size, same origin iframe.
+
+    `st.iframe` is the current element (it rejects a height of 0, so 1px is the
+    minimum and the bridge CSS hides it). `st.components.v1.html` is deprecated
+    and logs a warning on every run, so it is only the fallback.
+    """
+    if hasattr(st, "iframe"):
+        st.iframe(html, height=1)
+        return
+    import streamlit.components.v1 as components  # pragma: no cover - older Streamlit
+
+    components.html(html, height=1)
+
+
+def inject_sidebar_resize() -> None:
+    """Let the Copilot sidebar be dragged out to half the window width.
+
+    Streamlit's own handle stops at its frontend ceiling, so the drag is driven
+    from a zero size bridge component and the width is remembered in the browser.
+    """
+    try:
+        with st.container(key=SIDEBAR_RESIZE_BRIDGE_KEY):
+            script_iframe(_SIDEBAR_RESIZE_JS)
+    except Exception:
+        pass
 
 
 __all__ = [
@@ -121,4 +262,6 @@ __all__ = [
     "render_chart",
     "mask_chart_if_hidden",
     "inject_custom_css",
+    "inject_sidebar_resize",
+    "script_iframe",
 ]

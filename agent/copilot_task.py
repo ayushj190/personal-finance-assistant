@@ -24,6 +24,7 @@ class CopilotTask:
         self.status: str = "thinking"  # "thinking" | "typing" | "completed" | "error"
         self.chunks: list[str] = []
         self.figure: Any = None
+        self.headline: Any = None
         self.df: Any = None
         self.form_request: Any = None
         self.citations: Any = None
@@ -57,6 +58,7 @@ class CopilotTask:
             )
             with self._lock:
                 self.figure = res.get("figure")
+                self.headline = res.get("headline")
                 self.df = res.get("df")
                 self.form_request = res.get("form_request")
                 self.citations = res.get("citations")

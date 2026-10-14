@@ -42,8 +42,12 @@ def calculate_budget_variance(
     year_month: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    ensure_table: bool = True,
 ) -> dict[str, Any]:
-    init_budget_table(_conn)
+    # The read only Copilot path passes ensure_table=False because the authorizer
+    # denies CREATE TABLE; the table is created by migration 0003.
+    if ensure_table:
+        init_budget_table(_conn)
     target_month = year_month or date.today().strftime("%Y-%m")
 
     # Fetch all expense categories with parent info (excluding Uncategorized, defensively deduped)

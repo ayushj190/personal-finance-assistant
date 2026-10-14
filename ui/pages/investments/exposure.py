@@ -3,7 +3,8 @@ import plotly.express as px
 import streamlit as st
 
 import ui.pages.investments
-from services.portfolio import get_dimension_exposure_df
+from services.portfolio import exposure_dimension_column, get_dimension_exposure_df
+from ui import state
 from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_investments_market_carpet
 from ui.components import section_header
 from ui.theme import render_chart
@@ -13,22 +14,46 @@ def render_exposure_visualizer(consolidated_df: pd.DataFrame) -> None:
     if consolidated_df.empty:
         return
 
-    with section_header("Sector & Strategic Allocation", "Portfolio exposure heatmap and multi-dimension distribution"):
-        with st.container(border=True, key="investments_exposure_heatmap_panel"):
-            st.markdown("##### 🗺️ Portfolio Exposure Heatmap")
-            carpet_fig = build_investments_market_carpet(consolidated_df, height=380)
-            render_chart(carpet_fig, width="stretch", key="investments_market_carpet")
+    # A Copilot intent may set the exposure dimension and a focus bucket (AC-2). The
+    # intent values are consumed once; a later manual change is the new truth.
+    pending_dim = state.get(state.K.INVESTMENTS_EXP_DIM)
+    pending_focus = state.get(state.K.INVESTMENTS_EXP_FOCUS)
+    state.delete(state.K.INVESTMENTS_EXP_DIM)
+    state.delete(state.K.INVESTMENTS_EXP_FOCUS)
 
-        dim_options = ["Sector", "Region", "Currency", "Nature"]
+    dim_options = ["Sector", "Region", "Currency", "Nature"]
+    if pending_dim in dim_options:
+        st.session_state["portfolio_exposure_dim_pills"] = pending_dim
+    if "portfolio_exposure_dim_pills" not in st.session_state:
+        st.session_state["portfolio_exposure_dim_pills"] = "Sector"
+
+    with section_header("Sector & Strategic Allocation", "Portfolio exposure heatmap and multi-dimension distribution"):
         selected_dim = st.pills(
             "Exposure Dimension",
             options=dim_options,
-            default="Sector",
             key="portfolio_exposure_dim_pills",
             label_visibility="collapsed",
         ) or "Sector"
 
-        dim_df = get_dimension_exposure_df(consolidated_df, selected_dim)
+        # Focus filters the market carpet and the dimension charts to one bucket.
+        focused_df = consolidated_df
+        focus_col = exposure_dimension_column(selected_dim)
+        if pending_focus and focus_col and focus_col in consolidated_df.columns:
+            matched = consolidated_df[
+                consolidated_df[focus_col].astype(str).str.lower()
+                == str(pending_focus).lower()
+            ]
+            if not matched.empty:
+                focused_df = matched
+
+        with st.container(border=True, key="investments_exposure_heatmap_panel"):
+            st.markdown("##### 🗺️ Portfolio Exposure Heatmap")
+            if focused_df is not consolidated_df:
+                st.caption(f"🤖 Focused on {pending_focus}")
+            carpet_fig = build_investments_market_carpet(focused_df, height=380)
+            render_chart(carpet_fig, width="stretch", key="investments_market_carpet")
+
+        dim_df = get_dimension_exposure_df(focused_df, selected_dim)
         col_donut, col_bar = st.columns([1, 1])
 
         with col_donut:

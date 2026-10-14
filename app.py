@@ -40,6 +40,7 @@ except MigrationError as exc:
     st.stop()
 theme.register_plotly_theme()
 theme.inject_custom_css()
+theme.inject_sidebar_resize()
 
 from db.repositories.account_repository import AccountRepository
 from services.task_coordinator import coordinator
@@ -61,24 +62,23 @@ def _trigger_auto_sync() -> None:
     coordinator.submit("bg_sync", _run_bg_sync)
 
 
-now = datetime.now()
-if not DEMO:
-    if not state.has(state.K.LAST_AUTO_SYNC):
-        state.set(state.K.LAST_AUTO_SYNC, now)
-        _trigger_auto_sync()
-    elif (now - state.get(state.K.LAST_AUTO_SYNC)).total_seconds() >= 600:
-        state.set(state.K.LAST_AUTO_SYNC, now)
-        _trigger_auto_sync()
+def _should_auto_sync() -> bool:
+    """Cross session guard: the coordinator singleton remembers the last sync, so
+    identical bank and broker calls do not repeat per session (AC-10)."""
+    if coordinator.is_running("bg_sync"):
+        return False
+    last = coordinator.get_state("bg_sync").finished_at
+    return last is None or (datetime.now() - last).total_seconds() >= 600
 
+
+if not DEMO:
+    if _should_auto_sync():
+        _trigger_auto_sync()
 
     @st.fragment(run_every=600)
     def _auto_sync_scheduler() -> None:
-        current_time = datetime.now()
-        last = state.get(state.K.LAST_AUTO_SYNC)
-        if last is None or (current_time - last).total_seconds() >= 600:
-            state.set(state.K.LAST_AUTO_SYNC, current_time)
+        if _should_auto_sync():
             _trigger_auto_sync()
-
 
     _auto_sync_scheduler()
 
@@ -160,9 +160,19 @@ if _intent and _intent.get("page") in _page_map:
         st.session_state[_K.INVESTMENTS_TABS_GENERATION] = (
             st.session_state.get(_K.INVESTMENTS_TABS_GENERATION, 0) + 1
         )
+    from ui.view_state import apply_view as _apply_view
+    _apply_view(_page_id, _intent.get("view"))
     _target = _page_map[_page_id]
     if _target is not active_page:
         st.switch_page(_target)
+
+# A manual page change drops the Copilot panel; a Copilot navigation keeps it (AC-3).
+_current_page_id = next(
+    (pid for pid, page in _page_map.items() if page is active_page), None
+)
+_panel = st.session_state.get(_K.COPILOT_PAGE_PANEL)
+if _panel and _intent is None and _panel.get("page") != _current_page_id:
+    st.session_state.pop(_K.COPILOT_PAGE_PANEL, None)
 
 # Top navbar 3-dots menu (Options / Settings / Privacy toggle)
 with st.container(key="top_navbar_actions"):

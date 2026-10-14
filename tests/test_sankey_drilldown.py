@@ -58,6 +58,23 @@ class TestSankeyDrilldown(unittest.TestCase):
         self.assertIn("Housing", data["fixed_cats"])
         self.assertIn("Food & Dining", data["disc_cats"])
 
+    def test_gross_salary_ignores_deposits_outside_salary_category(self):
+        """Gross Salary is read from the Salary category only: other deposits never inflate it."""
+        baseline = prepare_cash_flow_sankey_data(self.conn, days=30)
+        self.assertAlmostEqual(baseline["net_salary"], 5000.0, places=2)
+
+        self.conn.executescript("""
+            INSERT INTO transactions VALUES
+                (4, date('now', '-2 days'), 250000, NULL, 0),          -- +€2,500 uncategorized deposit
+                (5, date('now', '-2 days'), 50000, 4, 0),              -- +€500 groceries refund
+                (6, date('now', '-2 days'), 100000, 2, 1);             -- +€1,000 internal transfer
+        """)
+        self.conn.commit()
+
+        data = prepare_cash_flow_sankey_data(self.conn, days=30)
+        self.assertAlmostEqual(data["net_salary"], 5000.0, places=2)
+        self.assertAlmostEqual(data["gross_salary"], baseline["gross_salary"], places=2)
+
     def test_build_full_flow_sankey(self):
         """Verify Full Flow Sankey builds valid traces with ordered coordinate stages."""
         data = prepare_cash_flow_sankey_data(self.conn, days=30)

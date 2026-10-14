@@ -10,7 +10,6 @@ from ui.pages.dashboard import (
     _render_analytics_section,
     _render_kpi_ribbon,
     _render_ticker_fragment,
-    _tradingview_symbols,
     render,
 )
 from ui.pages.investments import _render_market_news_fragment
@@ -23,9 +22,17 @@ class TestDashboardPage(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("""
+            CREATE TABLE categories (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                kind TEXT
+            )
+        """)
+        self.conn.execute("""
             CREATE TABLE transactions (
                 id INTEGER PRIMARY KEY,
                 account_id INTEGER,
+                category_id INTEGER,
                 booking_date TEXT,
                 amount_eur_minor INTEGER,
                 is_internal_transfer INTEGER DEFAULT 0
@@ -72,6 +79,29 @@ class TestDashboardPage(unittest.TestCase):
         flow = _calculate_monthly_cash_flow(self.conn, days=30)
         self.assertAlmostEqual(flow, 1800.0, places=2)
 
+    def test_calculate_monthly_cash_flow_excludes_savings_and_transfers(self):
+        """A savings or transfer-kind row must not drag the net cash flow down."""
+        today = date.today().isoformat()
+        self.conn.execute(
+            "INSERT INTO categories (id, name, kind) VALUES (1, 'Transfer', 'transfer')"
+        )
+        self.conn.execute(
+            "INSERT INTO categories (id, name, kind) VALUES (2, 'Salary', 'income')"
+        )
+        self.conn.executemany(
+            """
+            INSERT INTO transactions (account_id, category_id, booking_date, amount_eur_minor, is_internal_transfer)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2, today, 300000, 0),      # +3000 income
+                (1, 1, today, -300000, 0),     # -3000 transfer kind, excluded
+                (1, None, today, -50000, 0),   # -500 uncategorized expense, counted
+            ],
+        )
+        flow = _calculate_monthly_cash_flow(self.conn, days=30)
+        self.assertAlmostEqual(flow, 2500.0, places=2)
+
     def test_calculate_monthly_cash_flow_empty(self):
         """AC-6: Returns 0.0 when no transactions exist without raising exception."""
         flow = _calculate_monthly_cash_flow(self.conn, days=30)
@@ -108,9 +138,9 @@ class TestDashboardPage(unittest.TestCase):
 
     @patch("ui.pages.dashboard.kpi_card")
     @patch("streamlit.columns")
-    def test_kpi_ribbon_renders_four_cards(self, mock_columns, mock_kpi_card):
-        """AC-1: KPI ribbon renders Net Worth, Liquid Cash, Investments, and Cash Flow."""
-        mock_columns.return_value = [MagicMock(), MagicMock(), MagicMock(), MagicMock()]
+    def test_kpi_ribbon_renders_five_cards(self, mock_columns, mock_kpi_card):
+        """AC-1: KPI ribbon renders Net Worth, Liquid Cash, Investments, Monthly Cash Flow, and Runway."""
+        mock_columns.return_value = [MagicMock() for _ in range(5)]
         nw_data = {
             "net_worth": 75000.0,
             "liquid_cash": 25000.0,
@@ -120,19 +150,20 @@ class TestDashboardPage(unittest.TestCase):
 
         _render_kpi_ribbon(self.conn, nw_data, liabilities=[])
 
-        self.assertEqual(mock_kpi_card.call_count, 4)
+        self.assertEqual(mock_kpi_card.call_count, 5)
         card_titles = [call.args[0] for call in mock_kpi_card.call_args_list]
         self.assertIn("Net Worth", card_titles)
         self.assertIn("Liquid Cash", card_titles)
         self.assertIn("Investments", card_titles)
         self.assertIn("Monthly Cash Flow", card_titles)
+        self.assertIn("Runway", card_titles)
 
     @patch("ui.pages.dashboard.kpi_card")
     @patch("streamlit.columns")
     @patch("streamlit.session_state", {"hide_amounts": True})
     def test_kpi_ribbon_privacy_mode(self, mock_columns, mock_kpi_card):
-        """AC-1: Sensitive amounts are masked when is_hidden() is active."""
-        mock_columns.return_value = [MagicMock(), MagicMock(), MagicMock(), MagicMock()]
+        """AC-1: money cards are masked when is_hidden() is active; Runway stays readable."""
+        mock_columns.return_value = [MagicMock() for _ in range(5)]
         nw_data = {
             "net_worth": 12345.67,
             "liquid_cash": 2345.67,
@@ -142,9 +173,13 @@ class TestDashboardPage(unittest.TestCase):
 
         _render_kpi_ribbon(self.conn, nw_data, liabilities=[])
 
-        card_values = [call.args[1] for call in mock_kpi_card.call_args_list]
-        for val in card_values:
-            self.assertEqual(val, "€****")
+        money_titles = {"Net Worth", "Liquid Cash", "Investments", "Monthly Cash Flow"}
+        for call in mock_kpi_card.call_args_list:
+            title, val = call.args[0], call.args[1]
+            if title in money_titles:
+                self.assertEqual(val, "€****", title)
+            elif title == "Runway":
+                self.assertNotIn("€", val)
 
     @patch("ui.pages.dashboard.AccountRepository.get_all_latest_snapshots")
     @patch("streamlit.columns")
@@ -298,8 +333,7 @@ class TestDashboardPage(unittest.TestCase):
                 name TEXT NOT NULL
             )
         """)
-        self.conn.execute("INSERT INTO categories VALUES (1, 'Salary')")
-        self.conn.execute("ALTER TABLE transactions ADD COLUMN category_id INTEGER")
+        self.conn.execute("INSERT INTO categories (id, name) VALUES (1, 'Salary')")
         self.conn.execute("ALTER TABLE transactions ADD COLUMN description_raw TEXT")
         self.conn.execute("""
             INSERT INTO transactions (account_id, booking_date, amount_eur_minor, is_internal_transfer, category_id, description_raw)
@@ -339,39 +373,6 @@ class TestDashboardPage(unittest.TestCase):
 
         mock_render_sankey.assert_called_once()
         mock_render_chart.assert_called_once()
-
-    def test_tradingview_symbols_exchange_mapping_and_order(self):
-        """AC-8: Known exchange suffixes map to TradingView prefixes, dedupe on final symbol, keep order."""
-        result = _tradingview_symbols(["ASML.AS", "ASML.AS", "VUSA.L", "AAPL"])
-        expected = [
-            {"proName": "EURONEXT:ASML", "description": "ASML.AS"},
-            {"proName": "LSE:VUSA", "description": "VUSA.L"},
-            {"proName": "AAPL", "description": "AAPL"},
-        ]
-        self.assertEqual(result, expected)
-
-    def test_tradingview_symbols_filters_unknown_and_special(self):
-        """AC-8: Unknown suffixes, =, ^, and ID_ are skipped, yielding fallback if none remain."""
-        result = _tradingview_symbols(["RY.TO", "EURUSD=X", "^GSPC", "ID_123"])
-        self.assertEqual(
-            result,
-            [
-                {"proName": "SPY", "description": "S&P 500"},
-                {"proName": "QQQ", "description": "Nasdaq 100"},
-                {"proName": "FX:EURUSD", "description": "EUR / USD"},
-            ],
-        )
-
-    def test_tradingview_symbols_dedupe_collapsing_and_empty_fallback(self):
-        """AC-8: Collapsing symbols yield one entry; empty input returns fallback trio."""
-        result = _tradingview_symbols(["SAP.DE", "SAP.DE"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["proName"], "XETR:SAP")
-        self.assertEqual(result[0]["description"], "SAP.DE")
-
-        empty_res = _tradingview_symbols([])
-        self.assertEqual(len(empty_res), 3)
-        self.assertEqual(empty_res[0]["proName"], "SPY")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,8 @@ class K:
     PENDING_FORM = "pending_form"
     COPILOT_FILE_UPLOADER = "copilot_file_uploader"
     COPILOT_UI_INTENT = "copilot_ui_intent"
+    COPILOT_PAGE_PANEL = "copilot_page_panel"
+    COPILOT_WRITE_TOKEN = "copilot_write_token"
 
     # Filters & navigation
     FILTER_STATE = "flt_state"
@@ -31,6 +33,7 @@ class K:
     # Investments
     TV_WATCHLIST_MINIMIZED = "tv_watchlist_minimized"
     INVESTMENTS_EXP_DIM = "investments_exp_dim"
+    INVESTMENTS_EXP_FOCUS = "investments_exp_focus"
 
     # Spending
     SPENDING_DRILLDOWN = "spending_donut_drilldown"
@@ -89,7 +92,10 @@ def init_defaults() -> None:
         st.session_state[K.THEME] = "dark"
 
     if K.PRIVACY_HIDDEN not in st.session_state:
-        st.session_state[K.PRIVACY_HIDDEN] = True
+        # Demo mode starts with Hide values OFF so a fresh demo session reads (AC-13).
+        from config import DEMO
+
+        st.session_state[K.PRIVACY_HIDDEN] = not DEMO
 
     if K.GLOBAL_PRIVACY_TOGGLE in st.session_state:
         st.session_state[K.PRIVACY_HIDDEN] = bool(st.session_state[K.GLOBAL_PRIVACY_TOGGLE])

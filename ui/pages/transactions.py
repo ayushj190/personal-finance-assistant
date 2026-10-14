@@ -6,25 +6,44 @@ from db import database
 from ui.components import format_money, is_hidden
 from ui.dialogs import confirm_delete_transactions_dialog
 from ui.filters import build_where_clause, render_filters
+from ui.page_panel import render_page_panel
 
 
 def render():
-    col_filt, col_uncat, col_search = st.columns([1, 1.4, 2.6], vertical_alignment="bottom")
+    render_page_panel("transactions")
+    conn = database.connect(DB_PATH)
+    cat_rows = conn.execute(
+        "SELECT id, name FROM categories ORDER BY name ASC").fetchall()
+    cat_names = [r["name"] for r in cat_rows]
+    cat_name_to_id = {r["name"]: r["id"] for r in cat_rows}
+    category_options = ["All Categories"] + cat_names
+    if st.session_state.get("tx_category") not in category_options:
+        st.session_state["tx_category"] = "All Categories"
+
+    col_filt, col_cat, col_uncat, col_search = st.columns(
+        [1, 1.3, 1.2, 2.0], vertical_alignment="bottom")
     with col_filt:
         filters = render_filters()
+    with col_cat:
+        selected_category = st.selectbox(
+            "Category", options=category_options, key="tx_category",
+            label_visibility="collapsed")
     with col_uncat:
         only_uncategorized = st.checkbox(
             "Review Uncategorized Only", value=False)
     with col_search:
         search_query = st.text_input(
-            "Search merchant or description", placeholder="Filter by text...", label_visibility="collapsed")
+            "Search merchant or description", placeholder="Filter by text...",
+            label_visibility="collapsed", key="tx_search")
 
-    conn = database.connect(DB_PATH)
     where_sql, params = build_where_clause(filters, table_alias="t")
 
     extra_clauses = []
     if only_uncategorized:
         extra_clauses.append("t.category_id IS NULL")
+    if selected_category and selected_category != "All Categories":
+        extra_clauses.append("c.name = ?")
+        params.append(selected_category)
     if search_query.strip():
         extra_clauses.append(
             "(t.merchant_normalized LIKE ? OR t.description_raw LIKE ?)")
@@ -50,12 +69,6 @@ def render():
     """
 
     df = pd.read_sql_query(query, conn, params=params)
-
-    # Categories list for dropdown
-    cat_rows = conn.execute(
-        "SELECT id, name FROM categories ORDER BY name ASC").fetchall()
-    cat_names = [r["name"] for r in cat_rows]
-    cat_name_to_id = {r["name"]: r["id"] for r in cat_rows}
 
     col_count, col_sel_all, col_clear_all = st.columns([4, 1.2, 1.2], vertical_alignment="center")
     with col_count:

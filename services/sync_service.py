@@ -158,6 +158,7 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
             try:
                 accs = eb_inst.fetch_accounts()
                 tot_inserted = 0
+                stale_accounts: list[str] = []
                 for acc in accs:
                     acc_id = database.upsert_account(
                         conn,
@@ -195,19 +196,36 @@ def sync_all(conn: sqlite3.Connection, enable_llm: bool = False) -> dict[str, An
                     else:
                         since_dt = date.today() - timedelta(days=90)
 
-                    txs = eb_inst.fetch_transactions(since=since_dt, account_uid=acc.external_id)
+                    # A known stale account id returns 404; skip just that account so it
+                    # cannot abort the whole institution sync (spec 0019 AC-10).
+                    try:
+                        txs = eb_inst.fetch_transactions(since=since_dt, account_uid=acc.external_id)
+                    except NeedsReauth:
+                        raise
+                    except Exception as e:
+                        stale_accounts.append(f"{acc.name}: {e}")
+                        continue
                     txs = [t for t in txs if t.account_external_id == acc.external_id]
                     ins, _ = process_and_save_transactions(
                         conn, account_id=acc_id, raw_txs=txs, source="api", enable_llm_categorization=enable_llm
                     )
                     tot_inserted += ins
 
+                stale_note = (
+                    f" Skipped {len(stale_accounts)} stale account(s): {'; '.join(stale_accounts)}"
+                    if stale_accounts
+                    else ""
+                )
                 with conn:
                     conn.execute(
                         "INSERT INTO sync_log (connector, started_at, finished_at, status, inserted, message) VALUES (?, ?, datetime('now'), 'ok', ?, ?)",
-                        (f"enable_banking_{inst_label}", started, tot_inserted, f"Synced {len(accs)} accounts, {tot_inserted} txs"),
+                        (f"enable_banking_{inst_label}", started, tot_inserted, f"Synced {len(accs)} accounts, {tot_inserted} txs.{stale_note}"),
                     )
-                results["connectors"][f"open_banking_{inst_label}"] = {"status": "ok", "inserted": tot_inserted}
+                results["connectors"][f"open_banking_{inst_label}"] = {
+                    "status": "ok",
+                    "inserted": tot_inserted,
+                    "stale_accounts": stale_accounts,
+                }
                 results["total_inserted"] += tot_inserted
             except NeedsReauth as e:
                 with conn:

@@ -18,7 +18,12 @@ def prepare_cash_flow_sankey_data(
     display_df: pd.DataFrame | None = None,
     salary_day: int = 25,
 ) -> dict[str, Any]:
-    """Extract and calculate income, tax, expense buckets, and category breakdowns for Sankey flow."""
+    """Extract and calculate salary, tax, expense buckets, and category breakdowns for Sankey flow.
+
+    Gross Salary is read from the Salary category only, taken as the net pay the month
+    already carries (including a monthly holiday allowance payout) and scaled to gross
+    with the effective Box 1 rate. Deposits in any other category never feed the node.
+    """
     if start_date and end_date:
         date_cond = "t.booking_date >= ? AND t.booking_date <= ?"
         params: tuple[Any, ...] = (start_date, end_date)
@@ -29,7 +34,7 @@ def prepare_cash_flow_sankey_data(
     cf_row = conn.execute(
         f"""
         SELECT
-            SUM(CASE WHEN COALESCE(c.kind, CASE WHEN t.amount_eur_minor > 0 THEN 'income' ELSE 'discretionary' END) = 'income' THEN t.amount_eur_minor ELSE 0 END) as inc_minor,
+            SUM(CASE WHEN c.name = 'Salary' THEN t.amount_eur_minor ELSE 0 END) as salary_minor,
             SUM(CASE WHEN c.kind = 'savings' THEN -t.amount_eur_minor ELSE 0 END) as sav_minor
         FROM transactions t
         LEFT JOIN categories c ON c.id = t.category_id
@@ -39,7 +44,7 @@ def prepare_cash_flow_sankey_data(
         params,
     ).fetchone()
 
-    inc = Money.from_cents(cf_row["inc_minor"]).to_major() if cf_row else 0.0
+    salary_net = Money.from_cents(cf_row["salary_minor"]).to_major() if cf_row else 0.0
     sav = Money.from_cents(cf_row["sav_minor"]).to_major() if cf_row else 0.0
 
     profile = conn.execute("SELECT * FROM tax_profile WHERE id = 1").fetchone()
@@ -54,10 +59,10 @@ def prepare_cash_flow_sankey_data(
         if b1.get("total_tax", 0) > 0:
             eff_tax_rate = min(0.52, max(0.18, b1["total_tax"] / annual_gross))
 
-    if inc > 0:
-        gross_salary = inc / (1.0 - eff_tax_rate)
-        taxes = gross_salary - inc
-        net_salary = inc
+    if salary_net > 0:
+        gross_salary = salary_net / (1.0 - eff_tax_rate)
+        taxes = gross_salary - salary_net
+        net_salary = salary_net
     elif annual_gross > 0:
         factor = (days / 365.0) if not (start_date and end_date) else 1.0 / 12.0
         gross_salary = annual_gross * factor

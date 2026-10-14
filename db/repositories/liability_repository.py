@@ -31,39 +31,3 @@ class LiabilityRepository:
         cur = conn.execute("SELECT * FROM liabilities WHERE id = ?", (liability_id,))
         row = cur.fetchone()
         return cls.row_to_liability(row) if row else None
-
-    @staticmethod
-    def get_schedule(conn: sqlite3.Connection, liability_id: int) -> list[dict[str, Any]]:
-        cur = conn.execute(
-            """
-            SELECT * FROM liability_schedule
-            WHERE liability_id = ?
-            ORDER BY month_idx ASC
-            """,
-            (liability_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]
-
-    @staticmethod
-    def get_rate_periods(conn: sqlite3.Connection, liability_id: int) -> list[dict[str, Any]]:
-        cur = conn.execute(
-            """
-            SELECT * FROM liability_rate_periods
-            WHERE liability_id = ?
-            ORDER BY from_date ASC
-            """,
-            (liability_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]
-
-    @staticmethod
-    def get_extra_payments(conn: sqlite3.Connection, liability_id: int) -> list[dict[str, Any]]:
-        cur = conn.execute(
-            """
-            SELECT * FROM liability_extra_payments
-            WHERE liability_id = ?
-            ORDER BY paid_date ASC
-            """,
-            (liability_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]

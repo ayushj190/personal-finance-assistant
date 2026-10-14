@@ -3,7 +3,6 @@ import sqlite3
 import threading
 import json
 from pathlib import Path
-import urllib.parse
 from typing import Any
 import yfinance as yf
 
@@ -128,58 +127,6 @@ def fetch_yfinance_quote(ticker: str) -> dict[str, Any] | None:
         }
     except Exception:
         return None
-
-def _fetch_and_cache_domain(ticker: str, cache_path: Path):
-    try:
-        t = yf.Ticker(ticker)
-        website = t.info.get("website")
-        
-        with open(cache_path, "r", encoding="utf-8") as f:
-            domains = json.load(f)
-            
-        if website:
-            domain = urllib.parse.urlparse(website).netloc
-            if domain.startswith("www."):
-                domain = domain[4:]
-            domains[ticker] = domain
-        else:
-            domains[ticker] = ""
-            
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(domains, f)
-    except Exception:
-        pass
-
-def get_ticker_logo_url(ticker: str) -> str:
-    cache_path = Path(__file__).resolve().parent.parent / "data" / "ticker_domains.json"
-    if not cache_path.exists():
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump({}, f)
-            
-    try:
-        with open(cache_path, "r", encoding="utf-8") as f:
-            domains = json.load(f)
-    except Exception:
-        domains = {}
-
-    if ticker in domains:
-        domain = domains[ticker]
-        if domain:
-            return f"https://logo.clearbit.com/{domain}?size=64#.png"
-            
-    # Launch background fetch
-    if ticker not in domains:
-        domains[ticker] = "" # mark as pending
-        try:
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(domains, f)
-        except Exception:
-            pass
-            
-        threading.Thread(target=_fetch_and_cache_domain, args=(ticker, cache_path), daemon=True).start()
-        
-    return f"https://logo.clearbit.com/{ticker}.com?size=64#.png"
 
 def classify_asset(ticker: str, name: str = "", yf_info: dict[str, Any] | None = None) -> tuple[str, str]:
     t_u = (ticker or "").upper()

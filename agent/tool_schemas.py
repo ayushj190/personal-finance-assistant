@@ -1,6 +1,19 @@
 """Copilot tool schemas definitions for LLM function calling."""
 from typing import Any
 
+
+def _date_scope_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "description": "Optional requested range. Use {\"preset\": one of Last 3 Months, MTD, Last Month, YTD, Last 12 Months, All Time}, or {\"start\": \"YYYY-MM-DD\", \"end\": \"YYYY-MM-DD\"}.",
+        "properties": {
+            "preset": {"type": "string", "enum": ["Last 3 Months", "MTD", "Last Month", "YTD", "Last 12 Months", "All Time"]},
+            "start": {"type": "string", "description": "Start date YYYY-MM-DD"},
+            "end": {"type": "string", "description": "End date YYYY-MM-DD"},
+        },
+    }
+
+
 COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -190,12 +203,12 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
                     "name": {"type": "string", "description": "Unique profile name (matched case insensitively)"},
                     "dimension": {
                         "type": "string",
-                        "enum": ["asset_class", "asset_type", "region", "sector", "currency", "ticker"],
-                        "description": "Dimension the targets are grouped by",
+                        "enum": ["sector", "region", "currency", "nature"],
+                        "description": "Dimension the targets are grouped by. 'nature' is equities, bonds, commodities, and crypto.",
                     },
                     "targets": {
                         "type": "object",
-                        "description": "Map of bucket name to target percent (0 to 100 at one decimal), e.g. {\"etf\": 70.0, \"crypto\": 30.0}",
+                        "description": "Map of bucket name to target percent (0 to 100 at one decimal), e.g. {\"Equities\": 70.0, \"Fixed Income\": 30.0}",
                         "additionalProperties": {"type": "number"},
                     },
                     "drift_band_pct": {
@@ -396,14 +409,14 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "open_view",
-            "description": "Open a page for the user, optionally an Investments tab and a date scope. Use when the user asks to see, open, go to, or show a screen. The result moves the app; the answer in chat should still quote the numbers the data tools returned.",
+            "description": "Open the page that owns a topic for the user, optionally an Investments tab, a date scope, and validated view parameters that shape the page to the question. Call it whenever a question is about a topic with its own page (spending, investments, mortgage, tax, transactions, net worth), even if the user did not phrase it as navigation, alongside the data tool that answers. The result moves the app; the answer in chat should still quote the numbers the data tools returned.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "page": {
                         "type": "string",
                         "enum": ["dashboard", "spending", "investments", "mortgage", "transactions", "tax", "settings"],
-                        "description": "Destination page id",
+                        "description": "Destination page id: dashboard (net worth), spending, investments, mortgage, transactions, tax, settings",
                     },
                     "tab": {
                         "type": "string",
@@ -419,8 +432,170 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
                             "end": {"type": "string", "description": "End date YYYY-MM-DD"},
                         },
                     },
+                    "view": {
+                        "type": "object",
+                        "description": "Optional view parameters that shape the page to the question. spending: {category}. transactions: {category, search}. investments: {exposure_dimension: Sector|Region|Currency|Nature, focus: a live bucket of that dimension such as Technology}. A key or value not allowed for the page is ignored with a note.",
+                        "properties": {
+                            "category": {"type": "string", "description": "Category name filter (Spending or Transactions)"},
+                            "search": {"type": "string", "description": "Merchant or description text filter (Transactions)"},
+                            "exposure_dimension": {"type": "string", "enum": ["Sector", "Region", "Currency", "Nature"], "description": "Investments exposure dimension"},
+                            "focus": {"type": "string", "description": "A live bucket of the exposure dimension to focus the market carpet and dimension charts, e.g. Technology"},
+                        },
+                    },
                 },
                 "required": ["page"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_periods",
+            "description": "Compare spending and cashflow totals across two date ranges, with the difference (range B minus range A).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_a": _date_scope_schema(),
+                    "range_b": _date_scope_schema(),
+                },
+                "required": ["range_a", "range_b"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_budget_status",
+            "description": "Per category monthly budget status: budget, spent, remaining, and whether it is over budget.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date_scope": _date_scope_schema()},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_account_balances",
+            "description": "List every account with its latest balance and asset class.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_spending_forecast",
+            "description": "The 3 month average burn rate per month and the projected month end spend.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_income_summary",
+            "description": "Income by category over a period, plus projected holding dividends.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date_scope": _date_scope_schema()},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_bills",
+            "description": "Recurring charges detected in the ledger and their next due date.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_net_worth_history",
+            "description": "An approximate monthly net worth series (ledger running cash balance plus the current invested value held flat).",
+            "parameters": {
+                "type": "object",
+                "properties": {"date_scope": _date_scope_schema()},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "categorize_transactions",
+            "description": "Categorize transactions. The first call returns a confirmation token and changes nothing; call again with the same arguments plus that confirm_token to actually write.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Target category name"},
+                    "transaction_ids": {"type": "array", "items": {"type": "integer"}, "description": "Explicit transaction ids to categorize"},
+                    "tx_filter": {"type": "object", "description": "Instead of ids: {uncategorized: true}, {merchant: text}, or {category: name}", "properties": {"uncategorized": {"type": "boolean"}, "merchant": {"type": "string"}, "category": {"type": "string"}}},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["category"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mark_as_transfer",
+            "description": "Mark transactions as internal transfers. The first call returns a confirmation token and changes nothing; call again with that confirm_token to write.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_ids": {"type": "array", "items": {"type": "integer"}, "description": "Transaction ids to mark as transfers"},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["transaction_ids"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_transaction",
+            "description": "Edit one transaction's category or description. The first call returns a confirmation token and changes nothing; call again with that confirm_token to write.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "integer", "description": "Transaction id to edit"},
+                    "category": {"type": "string", "description": "New category name"},
+                    "description": {"type": "string", "description": "New description text"},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["transaction_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_transaction",
+            "description": "Delete one transaction. The first call returns a confirmation token and changes nothing; call again with that confirm_token to write.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "integer", "description": "Transaction id to delete"},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["transaction_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_budget_cap",
+            "description": "Set a category monthly budget cap. The first call returns a confirmation token and changes nothing; call again with that confirm_token to write.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Category name"},
+                    "cap_eur": {"type": "number", "description": "Monthly budget cap in EUR"},
+                    "confirm_token": {"type": "string", "description": "Token returned by the first call; empty on the first call"},
+                },
+                "required": ["category", "cap_eur"],
             },
         },
     },

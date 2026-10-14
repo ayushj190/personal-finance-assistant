@@ -7,7 +7,6 @@ from typing import Any
 
 from config import DB_PATH
 from db import database
-from services.llm_client import get_ollama_client
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
 
@@ -84,6 +83,20 @@ DEFAULT_KNOWLEDGE_DOCS = [
 def _tokenize(text: str) -> list[str]:
     """Extract normalized alphanumeric words >= 3 characters."""
     return [w.lower() for w in re.findall(r"\b\w{3,}\b", text)]
+
+
+def _has_dimension_mismatch(rows: list[Any], dim: int) -> bool:
+    """True when any stored vector is empty or a different size than the query vector."""
+    for r in rows:
+        raw = r["embedding_json"]
+        if not raw:
+            return True
+        try:
+            if len(json.loads(raw)) != dim:
+                return True
+        except Exception:
+            return True
+    return False
 
 
 def _cosine_sim(v1: list[float], v2: list[float]) -> float:
@@ -222,41 +235,30 @@ def sync_knowledge_base_embeddings(conn: sqlite3.Connection | None = None) -> li
         for d in raw_docs:
             all_chunks.extend(split_document_into_chunks(d))
 
-        # Check existing cached chunks in database
-        existing_rows = conn.execute("SELECT chunk_id, embedding_json FROM knowledge_embeddings").fetchall()
-        existing_map = {r["chunk_id"]: r["embedding_json"] for r in existing_rows}
-
-        # Build vocabulary across all chunks for pseudo-embedding fallback
+        # Build vocabulary across all chunks for the pseudo-embedding fallback.
         all_tokens = set()
         for ch in all_chunks:
             all_tokens.update(_tokenize(f"{ch['chunk_title']} {ch['content']}"))
         vocab = sorted(list(all_tokens))[:128]
 
-        # Try to batch embed using Ollama if available
-        ollama_embeddings: list[list[float]] = []
+        # Embed with the real embedding model (the shared 384-dim provider), never
+        # the chat model, so semantic search is meaningful (spec 0019 AC-10).
+        from services.legal_vault_service import get_embeddings_batch
+
+        texts_to_embed = [f"{c['chunk_title']}: {c['content'][:500]}" for c in all_chunks]
         try:
-            client, model = get_ollama_client()
-            texts_to_embed = [f"{c['chunk_title']}: {c['content'][:500]}" for c in all_chunks]
-            resp = client.embed(model=model, input=texts_to_embed)
-            embs = resp.get("embeddings", [])
-            if len(embs) == len(all_chunks):
-                ollama_embeddings = embs
+            model_embeddings = get_embeddings_batch(texts_to_embed)
         except Exception:
-            ollama_embeddings = []
+            model_embeddings = []
+        if len(model_embeddings) != len(all_chunks):
+            model_embeddings = []
 
         with conn:
             for idx, ch in enumerate(all_chunks):
                 cid = ch["chunk_id"]
-                vec = None
-                if ollama_embeddings:
-                    vec = ollama_embeddings[idx]
-                elif cid in existing_map and existing_map[cid]:
-                    try:
-                        vec = json.loads(existing_map[cid])
-                    except Exception:
-                        vec = None
-                
-                if not vec:
+                if model_embeddings:
+                    vec = model_embeddings[idx]
+                else:
                     vec = _text_to_pseudo_vec(f"{ch['chunk_title']} {ch['content']}", vocab)
 
                 emb_json = json.dumps(vec)
@@ -314,16 +316,21 @@ def search_knowledge_base(
 
         q_tokens = set(_tokenize(query))
 
-        # Try to obtain query embedding
-        q_vec = None
+        # Query embedding from the real embedding model, never the chat model (AC-10).
+        from services.legal_vault_service import get_embedding
+
         try:
-            client, model = get_ollama_client()
-            resp = client.embed(model=model, input=query)
-            embs = resp.get("embeddings", [])
-            if embs:
-                q_vec = embs[0]
+            q_vec = get_embedding(query)
         except Exception:
             q_vec = None
+
+        # Migrate stale vectors written by the older chat model: if a stored vector
+        # length disagrees with the query vector, re-index once and re-read.
+        if q_vec and _has_dimension_mismatch(rows, len(q_vec)):
+            sync_knowledge_base_embeddings(conn)
+            rows = conn.execute(
+                "SELECT chunk_id, doc_title, category, content, embedding_json FROM knowledge_embeddings"
+            ).fetchall()
 
         scored_candidates: list[tuple[float, dict[str, Any]]] = []
 

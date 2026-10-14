@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 import pandas as pd
@@ -35,9 +37,19 @@ class TestCopilotTools(unittest.TestCase):
         self.assertEqual(res_get["profile"]["risk_tolerance"], "Growth")
 
     def test_allocation_and_savings_tools(self):
-        res_alloc = tools.tool_set_active_allocation_profile(
-            "80/20 Core-Satellite")
-        self.assertTrue(res_alloc["success"])
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "copilot_alloc.db")
+            from db.database import migrate
+
+            migrate(db_path)
+            with patch("agent.tools.investments.DB_PATH", db_path):
+                created = tools.tool_create_allocation_profile(
+                    "Probe Nature", "nature", {"Equities": 80.0, "Fixed Income": 20.0}
+                )
+                self.assertTrue(created["success"], created.get("message"))
+
+                res_alloc = tools.tool_set_active_allocation_profile("Probe Nature")
+                self.assertTrue(res_alloc["success"])
 
         res_savings = tools.tool_update_savings_rate("Trade Republic", 3.25)
         self.assertTrue(res_savings["success"])

@@ -16,10 +16,6 @@ class Account:
     is_active: int = 1
     created_at: Optional[str] = None
 
-    @property
-    def display_name(self) -> str:
-        return f"{self.institution} - {self.name}"
-
 
 @dataclass
 class Transaction:
@@ -124,15 +120,4 @@ class TaxProfile:
     green_investments_minor: int = 0
     reserveringsruimte_minor: int = 0
     updated_at: Optional[str] = None
-
-
-@dataclass
-class Goal:
-    id: Optional[int]
-    name: str
-    target_amount: float
-    account_id: Optional[int] = None
-    created_at: Optional[str] = None
-    account_name: Optional[str] = None
-    current_balance: Optional[float] = None
 

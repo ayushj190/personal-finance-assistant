@@ -67,17 +67,3 @@ INSERT OR IGNORE INTO categories (id, name, parent_id, kind) VALUES
   (100, 'Transfers', NULL, 'transfer'),
   (101, 'Internal Transfer', 100, 'transfer'),
   (102, 'Credit Card Repayment', 100, 'transfer');
-
--- Default allocation profiles and targets
-INSERT OR IGNORE INTO allocation_profiles (id, name, dimension, include_cash, drift_band_pct, is_active) VALUES
-  (1, '80/20 Core-Satellite', 'asset_type', 0, 5.0, 1),
-  (2, 'Global One-Fund', 'ticker', 0, 5.0, 0),
-  (3, 'Asset Class & Cash Buffer', 'asset_class', 1, 5.0, 0);
-
-INSERT OR IGNORE INTO allocation_targets (profile_id, bucket, target_pct) VALUES
-  (1, 'etf', 80.0),
-  (1, 'stock', 15.0),
-  (1, 'crypto', 5.0),
-  (2, 'VWCE.DE', 100.0),
-  (3, 'cash', 10.0),
-  (3, 'investment', 90.0);

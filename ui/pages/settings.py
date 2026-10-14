@@ -12,10 +12,11 @@ from services import secrets_vault
 from ui.components import section_header
 from ui.dialogs import manual_account_dialog
 from ui.allocation_ui import render_allocation_management
+from ui.page_panel import render_page_panel
 
 
 def render():
-
+    render_page_panel("settings")
     conn = database.connect(DB_PATH)
 
     menu_options = ["Bank & Broker Integrations", "Fiscal Month & Categories", "Mortgage & Liabilities",
@@ -200,7 +201,7 @@ def render():
                 st.divider()
 
                 # Guided Setup / Credentials Section
-                with st.expander("🔑 Open Banking Credentials Setup Guide (Free & 2 Minutes)", expanded=not is_eb_configured):
+                with st.expander("🔑 Open Banking Credentials Setup Guide (Free & 2 Minutes)", expanded=False):
                     st.markdown(
                         dedent(
                             """

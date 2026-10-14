@@ -67,6 +67,37 @@ PAGE_ALIASES = {
     "preferences": "settings",
 }
 
+# Per page view parameter whitelist (AC-2). A key absent here cannot be set, so a
+# wrong key can never reach a page. Values are validated per key by `open_view`.
+VIEW_WHITELIST: dict[str, tuple[str, ...]] = {
+    "spending": ("category",),
+    "transactions": ("category", "search"),
+    "investments": ("exposure_dimension", "focus"),
+}
+
+# Investments exposure dimensions the Copilot may set (AC-2). A `focus` value is
+# validated against the live buckets `get_dimension_exposure_df` returns.
+EXPOSURE_DIMENSIONS = ("Sector", "Region", "Currency", "Nature")
+
+# Deterministic topic map: single high signal keywords per page (AC-6). Mirrors
+# PAGE_ALIASES without the navigation only words (home, preferences), so a clear
+# content question still lands right when the model forgot to call `open_view`.
+TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "investments": (
+        "investments", "investment", "portfolio", "holdings", "exposure",
+        "allocation", "stocks", "stock", "etfs", "etf", "dividend", "dividends",
+        "sector", "ticker",
+    ),
+    "spending": (
+        "spending", "spend", "expenses", "expense", "budget", "budgets",
+        "subscriptions", "merchants",
+    ),
+    "mortgage": ("mortgage", "mortgages", "amortization", "repayment", "loan", "loans"),
+    "tax": ("tax", "taxes", "box 1", "box 3", "jaarruimte", "deduction", "deductions"),
+    "transactions": ("transactions", "transaction", "ledger", "uncategorized", "payee"),
+    "dashboard": ("net worth", "balance sheet", "dashboard", "overview"),
+}
+
 # Phrase aliases that resolve to an Investments tab id.
 TAB_ALIASES = {
     "portfolio": "portfolio",
@@ -100,8 +131,10 @@ _PRESET_PHRASES = {
     "all time": "All Time",
 }
 
+# Explicit navigation verbs only (AC-6). The content verbs (show, view, display)
+# are removed so a content question reaches the model and produces an answer.
 _NAV_VERB_RE = re.compile(
-    r"^(?:open|go to|goto|navigate to|take me to|switch to|show me|show my|show|view|display)\b",
+    r"^(?:open|go to|goto|navigate to|take me to|switch to)\b",
     re.IGNORECASE,
 )
 
@@ -142,9 +175,49 @@ def match_fast_path(prompt: str) -> dict[str, Any] | None:
         return None
 
     preset = _find_phrase(text, _PRESET_PHRASES)
+    date_scope = {"requested": True, "preset": preset} if preset else None
     return {
         "page": page,
         "tab": tab,
-        "date_scope": {"preset": preset} if preset else None,
+        "date_scope": date_scope,
         "source": "fast_path",
+    }
+
+
+def topic_map_intent(prompt: str, date_scope: Any = None) -> dict[str, Any] | None:
+    """Route a content question to exactly one page, or None when weak or tied (AC-6).
+
+    Deterministic and model free. Runs after tool execution, only when no intent
+    was captured, so a clear question still lands right when the model forgot to
+    call `open_view`. A weak match or a two page tie stays silent.
+    """
+    if not prompt or not isinstance(prompt, str):
+        return None
+    text = prompt.lower()
+    matches = [
+        page
+        for page, keywords in TOPIC_KEYWORDS.items()
+        if any(re.search(rf"\b{re.escape(kw)}\b", text) for kw in keywords)
+    ]
+    if len(matches) != 1:
+        return None
+
+    from services.date_scope import resolve_date_scope
+
+    scope = None
+    if date_scope:
+        resolved = resolve_date_scope(date_scope)
+        if resolved.get("requested") and not resolved.get("error"):
+            scope = {
+                "requested": True,
+                "preset": resolved.get("preset"),
+                "start_iso": resolved.get("start_iso"),
+                "end_iso": resolved.get("end_iso"),
+            }
+
+    return {
+        "page": matches[0],
+        "tab": None,
+        "date_scope": scope,
+        "source": "topic_map",
     }

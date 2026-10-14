@@ -15,6 +15,9 @@
     /* Shared KPI card height so a row keeps one height with or without a delta value (AC-3) */
     --kpi-card-min-height: 118px;
 
+    /* Height of the sticky top navigation bar (matches header min-height). */
+    --top-nav-height: 48px;
+
     /* Typography Scale */
     --font-family-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-family-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -82,12 +85,23 @@
 
 .block-container,
 div[data-testid="stMainBlockContainer"] {
-    padding: 0 1.5rem 1.5rem 1.5rem !important;
+    padding: var(--space-md) 1.5rem 1.5rem 1.5rem !important;
     max-width: 100% !important;
 }
 
+/* The main scroll pane must end where the viewport does. Streamlit sizes it to
+   the full app height while it begins below the sticky top navigation bar, so
+   its last rows (and the bottom padding) fell below the clipped app container
+   and could not be scrolled into view. Anchor the height to the space under
+   the bar so the final elements stay visible. */
+[data-testid="stMain"] {
+    height: calc(100dvh - var(--top-nav-height, 48px)) !important;
+    max-height: calc(100dvh - var(--top-nav-height, 48px)) !important;
+}
+
 /* AC-1: collapse the leading zero height rows in the main block so the first
-   real element (the ticker) sits flush under the navigation bar. The options
+   real element (the ticker) starts right below the navigation bar with only the
+   block padding above it. The options
    wrapper is taken out of the flex gap instead of removed, so its fixed
    positioned popover keeps working. */
 div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:first-child {
@@ -161,9 +175,71 @@ div[data-testid="stElementContainer"]:has(.st-key-top_navbar_actions) {
     align-items: center !important;
 }
 
-/* Snug ticker tape placement closer to tab bar */
-div[data-testid="stCustomComponentV1"]:has(iframe) {
-    margin-top: -12px !important;
+/* Native scrolling market ticker tape (dashboard) */
+.ticker-tape {
+    position: relative;
+    overflow: hidden;
+    padding: var(--space-sm) 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
+.ticker-tape__track {
+    display: flex;
+    width: max-content;
+    animation: ticker-tape-scroll 60s linear infinite;
+}
+
+.ticker-tape:hover .ticker-tape__track {
+    animation-play-state: paused;
+}
+
+@keyframes ticker-tape-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+.ticker-tape__item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-inline-end: var(--space-2xl);
+    white-space: nowrap;
+    font-size: var(--font-size-sm);
+}
+
+.ticker-tape__symbol {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.ticker-tape__price,
+.ticker-tape__change {
+    font-family: var(--font-family-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.ticker-tape__price {
+    color: var(--text-muted);
+}
+
+.ticker-tape__change--up {
+    color: var(--color-income);
+}
+
+.ticker-tape__change--down {
+    color: var(--color-fixed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ticker-tape__track {
+        animation: none;
+    }
+}
+
+/* Ticker tape sits flush under the tab bar (no Streamlit block gap above it) */
+div[data-testid="stElementContainer"]:has(.ticker-tape) {
+    margin-top: 0 !important;
     margin-bottom: 2px !important;
 }
 
@@ -488,6 +564,10 @@ div[data-testid="stTabs"] div[role="tab"] * {
             max-height: 100vh !important;
             padding-top: 0 !important;
             overflow: hidden !important;
+            /* Keep only the transform transition: the animated min/max-width
+               (emotion sets 300ms) outranks the drag width in the cascade, so
+               the sidebar used to lag the pointer and stop short. */
+            transition-property: transform !important;
         }
         [data-testid="stSidebarNav"] {
             display: none !important;
@@ -649,6 +729,39 @@ div[data-testid="stTabs"] div[role="tab"] * {
                 height: 100dvh !important;
                 max-height: 100dvh !important;
             }
+        }
+
+        /* Copilot sidebar drag range (the script lives in the zero size bridge
+           component, taken out of flow so it adds no page gap) and a hover
+           affordance so the resize handle is discoverable. */
+        div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-sidebar_resize_bridge) {
+            position: absolute !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        .st-key-sidebar_resize_bridge {
+            position: absolute !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        .st-key-sidebar_resize_bridge iframe {
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+        }
+        [data-testid="stSidebarResizeHandle"] {
+            transition: background-color 0.15s ease !important;
+        }
+        [data-testid="stSidebarResizeHandle"]:hover {
+            background-color: rgba(45, 212, 191, 0.35) !important;
         }
 
         /* Sleek DataFrames */

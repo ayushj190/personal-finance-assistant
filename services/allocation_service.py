@@ -11,16 +11,23 @@ from typing import Any
 
 from db.repositories import HoldingRepository
 
-ALLOWED_DIMENSIONS = ("asset_class", "asset_type", "region", "sector", "currency", "ticker")
+ALLOWED_DIMENSIONS = ("sector", "region", "currency", "nature")
 
 # Fixed bucket vocabulary for the dimensions that are not derived from holdings.
+# `nature` mirrors services.portfolio.classify_asset_nature so a target lines up
+# with the value the drift calculation produces.
 BASE_BUCKETS: dict[str, list[str]] = {
-    "asset_class": ["cash", "investment"],
-    "asset_type": ["stock", "etf", "crypto", "commodity", "bond", "other"],
+    "nature": [
+        "Equities",
+        "Fixed Income",
+        "Commodities & Real Assets",
+        "Digital Assets (Crypto)",
+        "Other / Multi-Asset",
+    ],
 }
 
 # Dimensions whose vocabulary is read from the values present in the holdings.
-DYNAMIC_DIMENSIONS = ("region", "sector", "currency", "ticker")
+DYNAMIC_DIMENSIONS = ("region", "sector", "currency")
 
 
 def get_valid_buckets(conn: sqlite3.Connection, dimension: str) -> list[str]:

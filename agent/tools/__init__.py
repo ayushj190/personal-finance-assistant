@@ -50,6 +50,22 @@ from agent.tools.market import (
 from agent.tools.navigation import (
     tool_open_view,
 )
+from agent.tools.insights import (
+    tool_compare_periods,
+    tool_get_budget_status,
+    tool_get_account_balances,
+    tool_get_spending_forecast,
+    tool_get_income_summary,
+    tool_get_upcoming_bills,
+    tool_get_net_worth_history,
+)
+from agent.tools.actions import (
+    tool_categorize_transactions,
+    tool_mark_as_transfer,
+    tool_edit_transaction,
+    tool_delete_transaction,
+    tool_set_budget_cap,
+)
 
 # Re-exports for test compatibility and patch mocking
 from db.repositories import AccountRepository, HoldingRepository
@@ -90,6 +106,18 @@ __all__ = [
     "tool_analyze_mortgage",
     "tool_request_profile_form",
     "tool_open_view",
+    "tool_compare_periods",
+    "tool_get_budget_status",
+    "tool_get_account_balances",
+    "tool_get_spending_forecast",
+    "tool_get_income_summary",
+    "tool_get_upcoming_bills",
+    "tool_get_net_worth_history",
+    "tool_categorize_transactions",
+    "tool_mark_as_transfer",
+    "tool_edit_transaction",
+    "tool_delete_transaction",
+    "tool_set_budget_cap",
     "AccountRepository",
     "HoldingRepository",
     "get_consolidated_holdings_df",

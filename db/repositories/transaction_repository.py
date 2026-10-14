@@ -191,14 +191,6 @@ class TransactionRepository:
         return None
 
     @staticmethod
-    def get_v_transactions(conn: sqlite3.Connection, limit: int = 500) -> list[dict[str, Any]]:
-        cur = conn.execute(
-            "SELECT * FROM v_transactions ORDER BY booking_date DESC LIMIT ?",
-            (limit,),
-        )
-        return [dict(r) for r in cur.fetchall()]
-
-    @staticmethod
     def get_average_monthly_expenses(conn: sqlite3.Connection) -> float:
         query = """
         SELECT AVG(monthly_exp) as m_exp

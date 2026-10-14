@@ -6,6 +6,7 @@ from config import DB_PATH
 from db import database
 from money import Money
 from ui.components import section_header, kpi_card, is_hidden
+from ui.page_panel import render_page_panel
 from ui.theme import render_chart
 from services.tax_report_service import generate_dutch_tax_statement
 from services.tax_optimizer import (
@@ -85,6 +86,7 @@ def calculate_box3_tax(cash_eur: float, invested_eur: float, has_fiscal_partner:
 
 
 def render():
+    render_page_panel("tax")
     conn = database.connect(DB_PATH)
     
     # Ensure profile row exists

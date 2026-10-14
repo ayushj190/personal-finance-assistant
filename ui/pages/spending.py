@@ -30,6 +30,7 @@ from ui.components import format_money, is_hidden, kpi_card, section_header
 from ui.theme import mask_chart_if_hidden, render_chart
 from ui.dialogs import assign_mortgage_dialog, set_category_budget_dialog
 from ui.filters import build_where_clause, render_filters
+from ui.page_panel import render_page_panel
 from services.date_scope import spending_view_for_scope
 
 
@@ -743,17 +744,37 @@ def _render_monthly_trend(monthly_df: pd.DataFrame) -> None:
 
 
 def render():
-    col_filt, col_scope, col_budgets, col_mortgage = st.columns(
-        [1.2, 2.2, 1.3, 1.3], vertical_alignment="bottom"
-    )
-    with col_filt:
-        filters = render_filters()
-
+    render_page_panel("spending")
     conn = database.connect(DB_PATH)
     salary_day = get_fiscal_salary_day(conn)
 
+    cat_rows = conn.execute(
+        "SELECT name FROM categories WHERE name != 'Uncategorized' ORDER BY name ASC"
+    ).fetchall()
+    category_options = ["All Categories"] + [r["name"] for r in cat_rows]
+    if st.session_state.get("spending_category") not in category_options:
+        st.session_state["spending_category"] = "All Categories"
+
+    col_filt, col_scope, col_category, col_budgets, col_mortgage = st.columns(
+        [1.2, 2.0, 1.4, 1.2, 1.2], vertical_alignment="bottom"
+    )
+    with col_filt:
+        filters = render_filters()
+    with col_category:
+        selected_category = st.selectbox(
+            "Category",
+            options=category_options,
+            key="spending_category",
+            help="Filter spending to one category branch",
+        )
+
     where_sql, params = build_where_clause(filters, table_alias="t")
     df_all = _fetch_spending_df(conn, filters)
+    if selected_category and selected_category != "All Categories" and not df_all.empty:
+        df_all = df_all[
+            (df_all["category"] == selected_category)
+            | (df_all["parent_category"] == selected_category)
+        ].copy()
 
     if df_all.empty:
         conn.close()

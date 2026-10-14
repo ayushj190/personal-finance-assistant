@@ -125,9 +125,9 @@ def tool_analyze_investments() -> dict[str, Any]:
         positions: list[dict[str, Any]] = []
         if not consolidated_df.empty and "value_eur" in consolidated_df.columns:
             total_portfolio_value_eur = round(float(consolidated_df["value_eur"].sum()), 2)
-            holdings_by_type = {
+            holdings_by_nature = {
                 str(k): round(float(v), 2)
-                for k, v in consolidated_df.groupby("asset_type")["value_eur"].sum().to_dict().items()
+                for k, v in consolidated_df.groupby("nature")["value_eur"].sum().to_dict().items()
             }
             # AC-8/AC-9: one entry per distinct asset, summed across lots.
             for ticker, group in consolidated_df.groupby("ticker", sort=False):
@@ -140,7 +140,7 @@ def tool_analyze_investments() -> dict[str, Any]:
                     "value_eur": round(val, 2),
                     "value_eur_formatted": f"€{val:,.2f}",
                     "asset_class": str(first.get("asset_class", "investment")),
-                    "asset_type": str(first.get("asset_type", "")),
+                    "nature": str(first.get("nature", "")),
                     "region": str(first.get("region", "")),
                     "sector": str(first.get("sector", "")),
                     "currency": str(first.get("currency", "EUR")),
@@ -148,7 +148,7 @@ def tool_analyze_investments() -> dict[str, Any]:
                 })
         else:
             total_portfolio_value_eur = 0.0
-            holdings_by_type = {}
+            holdings_by_nature = {}
 
         # Active allocation profile & targets
         profiles = HoldingRepository.get_allocation_profiles(conn)
@@ -161,13 +161,13 @@ def tool_analyze_investments() -> dict[str, Any]:
             targets_dict = HoldingRepository.get_allocation_targets(conn, active_profile["id"])
             targets_list = [{"bucket": b, "target_pct": pct} for b, pct in targets_dict.items()]
 
-            dimension = active_profile.get("dimension") or "asset_type"
+            dimension = active_profile.get("dimension") or "nature"
             include_cash = bool(active_profile.get("include_cash", 0))
             drift_band_pct = float(active_profile.get("drift_band_pct", 5.0))
 
             current_values: dict[str, float] = {}
             if not consolidated_df.empty:
-                col_to_use = dimension if dimension in consolidated_df.columns else "asset_type"
+                col_to_use = dimension if dimension in consolidated_df.columns else "nature"
                 for _, row in consolidated_df.iterrows():
                     b_key = str(row.get(col_to_use) or "other")
                     current_values[b_key] = current_values.get(b_key, 0.0) + float(row.get("value_eur", 0.0) or 0.0)
@@ -198,7 +198,7 @@ def tool_analyze_investments() -> dict[str, Any]:
                 "cash_balance_eur": cash_balance_eur,
                 "cash_balance_formatted": f"€{cash_balance_eur:,.2f}",
                 "asset_classes_eur": {},
-                "holdings_by_asset_type_eur": {},
+                "holdings_by_nature_eur": {},
                 "positions": [],
                 "active_allocation_profile": active_profile,
                 "allocation_targets": targets_list,
@@ -217,7 +217,7 @@ def tool_analyze_investments() -> dict[str, Any]:
 
         msg_parts = [
             f"Total investment portfolio value is €{total_portfolio_value_eur:,.2f} across {total_positions_count} total positions.",
-            f"Asset breakdown: {json.dumps(holdings_by_type)}.",
+            f"Asset nature breakdown: {json.dumps(holdings_by_nature)}.",
         ]
         if active_profile:
             if rebalance_needed:
@@ -239,7 +239,7 @@ def tool_analyze_investments() -> dict[str, Any]:
             "cash_balance_formatted": f"€{cash_balance_eur:,.2f}",
             "total_positions_count": total_positions_count,
             "asset_classes_eur": asset_classes,
-            "holdings_by_asset_type_eur": holdings_by_type,
+            "holdings_by_nature_eur": holdings_by_nature,
             "positions": top_positions,
             "active_allocation_profile": active_profile,
             "allocation_targets": targets_list,

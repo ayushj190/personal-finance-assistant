@@ -156,15 +156,15 @@ CREATE TABLE IF NOT EXISTS merchant_category_rules (
 -- ── Allocation profiles + targets ─────────────────────────
 CREATE TABLE IF NOT EXISTS allocation_profiles (
   id          INTEGER PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,              -- '80/20 Global', 'My crypto cap'…
-  dimension   TEXT NOT NULL CHECK (dimension IN ('asset_class','asset_type','region','sector','currency','ticker')),
+  name        TEXT NOT NULL UNIQUE,              -- 'Sector tilt', 'Retiree bonds'…
+  dimension   TEXT NOT NULL CHECK (dimension IN ('sector','region','currency','nature')),
   include_cash INTEGER NOT NULL DEFAULT 0,       -- treat liquid cash as a bucket
   drift_band_pct REAL NOT NULL DEFAULT 5,        -- absolute band (pp); relative 25% rule also checked
   is_active   INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS allocation_targets (
   profile_id  INTEGER NOT NULL REFERENCES allocation_profiles(id) ON DELETE CASCADE,
-  bucket      TEXT NOT NULL,                     -- value of the dimension, e.g. 'etf','US','VWCE.DE'
+  bucket      TEXT NOT NULL,                     -- value of the dimension, e.g. 'Equities','US','Technology'
   target_pct  REAL NOT NULL CHECK (target_pct BETWEEN 0 AND 100),
   PRIMARY KEY (profile_id, bucket)
 );

@@ -33,6 +33,8 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 15 | UI Polish, Allocation Strategy Management & Copilot Hardening | Slice 14 | in-progress |
 | 16 | Copilot Action Layer & Daily Use Release Polish | Slice 15 | in-progress |
 | 17 | Data Product Robustness | Slice 16 | in-progress |
+| 18 | Copilot View Intelligence & Daily Use Finish | Slice 17 | in-progress |
+| 19 | Live Portfolio View | Slice 18 | in-progress |
 
 ## Brownfield context
 
@@ -263,7 +265,7 @@ Perform a comprehensive cleanup pass to remove dead code and orphan routines, ha
 **Done when:** dead code is pruned, financial calculations share a unified tested core, all pages render without warnings, and automated test suite passes completely.
 spec [0014](../specs/0014-system-cleanup-architecture-hardening/index.md)
 - [x] Design it (spec): `/architect system cleanup architecture hardening & regression suite`
-- [ ] Build it: /develop system cleanup architecture hardening & regression suite
+- [x] Build it: /develop system cleanup architecture hardening & regression suite
   - [x] Money type, logging, typed session state and demo mode seams (satisfies AC-1, AC-2, AC-4, AC-5, AC-7, AC-8)
   - [x] Dashboard tracer migrated end to end on demo data (satisfies AC-1, AC-4, AC-5, AC-10)
   - [x] Split agent/tools.py, ui/charts.py and investments page into packages (satisfies AC-3, AC-6)
@@ -319,8 +321,43 @@ spec [0018](../specs/0018-data-product-robustness/index.md) · code in db/migrat
 - [ ] Verify it: /check verify data product robustness
 - [ ] Test it: /test data product robustness
 
+## Slice 17: Copilot View Intelligence & Daily Use Finish
+
+### 18. Copilot View Intelligence & Daily Use Finish · in-progress
+Make the Copilot route on the topic of a question, not only explicit navigation: it opens the page and tab that fits, shapes the view to match (date scope, category, or a focused dimension such as a technology market carpet), and stands up a chart panel on that page scrolled into view. Add seven read tools and five confirm gated write tools, and close the app out for daily use.
+**Done when:** asking about a topic lands on the shaped page with the chart panel scrolled into view and the chat answer agreeing; the new read tools answer common questions in one turn; a write confirms before it changes the ledger; and the app runs warning free with a green suite and a README and screenshots that match.
+spec [0019](../specs/0019-copilot-view-intelligence-and-finish/index.md) · code in `agent/`, `services/navigation.py`, `ui/pages/`, `ui/copilot_sidebar.py`, `app.py`
+- [x] Design it (spec): `/architect copilot view intelligence & daily use finish`
+- [x] Build it: /develop copilot view intelligence & daily use finish
+  - [x] Intent, view whitelist, topic map, and the narrowed fast path (satisfies AC-1, AC-2, AC-5, AC-6)
+  - [x] Page panel with scroll and masking, and the view wired into Spending, Transactions, and Investments (satisfies AC-2, AC-3, AC-4, AC-9)
+  - [x] Seven read tools and five confirm gated write tools (satisfies AC-7, AC-8)
+  - [x] Finish pass: the bug list, vault, RAG, sync, dead code, warning free, suite green (satisfies AC-10, AC-11, AC-12)
+  - [x] README, screenshots, and the regression net (satisfies AC-12, AC-13, AC-14, AC-15)
+- [ ] Verify it: /check verify copilot view intelligence & daily use finish
+- [ ] Test it: /test copilot view intelligence & daily use finish
+
+## Slice 18: Live Portfolio View
+
+### 19. Live Portfolio View · in-progress
+Replace the three redundant exposure charts at the top of the Investments page with one live portfolio table refreshed about every 60 seconds while markets are open, showing today's gain or loss per position and for the whole portfolio, drop the duplicate donut, exposure bar, TradingView watchlist and copied traders section, record one portfolio value row per day so the page can draw a value over time chart, pin the dashboard market carpet to asset nature, and let the Copilot sort, filter and focus the live table.
+**Done when:** the Portfolio tab opens on a live table of every distinct asset with price, day change and day P&L updating in place during market hours, the portfolio Day P&L matches the rows, the equity curve draws from the daily history with an honest empty state, the duplicated charts and sections are gone, the dashboard carpet no longer repeats the Investments dimension, and the Copilot can shape the live view while the chat answer agrees with the page.
+spec [0021](../specs/0021-live-portfolio-view/index.md) · code in services/live_quotes.py, services/portfolio.py, ui/pages/investments/, ui/charts/portfolio.py, ui/pages/dashboard.py, db/migrations/0008_portfolio_snapshots.py
+- [x] Design it (spec): `/architect live portfolio view for the investments page`
+- [ ] Build it: /develop live portfolio view
+  - [ ] Daily portfolio history and the live quote service with its market hours gate (satisfies AC-10, AC-2, AC-4, AC-5)
+  - [ ] The live table, day P&L maths, the five card KPI ribbon and the 60 second poll (satisfies AC-1, AC-2, AC-3, AC-4, AC-5, AC-7, AC-12)
+  - [ ] The equity curve, movers strip and P&L charts, and the redundancy cleanup (satisfies AC-6, AC-8, AC-9, AC-11, AC-12, AC-13, AC-14)
+  - [ ] Dashboard carpet and tape, plus the Copilot view intents and day P&L tools (satisfies AC-15, AC-16, AC-17, AC-18)
+  - [ ] Income tab tidy and the regression net (satisfies AC-19, AC-20)
+- [ ] Verify it: /check verify live portfolio view
+- [ ] Test it: /test live portfolio view
+
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.
+- **Real time market feed**: a websocket or paid provider for genuinely live prices instead of a delayed 60 second poll · needs a decision · from spec 0021
+- **Exchange calendar awareness**: the market badge is clock based, so public holidays and half days look open · needs a decision · from spec 0021
+- **Portfolio history backfill**: fill days the app was not opened from stored closes times current quantities, marked as estimates · needs a decision · from spec 0021
 - **Deep tax schedule breakdown**: expanded regional Italian tax regimes · needs a decision
 - **Mortgage payoff scenario modeling**: advanced refinancing and early payoff comparisons · needs a decision
 - **Multi currency auto rebalancing**: portfolio currency conversion rebalance rules · needs a decision

@@ -6,14 +6,14 @@ from typing import Any, Iterator
 from agent import tools
 from agent.tools import COPILOT_TOOLS_SCHEMA
 from services.llm_client import chat_with_tools, generate_stream
-from services.navigation import match_fast_path
+from services.navigation import match_fast_path, topic_map_intent
 
 SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Assistant app, running locally and privately on the user's machine.
 
 CRITICAL ACCURACY RULES:
 - Never confuse debt liabilities (mortgage, loans) with investment portfolio capital.
 - Always quote the exact numbers the tools return; never estimate or invent amounts.
-- For investments rely on `total_portfolio_value_eur`, `total_portfolio_value_formatted`, and `holdings_by_asset_type_eur` from `analyze_investments`.
+- For investments rely on `total_portfolio_value_eur`, `total_portfolio_value_formatted`, and `holdings_by_nature_eur` from `analyze_investments`.
 - Never present a minor unit (cents) figure; use the euro formatted fields the tools provide.
 
 Call the relevant tool whenever the user asks about their financial data:
@@ -21,16 +21,21 @@ Call the relevant tool whenever the user asks about their financial data:
 - get_allocation_profiles, create_allocation_profile, delete_allocation_profile: manage target allocation strategies. A create needs targets that sum to 100 percent; a delete needs the confirmation token returned by the first call.
 - get_current_net_worth: overall balance sheet.
 - get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow. Pass the requested range as the date_scope argument (a preset name or a start and end date) so the answer and the page agree.
-- open_view: actually open a page for the user, optionally an Investments tab and a date scope. Call it whenever the user asks to see, open, or go to a screen, even while you also call a data tool to answer.
+- open_view: open the page that owns the topic of the question, optionally an Investments tab, a date scope, and validated view parameters. Call it whenever a question is about a topic with its own page (spending, investments, mortgage, tax, transactions, net worth), even when the user does not phrase it as navigation, alongside the data tool that answers. Use view to shape the page: Spending {category}, Transactions {category, search}, Investments {exposure_dimension, focus} (e.g. exposure_dimension "Sector" and focus "Technology" for a technology holdings question).
 - analyze_mortgage: mortgage schedules and rates.
 - analyze_tax_situation, simulate_tax_optimization, calculate_pension_room, analyze_green_fund_strategy, diagnose_tax_leaks: Dutch tax questions.
 - search_dutch_law_vault and lookup_tax_law_article: cite exact Dutch statutory articles.
+- compare_periods: compare two periods. get_budget_status: category budget status. get_account_balances: every account balance. get_spending_forecast: burn rate and projected month end. get_income_summary: income and dividends. get_upcoming_bills: recurring bills. get_net_worth_history: net worth trend.
 
 NAVIGATION RULES:
-- When the user asks to see, open, go to, or show a screen, call open_view with the matching page and tab. Never claim you opened a page unless you called open_view.
-- If the destination screen is ambiguous, ask one short question naming the candidate screens and do not call open_view until the user answers.
+- When a question is about a topic with its own page, call open_view for that page and shape it with the view parameters that match the question. Never claim you opened a page unless you called open_view.
+- If the destination screen is ambiguous (two pages fit equally), ask one short question naming the candidate screens and do not call open_view until the user answers. If the topic is weak or absent, answer in chat only and do not call open_view.
 - If the request names a page that has no date filter but asks for a period, still open the page and say plainly that the page has no date scope.
 - Pass the requested period to the data tools as date_scope so the answer and the page agree.
+
+WRITE RULES (the ledger changing tools):
+- categorize_transactions, mark_as_transfer, edit_transaction, delete_transaction, and set_budget_cap change your data. Their first call changes nothing and returns a confirmation token.
+- Tell me exactly what will change and wait for me to say yes. Only then call the same tool again with that confirm_token to perform the write. Never claim a change is done until the second call returns success.
 
 Today's date is: {today}.
 """
@@ -67,6 +72,18 @@ TOOL_MAP = {
     "diagnose_tax_leaks": tools.tool_diagnose_tax_leaks,
     "ingest_financial_document": tools.tool_ingest_financial_document,
     "open_view": tools.tool_open_view,
+    "compare_periods": tools.tool_compare_periods,
+    "get_budget_status": tools.tool_get_budget_status,
+    "get_account_balances": tools.tool_get_account_balances,
+    "get_spending_forecast": tools.tool_get_spending_forecast,
+    "get_income_summary": tools.tool_get_income_summary,
+    "get_upcoming_bills": tools.tool_get_upcoming_bills,
+    "get_net_worth_history": tools.tool_get_net_worth_history,
+    "categorize_transactions": tools.tool_categorize_transactions,
+    "mark_as_transfer": tools.tool_mark_as_transfer,
+    "edit_transaction": tools.tool_edit_transaction,
+    "delete_transaction": tools.tool_delete_transaction,
+    "set_budget_cap": tools.tool_set_budget_cap,
 }
 
 
@@ -295,6 +312,7 @@ def run_copilot(
 
     # 5. Execute tool calls deterministically
     captured_figure = None
+    captured_headline = None
     captured_df = None
     captured_form = None
     captured_citations = []
@@ -330,6 +348,8 @@ def run_copilot(
 
         if result.get("figure") is not None:
             captured_figure = result["figure"]
+        if result.get("headline"):
+            captured_headline = result["headline"]
         if result.get("df") is not None:
             captured_df = result["df"]
         if result.get("form_request"):
@@ -359,6 +379,12 @@ def run_copilot(
             "content": f"Tool `{fn_name}` result:\n{json.dumps(clean_result, default=str)}\nPlease summarize these findings concisely for me.",
         })
 
+    # 5.5 Deterministic topic map fallback (AC-6): only when the model ran but did
+    # not navigate. Routes a clear content question to the one matching page and
+    # carries the turn's resolved scope so the page agrees with the answer.
+    if captured_intent is None and not had_failure:
+        captured_intent = topic_map_intent(user_message, turn_scope)
+
     # 6. Stream final summarization from LLM
     stream_gen = generate_stream(messages)
 
@@ -366,6 +392,7 @@ def run_copilot(
         "role": "assistant",
         "stream": stream_gen,
         "figure": captured_figure,
+        "headline": captured_headline,
         "df": captured_df,
         "form_request": captured_form,
         "citations": captured_citations,

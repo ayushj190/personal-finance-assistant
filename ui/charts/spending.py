@@ -34,6 +34,11 @@ def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None
 
     pull_values = [0.02] * len(df_grouped)
 
+    # With many slices the inside labels crowd each other (spec 0016 nit), so the
+    # names move to the legend and the slices keep only the percentage.
+    crowded = len(df_grouped) > 6
+    show_labels = not drilldown_category and not crowded
+
     fig = px.pie(
         df_grouped,
         names=names_col,
@@ -43,7 +48,7 @@ def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None
     )
 
     fig.update_traces(
-        textinfo="percent+label" if not drilldown_category else "percent",
+        textinfo="percent+label" if show_labels else "percent",
         textposition="inside",
         pull=pull_values,
         hovertemplate=(
@@ -57,7 +62,7 @@ def build_spending_donut(df: pd.DataFrame, drilldown_category: str | None = None
     fig.update_layout(
         height=350,
         margin=dict(l=20, r=20, t=25, b=25),
-        showlegend=True if drilldown_category else False,
+        showlegend=bool(drilldown_category) or crowded,
         transition=dict(duration=500, easing="cubic-in-out"),
     )
     mask_chart_if_hidden(fig)

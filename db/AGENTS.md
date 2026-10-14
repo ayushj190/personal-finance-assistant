@@ -14,7 +14,6 @@ The database layer manages SQLite persistence for the personal finance assistant
 | `db/migrations/` | Forward only migrations (`NNNN_name.sql` schema, `NNNN_name.py` data) and the hardened runner in `runner.py` (checksums, one transaction per migration, pre migrate backups) |
 | `db/schema.sql` | Core table definitions, constraints, default indexes, and foreign keys |
 | `db/seed.sql` | Initial category hierarchy seeds for income, fixed, and discretionary expenses |
-| `db/repository.py` | Legacy query helpers and aggregate data retrieval methods |
 
 ## Conventions
 

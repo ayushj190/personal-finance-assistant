@@ -294,6 +294,22 @@ def aggregate_distinct_holdings(holdings_df: pd.DataFrame) -> tuple[pd.DataFrame
     return pd.DataFrame(rows, columns=columns), ("Avg Open (EUR)" if eur_fallback else "Avg Open")
 
 
+def exposure_dimension_column(dimension: str) -> str | None:
+    """Map a dimension label (Sector, Region, Currency, Nature, Asset Class) to its DataFrame column."""
+    dim_key = str(dimension).lower().strip().replace(" ", "_").replace("-", "_")
+    if dim_key in ("asset_class", "asset_type", "asset_type_display", "assetclass"):
+        return "asset_type_display"
+    if dim_key in ("sector", "sectors", "theme", "themes"):
+        return "sector"
+    if dim_key in ("region", "regions", "country", "geography"):
+        return "region"
+    if dim_key in ("currency", "currencies"):
+        return "currency"
+    if dim_key in ("nature", "asset_nature", "commodity", "commodities"):
+        return "nature"
+    return None
+
+
 def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> pd.DataFrame:
     """
     Aggregate portfolio exposure across a given dimension (Sector, Region, Currency, Asset Class, Nature/Commodity).
@@ -303,20 +319,11 @@ def get_dimension_exposure_df(consolidated_df: pd.DataFrame, dimension: str) -> 
     if consolidated_df.empty or "value_eur" not in consolidated_df.columns:
         return pd.DataFrame(columns=["bucket", "value_eur", "weight_pct"])
 
-    dim_key = str(dimension).lower().strip().replace(" ", "_").replace("-", "_")
-
     # Map dimension name to DataFrame column
-    if dim_key in ("asset_class", "asset_type", "asset_type_display", "assetclass"):
-        col = "asset_type_display" if "asset_type_display" in consolidated_df.columns else "asset_type"
-    elif dim_key in ("sector", "sectors", "theme", "themes"):
-        col = "sector"
-    elif dim_key in ("region", "regions", "country", "geography"):
-        col = "region"
-    elif dim_key in ("currency", "currencies"):
-        col = "currency"
-    elif dim_key in ("nature", "asset_nature", "commodity", "commodities"):
-        col = "nature"
-    else:
+    col = exposure_dimension_column(dimension)
+    if col == "asset_type_display" and "asset_type_display" not in consolidated_df.columns:
+        col = "asset_type"
+    if col is None or col not in consolidated_df.columns:
         col = dimension if dimension in consolidated_df.columns else "sector"
 
     df = consolidated_df.copy()
@@ -430,7 +437,7 @@ def get_smart_allocation_profiles(conn: sqlite3.Connection, consolidated_df: pd.
         },
     ]
 
-    # Append saved database profiles (such as 80/20 Core-Satellite)
+    # Append saved database profiles (user-defined strategies)
     try:
         db_profiles = HoldingRepository.get_allocation_profiles(conn)
         for p in db_profiles:

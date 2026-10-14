@@ -21,6 +21,7 @@ from ui.pages.investments.holdings import render_copy_portfolios, render_holding
 from ui.pages.investments.exposure import render_exposure_visualizer
 from ui.pages.investments.watchlist import render_live_quotes_and_watchlist
 from ui.pages.investments.realized_pnl import render_realized_pnl_panel
+from ui.page_panel import render_page_panel
 
 # Re-exports for test compatibility and patch mocking
 from ui.components import format_money, is_hidden, kpi_card, section_header
@@ -28,6 +29,7 @@ from ui.charts import ASSET_TYPE_COLORS, SECTOR_COLORS, build_drift_bar_chart, b
 
 
 def render() -> None:
+    render_page_panel("investments")
     conn = database.connect(DB_PATH)
     try:
         holdings_df = HoldingRepository.get_v_holdings_df(conn)
