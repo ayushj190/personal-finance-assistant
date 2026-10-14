@@ -7,7 +7,7 @@
 [![Tests: 298 Passed](https://img.shields.io/badge/Tests-298%20Passed-brightgreen.svg)](tests/)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
 
-> **Product Vision**: A high-trust, local-first personal financial operating system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
+> **Product Vision**: A high-trust, local-first personal finance analysis system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
 
 <p align="center">
   <img src="docs/assets/screenshots/dashboard.png" width="32%" alt="Executive wealth dashboard" />
