@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from money import Money
+from core.money import Money
 from ui.pages.tax import calculate_box1_tax
 from ui.theme import hex_to_rgba, mask_chart_if_hidden
 import ui.charts
@@ -447,7 +447,7 @@ def open_sankey_fullscreen_dialog(
     drilldown_flow: str | None = None,
 ) -> None:
     """Open full screen modal dialog displaying the high-resolution cash flow Sankey diagram."""
-    from config import DB_PATH
+    from core.config import DB_PATH
     from db import database
 
     if drilldown_flow:

@@ -2,7 +2,7 @@ from decimal import Decimal
 import unittest
 from unittest.mock import patch
 
-from money import Money, sum_money
+from core.money import Money, sum_money
 from ui.components import format_money
 
 

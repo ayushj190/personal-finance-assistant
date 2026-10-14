@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 netstat -ano -p tcp | findstr /r /c:":8501 .*LISTENING" >nul
 if not errorlevel 1 (

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.date_scope import resolve_date_scope
 from services.navigation import (

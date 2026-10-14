@@ -3,7 +3,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import keyring
 
-from config import DATA_DIR, DEMO, VAULT_PATH
+from core.config import DATA_DIR, DEMO, VAULT_PATH
 
 SERVICE_NAME = "personal_finance_assistant"
 VAULT_KEY_NAME = "vault_master_key"

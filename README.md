@@ -5,7 +5,7 @@
 [![Database: SQLite WAL](https://img.shields.io/badge/Database-SQLite%20(WAL)-green.svg)](https://www.sqlite.org/)
 [![AI Engine: Ollama Local](https://img.shields.io/badge/AI%20Engine-Ollama%20(Qwen%202.5)-purple.svg)](https://ollama.com/)
 [![Tests: 298 Passed](https://img.shields.io/badge/Tests-298%20Passed-brightgreen.svg)](tests/)
-[![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](install.ps1)
+[![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Optimized-0078D4.svg)](scripts/install.ps1)
 
 > **Product Vision**: A high-trust, local-first personal finance analysis system built for privacy-conscious European investors and homeowners. Consolidates multi-bank Open Banking feeds, neobroker portfolios, and Dutch mortgage/tax obligations into an interactive desktop interface with an autonomous, offline AI Copilot—**zero cloud custody, zero telemetry, and 100% data ownership.**
 
@@ -97,7 +97,7 @@ flowchart TD
 Test-drive all financial modeling, charts, and copilot tools immediately without connecting bank credentials:
 
 ```cmd
-run.bat --demo
+scripts\run.bat --demo
 ```
 
 Or run via environment variable:
@@ -258,7 +258,7 @@ Clone repository and run the automated PowerShell setup script:
 ```powershell
 git clone https://github.com/ayushj190/personal-finance-assistant.git
 cd personal-finance-assistant
-.\install.ps1
+.\scripts\install.ps1
 ```
 The installer automatically:
 - Creates a sandboxed virtual environment (`.venv/`)
@@ -269,7 +269,7 @@ The installer automatically:
 ### Running the Application
 Launch via desktop shortcut or terminal:
 ```cmd
-run.bat
+scripts\run.bat
 ```
 Application opens at `http://localhost:8501`. Telemetry is disabled by default.
 
@@ -280,7 +280,7 @@ Application opens at `http://localhost:8501`. Telemetry is disabled by default.
 The application maintains an automated test suite across all critical domains:
 
 ```powershell
-python run_tests.py
+python scripts\run_tests.py
 # Or run pytest directly
 .\.venv\Scripts\pytest
 ```

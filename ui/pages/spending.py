@@ -5,9 +5,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from services.analytics import (
     aggregate_top_merchants,
     calculate_current_net_worth,

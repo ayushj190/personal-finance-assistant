@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from money import Money
+from core.money import Money
 from ui.theme import (
     COLOR_CASH,
     COLOR_INVESTMENT,

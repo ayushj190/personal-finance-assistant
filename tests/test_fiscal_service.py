@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.fiscal_service import (
     get_default_salary_day,

@@ -13,7 +13,7 @@ import hashlib
 import json
 from typing import Any, Iterable
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from db.repositories import TransactionRepository
 from services.budget_service import set_category_budget

@@ -1,6 +1,10 @@
 # Windows 11 Install & Setup Script
 $ErrorActionPreference = "Stop"
 
+# Repo root is the parent of this script's folder; run everything from there.
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $RepoRoot
+
 Write-Host "Setting up Personal Finance Assistant..." -ForegroundColor Cyan
 
 # 1. Check Python
@@ -28,8 +32,8 @@ Write-Host "Initializing SQLite database and views..." -ForegroundColor Yellow
 $shortcutPath = "$([Environment]::GetFolderPath('Desktop'))\Personal Finance Assistant.lnk"
 $wsh = New-Object -ComObject WScript.Shell
 $shortcut = $wsh.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = "$PSScriptRoot\run.bat"
-$shortcut.WorkingDirectory = "$PSScriptRoot"
+$shortcut.TargetPath = "$RepoRoot\scripts\run.bat"
+$shortcut.WorkingDirectory = "$RepoRoot"
 $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,220"
 $shortcut.Save()
 

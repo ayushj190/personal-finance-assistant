@@ -3,7 +3,7 @@ from typing import Any
 import pandas as pd
 from datetime import date
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.analytics import calculate_current_net_worth
 

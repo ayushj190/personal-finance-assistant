@@ -1,9 +1,9 @@
 from typing import Any
 import plotly.express as px
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from services.tax_optimizer import (
     calculate_jaarruimte,
     calculate_groenfondsen_arbitrage,

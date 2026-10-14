@@ -2,7 +2,7 @@
 
 from datetime import date
 import streamlit as st
-from config import DB_PATH
+from core.config import DB_PATH
 from connectors.market_data_service import update_quotes
 from db import database
 from db.repositories import HoldingRepository

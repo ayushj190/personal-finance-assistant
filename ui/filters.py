@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from typing import Any
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.date_scope import CUSTOM_PRESET, PRESETS, resolve_date_scope
 from ui import state

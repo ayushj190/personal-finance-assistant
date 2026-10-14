@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 
-import config
+from core import config
 from db import database
 
 

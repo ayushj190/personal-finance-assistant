@@ -1,7 +1,7 @@
 import re
 from typing import Any
 import streamlit as st
-from money import Money
+from core.money import Money
 from ui import state
 
 
@@ -30,7 +30,7 @@ def format_money(
     symbol: str = "€",
     decimals: int = 2,
 ) -> str:
-    from money import Money
+    from core.money import Money
 
     if not isinstance(val, Money):
         # Convert incoming primitive to Money for uniform representation

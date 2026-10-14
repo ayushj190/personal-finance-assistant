@@ -3,7 +3,7 @@ from typing import Optional
 import streamlit as st
 
 import ui.pages.investments
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from db.repositories import HoldingRepository
 from ui.components import format_money, kpi_card, section_header

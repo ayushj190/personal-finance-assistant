@@ -2,7 +2,7 @@ import sqlite3
 from typing import Any
 import pandas as pd
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.analytics import calculate_current_net_worth
 

@@ -8,7 +8,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-from config import DB_PATH
+from core.config import DB_PATH
 from connectors.base import NeedsReauth, RawAccount, RawHolding, RawTransaction
 from db import database
 from services import secrets_vault

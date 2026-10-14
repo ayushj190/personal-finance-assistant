@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from connectors.file_import.detect import (
     FileFormat,
     detect_statement_account_hint,
@@ -12,7 +12,7 @@ from connectors.file_import.detect import (
 from connectors.market_data_service import update_quotes
 from db import database
 from db.repositories import HoldingRepository
-from money import Money
+from core.money import Money
 from services.sync_service import import_statement_content
 from ui.dialogs import manual_account_dialog
 

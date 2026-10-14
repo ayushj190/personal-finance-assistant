@@ -4,7 +4,7 @@ import sqlite3
 from typing import Any
 import pandas as pd
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 from connectors.market_data_service import classify_asset, enrich_ticker_metadata
 from db.repositories import HoldingRepository
 

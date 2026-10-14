@@ -6,7 +6,7 @@ from ollama import Client
 
 logger = logging.getLogger(__name__)
 
-from config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
+from core.config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from services import secrets_vault
 
 # Keep the local model resident between turns to cut first token latency, and

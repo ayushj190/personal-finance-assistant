@@ -3,10 +3,8 @@ import os
 from pathlib import Path
 import unittest
 
-from config import DATA_DIR
-import logging_setup
-
-
+from core.config import DATA_DIR
+from core import logging_setup
 class TestLoggingSetup(unittest.TestCase):
     def test_logging_configuration(self):
         logging_setup.configure()

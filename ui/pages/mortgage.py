@@ -2,9 +2,9 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from services.mortgage import calculate_mortgage_schedule, sync_liability_schedule
 from ui.charts import build_mortgage_amortization_chart, build_mortgage_interest_principal_bar
 from ui.components import format_money, is_hidden, kpi_card, mask_if_hidden, section_header

@@ -5,7 +5,7 @@ import subprocess
 
 
 def main() -> int:
-    repo_root = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONPATH"] = repo_root
@@ -16,7 +16,7 @@ def main() -> int:
     else:
         cmd = [sys.executable, "-m", "unittest", "discover", "-s", "tests"] + sys.argv[1:]
 
-    return subprocess.call(cmd, env=env)
+    return subprocess.call(cmd, env=env, cwd=repo_root)
 
 
 if __name__ == "__main__":

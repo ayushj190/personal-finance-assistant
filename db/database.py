@@ -4,7 +4,7 @@ import re
 import sqlite3
 from typing import Any, Iterable
 
-from config import DB_PATH
+from core.config import DB_PATH
 
 DB_DIR = Path(__file__).resolve().parent
 SCHEMA_FILE = DB_DIR / "schema.sql"

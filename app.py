@@ -9,13 +9,13 @@ from ui.pages import (
     tax,
 )
 import importlib
-import logging_setup
+from core import logging_setup
 logging_setup.configure()
 import streamlit as st
 
 from db import database
 from db.migrations import MigrationError
-from config import DB_PATH, DEMO
+from core.config import DB_PATH, DEMO
 from ui import theme
 importlib.reload(theme)
 

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 
 LOGS_DIR = DATA_DIR / "logs"
 LOG_FILE = LOGS_DIR / "app.log"

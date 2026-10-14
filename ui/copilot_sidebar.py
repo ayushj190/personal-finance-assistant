@@ -44,7 +44,7 @@ def render_copilot_sidebar() -> None:
     # Sticky sidebar header: brand row, actions, and file import
     header_container = st.container(key="sticky_sidebar_header")
     with header_container:
-        from config import DEMO
+        from core.config import DEMO
 
         if DEMO:
             st.markdown(

@@ -15,15 +15,15 @@ Tracer Bullet (vertical slices through each core area end to end)
 
 ```bash
 # Setup virtual environment and dependencies
-install.ps1
+.\scripts\install.ps1
 
 # Run development server
-run.bat
+.\scripts\run.bat
 # Or run Streamlit directly
 .\.venv\Scripts\streamlit.exe run app.py
 
 # Run test suite
-python run_tests.py
+python scripts\run_tests.py
 # Or run pytest directly
 .\.venv\Scripts\pytest
 ```
@@ -52,6 +52,7 @@ The Logfire skills send telemetry to a hosted service, so they conflict with the
 
 ## Context files
 
+- [core/](core/): shared primitives — `config` (paths, demo flag), `money` (integer-cent `Money` value object), `logging_setup`
 - [ui/AGENTS.md](ui/AGENTS.md): Streamlit UI architecture, custom theme CSS, fragments, and state handling
 - [agent/AGENTS.md](agent/AGENTS.md): Local Ollama Copilot, tool dispatch, and read only database authorizer
 - [db/AGENTS.md](db/AGENTS.md): SQLite schema, migrations, connection management, and table models

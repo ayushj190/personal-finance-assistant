@@ -2,7 +2,7 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.mortgage import sync_liability_schedule
 

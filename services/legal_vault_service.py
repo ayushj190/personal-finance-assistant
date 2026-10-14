@@ -7,7 +7,7 @@ import sqlite3
 import struct
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.llm_client import get_ollama_client
 

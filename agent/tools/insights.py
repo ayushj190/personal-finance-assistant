@@ -18,7 +18,7 @@ from agent.tools.spending import (
     tool_get_monthly_cashflow,
     tool_get_spending_by_category,
 )
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from db.repositories import AccountRepository
 from services.analytics import calculate_current_net_worth, detect_recurring_charges

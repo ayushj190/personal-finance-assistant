@@ -2,9 +2,9 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from ui.components import section_header, kpi_card, is_hidden
 from ui.page_panel import render_page_panel
 from ui.theme import render_chart

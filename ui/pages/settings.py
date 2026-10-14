@@ -5,9 +5,9 @@ import httpx
 import pandas as pd
 import streamlit as st
 
-from config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
+from core.config import DATA_DIR, DB_PATH, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from db import database
-from money import Money
+from core.money import Money
 from services import secrets_vault
 from ui.components import section_header
 from ui.dialogs import manual_account_dialog

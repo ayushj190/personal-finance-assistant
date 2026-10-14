@@ -3,9 +3,9 @@ import calendar
 import pandas as pd
 
 from agent.chart_renderer import render_chart
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from services.date_scope import resolve_date_scope
 from services.llm_client import classify_merchants
 

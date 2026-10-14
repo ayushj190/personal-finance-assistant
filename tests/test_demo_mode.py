@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 
 
 class TestDemoMode(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestDemoMode(unittest.TestCase):
         cmd = [
             sys.executable,
             "-c",
-            "import os; os.environ['PFA_DEMO'] = '1'; from config import DB_PATH, DEMO, VAULT_PATH; "
+            "import os; os.environ['PFA_DEMO'] = '1'; from core.config import DB_PATH, DEMO, VAULT_PATH; "
             "print(DEMO, DB_PATH.name, VAULT_PATH)",
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)

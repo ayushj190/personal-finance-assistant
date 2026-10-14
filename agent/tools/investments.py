@@ -2,10 +2,10 @@ import json
 from typing import Any
 import pandas as pd
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository
-from money import Money
+from core.money import Money
 from services.allocation_service import (
     create_allocation_profile,
     delete_allocation_profile,

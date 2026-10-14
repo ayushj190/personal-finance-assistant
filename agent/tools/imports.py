@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from connectors.file_import.detect import (
     FileFormat,
     parse_statement,
@@ -10,7 +10,7 @@ from connectors.file_import.detect import (
 )
 from connectors.market_data_service import update_quotes
 from db import database
-from money import Money
+from core.money import Money
 from services.sync_service import import_statement_content
 
 

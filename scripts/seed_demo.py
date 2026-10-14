@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 from db import database
 from db.migrations.runner import run_migrations
 from services.budget_service import set_category_budget

@@ -2,9 +2,9 @@ from datetime import date
 from typing import Any
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
-from money import Money
+from core.money import Money
 from services.analytics import calculate_current_net_worth
 from ui import state
 

@@ -2,7 +2,7 @@ import sqlite3
 from typing import Any
 import pandas as pd
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 
 # Estimated baseline dividend yields by sector/type for projection models

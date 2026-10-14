@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from ui.components import format_money, is_hidden
 from ui.dialogs import confirm_delete_transactions_dialog

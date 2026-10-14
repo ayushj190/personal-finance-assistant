@@ -1,6 +1,6 @@
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from services.legal_vault_service import search_legal_vault, lookup_article
 from services.rag_service import search_knowledge_base, ingest_user_document

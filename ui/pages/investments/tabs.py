@@ -6,7 +6,7 @@ import plotly.express as px
 import streamlit as st
 
 import ui.pages.investments
-from config import DATA_DIR, DB_PATH
+from core.config import DATA_DIR, DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, TransactionRepository
 from services.dividend_service import calculate_dividend_projections

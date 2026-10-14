@@ -5,10 +5,10 @@ import sqlite3
 from typing import Any
 import streamlit as st
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 from db.repositories import AccountRepository, HoldingRepository, LiabilityRepository, TransactionRepository
-from money import Money
+from core.money import Money
 from services.analytics import calculate_burn_and_runway, calculate_current_net_worth
 from services.live_quotes import cached_quotes, market_session_state, refresh_live_quotes
 from services.portfolio import get_consolidated_holdings_df

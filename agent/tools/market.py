@@ -1,10 +1,10 @@
 from datetime import date
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from connectors.market_data_service import fetch_yfinance_quote
 from db import database
-from money import Money
+from core.money import Money
 from services.llm_client import search_brave
 from services.mortgage import sync_liability_schedule
 

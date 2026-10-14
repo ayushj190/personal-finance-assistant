@@ -5,7 +5,7 @@ import re
 import sqlite3
 from typing import Any
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 import yfinance as yf
 
-from config import DB_PATH
+from core.config import DB_PATH
 from db import database
 
 
