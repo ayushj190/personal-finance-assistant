@@ -241,12 +241,48 @@ def _avg_monthly_income(conn: Any) -> float:
     return float(row["avg_inc"] or 0.0) if row else 0.0
 
 
-def tool_get_spending_forecast() -> dict[str, Any]:
-    """Euro per month burn rate and a projected month end (AC-7)."""
+def _months_spanned(start_iso: str, end_iso: str) -> int:
+    """Whole calendar months a resolved window touches, at least one."""
+    start = date.fromisoformat(start_iso)
+    end = date.fromisoformat(end_iso)
+    return max(1, (end.year - start.year) * 12 + (end.month - start.month) + 1)
+
+
+def _window_burn(conn: Any, start_iso: str, end_iso: str) -> dict[str, Any]:
+    """Average monthly burn over one resolved window (same filters as the trailing rate)."""
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(-amount_eur), 0) AS spent
+        FROM v_transactions
+        WHERE is_internal_transfer = 0 AND amount_eur < 0
+          AND booking_date >= ? AND booking_date <= ?
+          AND (category_kind IS NULL OR category_kind NOT IN ('savings', 'transfer', 'income'))
+        """,
+        (start_iso, end_iso),
+    ).fetchone()
+    months = _months_spanned(start_iso, end_iso)
+    spent = float(row["spent"] or 0.0)
+    return {
+        "avg_burn_eur": round(spent / months, 2),
+        "months_count": months,
+        "month_labels": [],
+    }
+
+
+def tool_get_spending_forecast(date_scope: Any = None) -> dict[str, Any]:
+    """Burn rate and a projected month end, for the requested window or the trailing 3 months (AC-1)."""
+    scope = resolve_date_scope(date_scope)
+    if scope.get("error"):
+        return {"success": False, "message": scope["error"]}
+
+    windowed = bool(scope["requested"] and scope["start_iso"])
     today_month = date.today().strftime("%Y-%m")
     conn = database.connect_readonly(DB_PATH)
     try:
-        burn = calculate_3_month_historical_burn_rate(conn)
+        if windowed:
+            burn = _window_burn(conn, scope["start_iso"], scope["end_iso"])
+        else:
+            burn = calculate_3_month_historical_burn_rate(conn)
         nw = calculate_current_net_worth(conn)
         avg_income = _avg_monthly_income(conn)
         month_row = conn.execute(
@@ -264,6 +300,11 @@ def tool_get_spending_forecast() -> dict[str, Any]:
     burn_eur = float(burn.get("avg_burn_eur", 0.0) or 0.0)
     month_spent = round(float(month_row["spent"] or 0.0), 2)
     projected_month_end = round(month_spent + burn_eur, 2)
+    period = (
+        f"over {scope['start_iso']} to {scope['end_iso']}"
+        if windowed
+        else "over the last 3 months"
+    )
 
     forecast = calculate_12_month_runway_forecast(
         liquid_cash=float(nw.get("liquid_cash", 0.0) or 0.0),
@@ -280,7 +321,7 @@ def tool_get_spending_forecast() -> dict[str, Any]:
                 "type": "line",
                 "x": "month_label",
                 "y": "current_spend_balance_eur",
-                "title": "12 month balance trajectory at the 3 month burn rate",
+                "title": f"12 month balance trajectory at the burn rate {period}",
             },
         )
         if not df.empty
@@ -289,6 +330,7 @@ def tool_get_spending_forecast() -> dict[str, Any]:
 
     return {
         "success": True,
+        "period": period,
         "burn_rate_eur_per_month": burn_eur,
         "current_month_spent_eur": month_spent,
         "projected_month_end_eur": projected_month_end,
@@ -297,13 +339,14 @@ def tool_get_spending_forecast() -> dict[str, Any]:
         "df": df,
         "figure": fig,
         "headline": (
-            f"Burn €{burn_eur:,.2f}/mo, projected month end €{projected_month_end:,.2f}"
+            f"Burn €{burn_eur:,.2f}/mo {period}, projected month end €{projected_month_end:,.2f}"
         ),
         "message": (
-            f"Your 3 month burn rate is €{burn_eur:,.2f} per month, so this month is "
+            f"Your burn rate {period} is €{burn_eur:,.2f} per month, so this month is "
             f"projected to end at €{projected_month_end:,.2f}."
         ),
     }
+
 
 
 def tool_get_income_summary(date_scope: Any = None) -> dict[str, Any]:
@@ -493,7 +536,6 @@ def tool_get_net_worth_history(date_scope: Any = None) -> dict[str, Any]:
         if rows
         else None
     )
-    latest = rows[-1]["net_worth_eur"] if rows else round(invested_flat, 2)
 
     return {
         "success": True,
@@ -502,10 +544,13 @@ def tool_get_net_worth_history(date_scope: Any = None) -> dict[str, Any]:
         "invested_value_eur": round(invested_flat, 2),
         "df": df,
         "figure": fig,
-        "headline": f"Net worth about €{latest:,.2f} (approximate)",
+        "headline": (
+            f"Net worth trend (approximate): ledger cash plus €{invested_flat:,.2f} invested"
+        ),
         "message": (
-            f"Net worth has been about €{latest:,.2f} (approximate: the ledger running "
-            "cash balance plus the current invested value held flat, since there is no "
-            "historical snapshot table)."
+            f"This trend is approximate: the ledger running cash balance plus the current "
+            f"invested value of €{invested_flat:,.2f} held flat. It excludes home equity and "
+            "opening balances, so it reads below the true figure. Call get_current_net_worth "
+            "for the real current net worth."
         ),
     }

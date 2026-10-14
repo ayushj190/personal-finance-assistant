@@ -174,7 +174,8 @@ class TestFakeModelHarness(unittest.TestCase):
         self.assertIsNotNone(res["ui_intent"])
         self.assertEqual(res["ui_intent"]["page"], "spending")
 
-    def test_failed_tool_suppresses_intent(self):
+    def test_navigation_survives_a_failed_data_tool(self):
+        # AC-4: a failed data tool must not also lose the page the question asked for.
         assistant_msg = {
             "role": "assistant",
             "content": "",
@@ -186,7 +187,8 @@ class TestFakeModelHarness(unittest.TestCase):
         with patch("agent.copilot.chat_with_tools", return_value=assistant_msg), \
              patch("agent.copilot.generate_stream", return_value=iter(["ok"])):
             res = copilot.run_copilot("tell me about my spending")
-        self.assertIsNone(res["ui_intent"])
+        self.assertIsNotNone(res["ui_intent"])
+        self.assertEqual(res["ui_intent"]["page"], "spending")
 
     def test_clarifying_turn_moves_nothing(self):
         assistant_msg = {"role": "assistant", "content": "Did you mean Spending or Transactions?", "tool_calls": []}

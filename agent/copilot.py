@@ -1,6 +1,8 @@
 from datetime import date
 import inspect
 import json
+import re
+import time
 from typing import Any, Iterator
 
 from agent import tools
@@ -13,6 +15,7 @@ SYSTEM_PROMPT = """You are the personal AI Copilot for this Personal Finance Ass
 CRITICAL ACCURACY RULES:
 - Never confuse debt liabilities (mortgage, loans) with investment portfolio capital.
 - Always quote the exact numbers the tools return; never estimate or invent amounts.
+- Never state a money amount or a percentage unless a tool returned it in this turn.
 - For investments rely on `total_portfolio_value_eur`, `total_portfolio_value_formatted`, and `holdings_by_nature_eur` from `analyze_investments`.
 - Never present a minor unit (cents) figure; use the euro formatted fields the tools provide.
 
@@ -20,18 +23,21 @@ Call the relevant tool whenever the user asks about their financial data:
 - analyze_investments: portfolio value, allocation, drift, and risk.
 - get_allocation_profiles, create_allocation_profile, delete_allocation_profile: manage target allocation strategies. A create needs targets that sum to 100 percent; a delete needs the confirmation token returned by the first call.
 - get_current_net_worth: overall balance sheet.
-- get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow. Pass the requested range as the date_scope argument (a preset name or a start and end date) so the answer and the page agree.
+- get_spending_by_category, get_recent_transactions, get_monthly_cashflow: spending and cashflow.
 - open_view: open the page that owns the topic of the question, optionally an Investments tab, a date scope, and validated view parameters. Call it whenever a question is about a topic with its own page (spending, investments, mortgage, tax, transactions, net worth), even when the user does not phrase it as navigation, alongside the data tool that answers. Use view to shape the page: Spending {category}, Transactions {category, search}, Investments {sort, movers, search, exposure_dimension, focus} (e.g. movers "gainers" or sort "day_pnl" for a movers question, search "AAPL" for a specific ticker, or exposure_dimension "Sector" and focus "Technology" for a technology holdings question).
 - analyze_mortgage: mortgage schedules and rates.
 - analyze_tax_situation, simulate_tax_optimization, calculate_pension_room, analyze_green_fund_strategy, diagnose_tax_leaks: Dutch tax questions.
 - search_dutch_law_vault and lookup_tax_law_article: cite exact Dutch statutory articles.
-- compare_periods: compare two periods. get_budget_status: category budget status. get_account_balances: every account balance. get_spending_forecast: burn rate and projected month end. get_income_summary: income and dividends. get_upcoming_bills: recurring bills. get_net_worth_history: net worth trend.
+- compare_periods: compare two periods. get_budget_status: category budget status. get_account_balances: every account balance. get_spending_forecast: burn rate and projected month end for the requested date_scope (or the last three months when none is given). get_income_summary: income and dividends. get_upcoming_bills: recurring bills. get_net_worth_history: net worth trend (approximate: the ledger cash balance plus the current invested value, excluding home equity and opening balances; use get_current_net_worth for the true current figure).
 
 NAVIGATION RULES:
 - When a question is about a topic with its own page, call open_view for that page and shape it with the view parameters that match the question. Never claim you opened a page unless you called open_view.
 - If the destination screen is ambiguous (two pages fit equally), ask one short question naming the candidate screens and do not call open_view until the user answers. If the topic is weak or absent, answer in chat only and do not call open_view.
 - If the request names a page that has no date filter but asks for a period, still open the page and say plainly that the page has no date scope.
-- Pass the requested period to the data tools as date_scope so the answer and the page agree.
+
+DATE SCOPE RULES:
+- Only these tools accept a period as the date_scope argument: get_spending_by_category, get_recent_transactions, get_monthly_cashflow, get_budget_status, get_income_summary, get_net_worth_history, get_spending_forecast, and open_view. Pass the requested range to them as date_scope so the answer and the page agree.
+- Never pass a period, or a date_scope argument, to a tool that does not list it above. A tool with no date_scope argument must be called with no period at all.
 
 WRITE RULES (the ledger changing tools):
 - categorize_transactions, mark_as_transfer, edit_transaction, delete_transaction, and set_budget_cap change your data. Their first call changes nothing and returns a confirmation token.
@@ -86,6 +92,67 @@ TOOL_MAP = {
     "set_budget_cap": tools.tool_set_budget_cap,
 }
 
+# Navigation and pure app action tools: their success never grounds a numeric
+# answer, so a turn that only ran these can never license a quoted figure (AC-5).
+_NON_GROUNDING_TOOLS = frozenset({
+    "open_view",
+    "toggle_privacy_mode",
+    "set_theme",
+    "request_profile_form",
+})
+
+# A money amount or a percentage stated in a drafted answer (AC-5).
+_FIGURE_RE = re.compile(
+    r"[€$£]\s?[0-9][0-9,]*(\.[0-9]+)?"
+    r"|\b[0-9][0-9,]*(\.[0-9]+)?\s?%"
+    r"|\b[0-9][0-9,]*(\.[0-9]+)?\s?(?:percent|per cent)\b"
+    r"|\b[0-9][0-9,]*(\.[0-9]+)?\s?(?:EUR|USD|GBP)\b",
+    re.IGNORECASE,
+)
+
+
+def _mentions_figure(text: str) -> bool:
+    """True when a drafted answer states a money amount or a percentage (AC-5)."""
+    return bool(_FIGURE_RE.search(text or ""))
+
+
+def _stream_text(text: str) -> Iterator[str]:
+    """Yield a fixed string in token chunks, matching the streamed answer shape."""
+    for tok in re.split(r"(\s+)", text):
+        if tok:
+            yield tok
+            time.sleep(0.012)
+
+
+def _final_stream(
+    messages: list[dict[str, Any]],
+    grounded: bool,
+    failed_messages: list[str],
+) -> Iterator[str]:
+    """The turn's answer stream, gated so no invented figure reaches the user (AC-5).
+
+    A grounded turn streams straight through. An ungrounded turn is drafted in
+    full first: when it states a figure, it is replaced by a deterministic message.
+    """
+    if grounded:
+        return generate_stream(messages)
+
+    drafted = "".join(generate_stream(messages))
+    if not _mentions_figure(drafted):
+        return _stream_text(drafted)
+
+    if failed_messages:
+        fallback = (
+            "I could not retrieve the numbers for that request, so I will not quote a "
+            "figure. " + " ".join(dict.fromkeys(failed_messages))
+        )
+    else:
+        fallback = (
+            "I could not retrieve the numbers for that request, so I will not quote a "
+            "figure. Please try again, or open the page and read the figures there."
+        )
+    return _stream_text(fallback)
+
 
 import traceback
 
@@ -135,6 +202,8 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         }
 
     arguments = arguments or {}
+    original_arguments = dict(arguments)
+    dropped_date_scope = False
 
     # Guided error for an argument a tool does not declare, instead of an internal TypeError (AC-16).
     try:
@@ -149,6 +218,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
             }
             unknown = [k for k in arguments if k not in allowed]
+            # A period hint the model over generalizes onto a tool that does not
+            # declare it is dropped, not fatal; every other undeclared argument
+            # still returns the guided error (AC-3, AC-16).
+            if "date_scope" in unknown:
+                arguments = {k: v for k, v in arguments.items() if k != "date_scope"}
+                dropped_date_scope = True
+                unknown = [k for k in unknown if k != "date_scope"]
             if unknown:
                 accepts = ", ".join(sorted(allowed)) if allowed else "no arguments"
                 return {
@@ -159,7 +235,7 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                     ),
                     "diagnostics": {
                         "tool": tool_name,
-                        "arguments": arguments,
+                        "arguments": original_arguments,
                         "error_type": "UnknownArgumentError",
                         "error_details": f"Unexpected argument(s): {', '.join(unknown)}.",
                     },
@@ -173,10 +249,17 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             if "diagnostics" not in res:
                 res["diagnostics"] = {
                     "tool": tool_name,
-                    "arguments": arguments,
+                    "arguments": original_arguments,
                     "error_type": "ToolReturnedFailure",
                     "error_details": res.get("message", "Tool returned failure status"),
                 }
+        if dropped_date_scope and isinstance(res, dict) and "diagnostics" not in res:
+            res["diagnostics"] = {
+                "tool": tool_name,
+                "arguments": original_arguments,
+                "error_type": "DroppedArgument",
+                "error_details": "Ignored a date_scope argument this tool does not accept.",
+            }
         return res
     except Exception as e:
         friendly_msg, remedy = _format_friendly_error(tool_name, e)
@@ -186,7 +269,7 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "error": str(e),
             "diagnostics": {
                 "tool": tool_name,
-                "arguments": arguments,
+                "arguments": original_arguments,
                 "error_type": type(e).__name__,
                 "error_details": str(e),
                 "traceback": traceback.format_exc(),
@@ -319,6 +402,8 @@ def run_copilot(
     captured_diagnostics = []
     captured_intent = None
     had_failure = False
+    data_tool_succeeded = False
+    failed_messages: list[str] = []
     turn_scope = None
     scoped_tools = {
         "get_spending_by_category",
@@ -345,6 +430,11 @@ def run_copilot(
 
         if result.get("success") is False:
             had_failure = True
+            failed_messages.append(
+                str(result.get("guidance") or result.get("message") or f"Tool {fn_name} failed.")
+            )
+        elif fn_name not in _NON_GROUNDING_TOOLS:
+            data_tool_succeeded = True
 
         if result.get("figure") is not None:
             captured_figure = result["figure"]
@@ -379,14 +469,15 @@ def run_copilot(
             "content": f"Tool `{fn_name}` result:\n{json.dumps(clean_result, default=str)}\nPlease summarize these findings concisely for me.",
         })
 
-    # 5.5 Deterministic topic map fallback (AC-6): only when the model ran but did
-    # not navigate. Routes a clear content question to the one matching page and
-    # carries the turn's resolved scope so the page agrees with the answer.
-    if captured_intent is None and not had_failure:
+    # 5.5 Deterministic topic map fallback (AC-6): runs whenever the model ran but
+    # did not navigate, even when a data tool failed (AC-4). Routes a clear content
+    # question to the one matching page and carries the turn's resolved scope so the
+    # page agrees with the answer.
+    if captured_intent is None:
         captured_intent = topic_map_intent(user_message, turn_scope)
 
-    # 6. Stream final summarization from LLM
-    stream_gen = generate_stream(messages)
+    # 6. Stream the final summarization, gated so no invented figure reaches the user (AC-5).
+    stream_gen = _final_stream(messages, data_tool_succeeded, failed_messages)
 
     return {
         "role": "assistant",
@@ -397,5 +488,5 @@ def run_copilot(
         "form_request": captured_form,
         "citations": captured_citations,
         "diagnostics": captured_diagnostics,
-        "ui_intent": captured_intent if not had_failure else None,
+        "ui_intent": captured_intent,
     }

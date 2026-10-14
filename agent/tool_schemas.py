@@ -487,8 +487,11 @@ COPILOT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_spending_forecast",
-            "description": "The 3 month average burn rate per month and the projected month end spend.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "description": "The average burn rate per month and the projected month end spend, for the requested date_scope (or the trailing three months when none is given).",
+            "parameters": {
+                "type": "object",
+                "properties": {"date_scope": _date_scope_schema()},
+            },
         },
     },
     {
