@@ -1,8 +1,21 @@
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+DESKTOP = os.environ.get("PFA_DESKTOP") == "1"
+
+
+def get_default_data_dir() -> Path:
+    if os.environ.get("PFA_DATA_DIR"):
+        return Path(os.environ["PFA_DATA_DIR"])
+    if DESKTOP and sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "PersonalFinanceAssistant"
+    return BASE_DIR / "data"
+
+
+DATA_DIR = get_default_data_dir()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DEMO = os.environ.get("PFA_DEMO") == "1"

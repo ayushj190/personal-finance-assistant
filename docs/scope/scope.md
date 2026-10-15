@@ -35,6 +35,7 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 17 | Data Product Robustness | Slice 16 | in-progress |
 | 18 | Copilot View Intelligence & Daily Use Finish | Slice 17 | in-progress |
 | 19 | Live Portfolio View | Slice 18 | in-progress |
+| 20 | Standalone macOS App Packaging | Slice 19 | in-progress |
 
 ## Brownfield context
 
@@ -352,6 +353,21 @@ spec [0021](../specs/0021-live-portfolio-view/index.md) · code in services/live
   - [x] Income tab tidy and the regression net (satisfies AC-19, AC-20)
 - [ ] Verify it: /check verify live portfolio view
 - [ ] Test it: /test live portfolio view
+
+## Slice 19: Standalone macOS App Packaging
+
+### 20. Standalone macOS App Packaging · in-progress
+Package the personal finance assistant into a standalone macOS desktop application bundle and DMG installer for an 8GB RAM MacBook Air. Focus strictly on expense tracking and statement ingestion, omitting heavy local AI and broker integrations to minimize memory footprint.
+**Done when:** the application launches into a native desktop window via pywebview on macOS, shuts down cleanly on close, persists data in `~/Library/Application Support/PersonalFinanceAssistant/`, consumes under 350MB idle memory without Ollama or vector extensions, and builds via a GitHub Actions macOS DMG workflow.
+spec [0023](../specs/0023-standalone-macos-app-packaging/index.md) · code in desktop_app.py, core/config.py, ui/desktop_navigation.py, desktop_app.spec, scripts/build_mac.sh, .github/workflows/build-mac-dmg.yml
+- [x] Design it (spec): `/architect packaging this as a standalone mac app`
+- [x] Build it: /develop standalone macos app packaging
+  - [x] Requirements profile and configuration redirection to macOS Application Support (satisfies AC-3, AC-4)
+  - [x] Desktop runner with loopback socket allocation, headless Streamlit server, and pywebview window (satisfies AC-1, AC-2)
+  - [x] Lightweight desktop navigation for Dashboard, Spending, Transactions, and Settings (satisfies AC-5)
+  - [x] PyInstaller spec and GitHub Actions DMG build workflow (satisfies AC-6)
+- [ ] Verify it: /check verify standalone macos app packaging
+- [ ] Test it: /test standalone macos app packaging
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.

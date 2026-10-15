@@ -19,12 +19,15 @@ from core.config import DB_PATH, DEMO
 from ui import theme
 importlib.reload(theme)
 
+from ui.desktop_navigation import is_desktop_mode, get_desktop_pages
+DESKTOP = is_desktop_mode()
+
 # Initialize page config
 st.set_page_config(
     page_title="Personal Finance Assistant",
     page_icon="🪙",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed" if DESKTOP else "expanded",
 )
 
 from ui import state
@@ -100,84 +103,93 @@ if stale_accounts and not state.has(state.K.STALE_NOTIFIED):
         f"Reminder: Update your manual accounts ({', '.join(stale_accounts)}).", icon="📝")
     state.set(state.K.STALE_NOTIFIED, True)
 
-# Navigation definition: all 7 pages with Settings as the last tab
-settings_page = st.Page(
-    settings.render,
-    title="Settings",
-    icon=":material/settings:",
-    url_path="settings",
-    visibility="hidden",
-)
-pages = [
-    st.Page(dashboard.render, title="Dashboard",
-            icon=":material/dashboard:", default=True),
-    st.Page(spending.render, title="Spending",
-            icon=":material/payments:", url_path="spending"),
-    st.Page(investments.render, title="Investments",
-            icon=":material/monitoring:", url_path="investments"),
-    st.Page(mortgage.render, title="Mortgage",
-            icon=":material/real_estate_agent:", url_path="mortgage"),
-    st.Page(transactions.render, title="Transactions",
-            icon=":material/swap_horiz:", url_path="transactions"),
-    st.Page(tax.render, title="Tax Analysis",
-            icon=":material/account_balance:", url_path="tax"),
-    settings_page,
-]
+# Navigation definition
+if DESKTOP:
+    pages, settings_page = get_desktop_pages()
+    _page_map = {
+        "dashboard": pages[0],
+        "spending": pages[1],
+        "transactions": pages[2],
+        "settings": settings_page,
+    }
+else:
+    settings_page = st.Page(
+        settings.render,
+        title="Settings",
+        icon=":material/settings:",
+        url_path="settings",
+        visibility="hidden",
+    )
+    pages = [
+        st.Page(dashboard.render, title="Dashboard",
+                icon=":material/dashboard:", default=True),
+        st.Page(spending.render, title="Spending",
+                icon=":material/payments:", url_path="spending"),
+        st.Page(investments.render, title="Investments",
+                icon=":material/monitoring:", url_path="investments"),
+        st.Page(mortgage.render, title="Mortgage",
+                icon=":material/real_estate_agent:", url_path="mortgage"),
+        st.Page(transactions.render, title="Transactions",
+                icon=":material/swap_horiz:", url_path="transactions"),
+        st.Page(tax.render, title="Tax Analysis",
+                icon=":material/account_balance:", url_path="tax"),
+        settings_page,
+    ]
+    _page_map = {
+        "dashboard": pages[0],
+        "spending": pages[1],
+        "investments": pages[2],
+        "mortgage": pages[3],
+        "transactions": pages[4],
+        "tax": pages[5],
+        "settings": settings_page,
+    }
 active_page = st.navigation(pages, position="top")
 
-# Map canonical page ids to the st.Page objects for the Copilot action layer.
-_page_map = {
-    "dashboard": pages[0],
-    "spending": pages[1],
-    "investments": pages[2],
-    "mortgage": pages[3],
-    "transactions": pages[4],
-    "tax": pages[5],
-    "settings": settings_page,
-}
-
-# Global sidebar
-with st.sidebar:
-    from ui.copilot_sidebar import render_copilot_sidebar
-    render_copilot_sidebar()
+# Global sidebar (excluded in desktop mode, AC-5)
+if not DESKTOP:
+    with st.sidebar:
+        from ui.copilot_sidebar import render_copilot_sidebar
+        render_copilot_sidebar()
 
 # Consume a Copilot navigation intent exactly once, after navigation and before render (AC-19).
-from services.date_scope import CUSTOM_PRESET
-from services.navigation import FILTERED_PAGES as _FILTERED_PAGES
-from ui.state import K as _K
+if not DESKTOP:
+    from services.date_scope import CUSTOM_PRESET
+    from services.navigation import FILTERED_PAGES as _FILTERED_PAGES
+    from ui.state import K as _K
 
-_intent = st.session_state.pop(_K.COPILOT_UI_INTENT, None)
-if _intent and _intent.get("page") in _page_map:
-    _page_id = _intent["page"]
-    _tab = _intent.get("tab")
-    _ds = _intent.get("date_scope") or {}
-    if _ds.get("requested") and _page_id in _FILTERED_PAGES:
-        if _ds.get("preset"):
-            st.session_state[_K.FILTER_STATE] = {"preset": _ds["preset"]}
-        elif _ds.get("start_iso"):
-            st.session_state[_K.FILTER_STATE] = {
-                "preset": CUSTOM_PRESET,
-                "custom_start": date.fromisoformat(_ds["start_iso"]),
-                "custom_end": date.fromisoformat(_ds["end_iso"]),
-            }
-    if _tab:
-        st.session_state[_K.INVESTMENTS_ACTIVE_TAB] = _tab
-        st.session_state[_K.INVESTMENTS_TABS_GENERATION] = (
-            st.session_state.get(_K.INVESTMENTS_TABS_GENERATION, 0) + 1
-        )
-    from ui.view_state import apply_view as _apply_view
-    _apply_view(_page_id, _intent.get("view"))
-    _target = _page_map[_page_id]
-    if _target is not active_page:
-        st.switch_page(_target)
+    _intent = st.session_state.pop(_K.COPILOT_UI_INTENT, None)
+    if _intent and _intent.get("page") in _page_map:
+        _page_id = _intent["page"]
+        _tab = _intent.get("tab")
+        _ds = _intent.get("date_scope") or {}
+        if _ds.get("requested") and _page_id in _FILTERED_PAGES:
+            if _ds.get("preset"):
+                st.session_state[_K.FILTER_STATE] = {"preset": _ds["preset"]}
+            elif _ds.get("start_iso"):
+                st.session_state[_K.FILTER_STATE] = {
+                    "preset": CUSTOM_PRESET,
+                    "custom_start": date.fromisoformat(_ds["start_iso"]),
+                    "custom_end": date.fromisoformat(_ds["end_iso"]),
+                }
+        if _tab:
+            st.session_state[_K.INVESTMENTS_ACTIVE_TAB] = _tab
+            st.session_state[_K.INVESTMENTS_TABS_GENERATION] = (
+                st.session_state.get(_K.INVESTMENTS_TABS_GENERATION, 0) + 1
+            )
+        from ui.view_state import apply_view as _apply_view
+        _apply_view(_page_id, _intent.get("view"))
+        _target = _page_map[_page_id]
+        if _target is not active_page:
+            st.switch_page(_target)
 
-# A manual page change drops the Copilot panel; a Copilot navigation keeps it (AC-3).
-_current_page_id = next(
-    (pid for pid, page in _page_map.items() if page is active_page), None
-)
-_panel = st.session_state.get(_K.COPILOT_PAGE_PANEL)
-if _panel and _intent is None and _panel.get("page") != _current_page_id:
-    st.session_state.pop(_K.COPILOT_PAGE_PANEL, None)
+    # A manual page change drops the Copilot panel; a Copilot navigation keeps it (AC-3).
+    _current_page_id = next(
+        (pid for pid, page in _page_map.items() if page is active_page), None
+    )
+    _panel = st.session_state.get(_K.COPILOT_PAGE_PANEL)
+    if _panel and _intent is None and _panel.get("page") != _current_page_id:
+        st.session_state.pop(_K.COPILOT_PAGE_PANEL, None)
 
 # Top navbar 3-dots menu (Options / Settings / Privacy toggle)
 with st.container(key="top_navbar_actions"):

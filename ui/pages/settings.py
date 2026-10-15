@@ -15,12 +15,16 @@ from ui.allocation_ui import render_allocation_management
 from ui.page_panel import render_page_panel
 
 
+from ui.desktop_navigation import is_desktop_mode
+
 def render():
     render_page_panel("settings")
     conn = database.connect(DB_PATH)
 
     menu_options = ["Bank & Broker Integrations", "Fiscal Month & Categories", "Mortgage & Liabilities",
                     "Target Allocations", "AI Model (Ollama)", "Appearance", "Database & Backup"]
+    if is_desktop_mode():
+        menu_options = [opt for opt in menu_options if opt not in ("AI Model (Ollama)", "Target Allocations", "Mortgage & Liabilities")]
     col_menu, col_content = st.columns([1, 3])
 
     with col_menu:
@@ -266,34 +270,35 @@ def render():
                 st.divider()
 
                 # eToro Section
-            with section_header("eToro Bank & Investment Integration",
-                           "Direct API sync for cash balance, transactions, and portfolio holdings"):
-                st.info(
-                    "💡 **eToro Money & Trading API Sync:**\n\n"
-                    "Your eToro EUR cash balance, cash transactions, and USD trading portfolio are synced automatically via the official eToro API when configured."
-                )
+                if not is_desktop_mode():
+                    with section_header("eToro Bank & Investment Integration",
+                                   "Direct API sync for cash balance, transactions, and portfolio holdings"):
+                        st.info(
+                            "💡 **eToro Money & Trading API Sync:**\n\n"
+                            "Your eToro EUR cash balance, cash transactions, and USD trading portfolio are synced automatically via the official eToro API when configured."
+                        )
 
-                with st.expander("eToro Trading Portfolio API Setup (Optional)"):
-                    st.markdown(
-                        dedent(
-                            """
-                            To automatically sync your open investment positions and stocks:
-                            1. Log in to [api-portal.etoro.com](https://api-portal.etoro.com) with your eToro credentials.
-                            2. Generate an **API Key** and **User Key**.
-                            3. Paste both keys below:
-                            """
-                        ).strip()
-                    )
-                    etoro_api_key = st.text_input("eToro API Key", value=secrets_vault.get(
-                        "etoro_api_key") or "", type="password")
-                    etoro_user_key = st.text_input("eToro User Key", value=secrets_vault.get(
-                        "etoro_user_key") or "", type="password")
-                    if st.button("Save eToro Keys"):
-                        secrets_vault.put("etoro_api_key", etoro_api_key.strip())
-                        secrets_vault.put("etoro_user_key", etoro_user_key.strip())
-                        st.success("eToro credentials saved!")
+                        with st.expander("eToro Trading Portfolio API Setup (Optional)"):
+                            st.markdown(
+                                dedent(
+                                    """
+                                    To automatically sync your open investment positions and stocks:
+                                    1. Log in to [api-portal.etoro.com](https://api-portal.etoro.com) with your eToro credentials.
+                                    2. Generate an **API Key** and **User Key**.
+                                    3. Paste both keys below:
+                                    """
+                                ).strip()
+                            )
+                            etoro_api_key = st.text_input("eToro API Key", value=secrets_vault.get(
+                                "etoro_api_key") or "", type="password")
+                            etoro_user_key = st.text_input("eToro User Key", value=secrets_vault.get(
+                                "etoro_user_key") or "", type="password")
+                            if st.button("Save eToro Keys"):
+                                secrets_vault.put("etoro_api_key", etoro_api_key.strip())
+                                secrets_vault.put("etoro_user_key", etoro_user_key.strip())
+                                st.success("eToro credentials saved!")
 
-                st.divider()
+                        st.divider()
 
                 with section_header("Manual Bank & Investment Accounts", "Manage manual accounts and balances (Türkiye İş Bankası, Garanti, cash, etc.)"):
                     col_m_btn, _ = st.columns([1, 2])

@@ -1,0 +1,49 @@
+name: Build macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build macOS DMG package
+        run: |
+          chmod +x scripts/build_mac.sh
+          ./scripts/build_mac.sh
+
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalFinanceAssistant-macOS-AppleSilicon
+          path: dist/PersonalFinanceAssistant.dmg
+          if-no-files-found: error
+
+      - name: Generate Job Summary
+        run: |
+          cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          ## macOS Desktop DMG Build Complete 🚀
+
+          The standalone desktop installer has been compiled for macOS Apple Silicon (M1/M2/M3/M4).
+
+          ### Gatekeeper Bypass Instructions (Unsigned Open-Source Build):
+          1. Download and mount `PersonalFinanceAssistant.dmg`.
+          2. Drag `Personal Finance Assistant.app` into `/Applications`.
+          3. **First launch**: Right-click the app in `/Applications` and click **Open**, then confirm **Open** in the warning dialog.
+          4. Alternatively, run:
+             ```bash
+             xattr -cr "/Applications/Personal Finance Assistant.app"
+             ```
+          EOF
